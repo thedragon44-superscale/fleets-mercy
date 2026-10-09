@@ -8,8 +8,8 @@ import (
 func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
 	if target.IsDestroyed { return }
 
-	// 95% Damage Reduction for Dreadnought Armor[cite: 5]
-	if target.Type == "flagship" {
+	// 95% Damage Reduction for Capital Dreadnought & Command Ship Armor[cite: 5, 16]
+	if target.Type == "flagship" || target.Type == "battalion_command_ship" {
 		damage *= 0.05
 	}
 
@@ -52,14 +52,14 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
-			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances[cite: 8, 19]
+			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances[cite: 16]
 			for i := 0; i < 12; i++ {
 				angle := float64(i) / 12.0 * 2 * math.Pi
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
 				nodeX := s.PosX + math.Cos(angle)*nodeDist
 				nodeY := s.PosY + math.Sin(angle)*nodeDist
 				
-				// Tighter collision radius to allow gap navigation between nodes[cite: 8, 19]
+				// Tighter collision radius to allow gap navigation between nodes[cite: 16]
 				nodeRadius := (15.0 + float64(i%3)*8.0) + 5.0
 
 				dx := unit.Pos.X - nodeX
@@ -93,7 +93,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 		if dist < collisionRadius {
 			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
-				// Core Death Zone: Instant destruction[cite: 3]
+				// Core Death Zone: Instant destruction[cite: 16]
 				targetDestroyed := true
 				if targetDestroyed {
 					unit.IsDestroyed = true

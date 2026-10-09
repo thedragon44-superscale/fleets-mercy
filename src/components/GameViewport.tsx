@@ -35,15 +35,18 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const gameOverLatched = useRef<{winner: string, x: number, y: number} | null>(null);
 
-  // Default dummy loadout if none provided (useful for sandbox mode)
+  // Default dummy loadout with corrected UNIT_DB snake_case identifiers including battalion command ship & command escort
   const defaultLoadout: LoadoutData = activeLoadout || {
     id: 0, name: 'Sandbox Default',
     fleetComposition: Object.fromEntries(UNIT_DB.map(u => [u.id, 99])),
-    squad1: ['viper', 'assault-gunship'], squad2: ['lancer-corvette'], squad3: ['supply-tender'], squad4: ['flagship']
+    squad1: ['viper_interceptor', 'assault_gunship', 'command_escort'], 
+    squad2: ['lancer_corvette'], 
+    squad3: ['supply_tender'], 
+    squad4: ['battalion_command_ship']
   };
 
   const [reserves, setReserves] = useState<{ [unitId: string]: number }>(() => ({ ...defaultLoadout.fleetComposition }));
-  const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
+  const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   
   const squadMap = useRef<{ [key: number]: string[] }>({
     1: defaultLoadout.squad1,
@@ -69,7 +72,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
-      const flagship = serverState.current.units?.find(u => u.id === 'player-flagship');
+      const flagship = serverState.current.units?.find(u => u.id === 'player-flagship' || u.type === 'battalion_command_ship');
       let angle = 0;
       if (flagship) {
         const worldMouseX = mousePos.current.x - canvasRef.current.width / 2 + cameraPos.current.x;
@@ -153,7 +156,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
       ctx.fillStyle = '#050811'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (serverState.current) {
-        const flagship = serverState.current.units?.find(u => u.id === 'player-flagship');
+        const flagship = serverState.current.units?.find(u => u.id === 'player-flagship' || u.type === 'battalion_command_ship');
         if (flagship) {
           cameraPos.current.x += (flagship.pos.x + (mousePos.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
           cameraPos.current.y += (flagship.pos.y + (mousePos.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
@@ -171,8 +174,11 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
         ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
 
         (serverState.current.units || []).forEach((u: any) => {
-          if (u.type === 'flagship') drawFlagship(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
-          else drawTargetDummy(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
+          if (u.type === 'flagship' || u.type === 'battalion_command_ship') {
+            drawFlagship(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
+          } else {
+            drawTargetDummy(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
+          }
         });
 
         (serverState.current.projectiles || []).forEach(p => drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type));
@@ -181,7 +187,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
         // Standard Mode Victory/Defeat Check
         if (mode === 'standard') {
           const units = serverState.current.units || [];
-          const hasLiveFlagships = units.filter(u => u.type === 'flagship' && !u.isDestroyed).length === 2;
+          const hasLiveFlagships = units.filter(u => (u.type === 'flagship' || u.type === 'battalion_command_ship') && !u.isDestroyed).length >= 2;
 
           if (hasLiveFlagships && gameOverLatched.current) {
             gameOverLatched.current = null;
@@ -190,7 +196,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
           }
 
           units.forEach((u: any) => {
-            if (u.type === 'flagship' && u.isDestroyed && !gameOverLatched.current) {
+            if ((u.type === 'flagship' || u.type === 'battalion_command_ship') && u.isDestroyed && !gameOverLatched.current) {
                gameOverLatched.current = { winner: u.ownerId === 'player' ? 'enemy' : 'player', x: u.pos.x, y: u.pos.y };
             }
           });
@@ -211,11 +217,11 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
             if (go.winner === 'enemy') {
               ctx.fillStyle = '#ff2a6d'; ctx.font = 'bold 48px monospace';
               ctx.fillText('CRITICAL FAILURE', canvas.width / 2, canvas.height / 2 - 20);
-              ctx.font = '24px monospace'; ctx.fillText('Your Dreadnought was destroyed.', canvas.width / 2, canvas.height / 2 + 30);
+              ctx.font = '24px monospace'; ctx.fillText('Your Command Capital was destroyed.', canvas.width / 2, canvas.height / 2 + 30);
             } else {
               ctx.fillStyle = '#00f3ff'; ctx.font = 'bold 48px monospace';
               ctx.fillText('VICTORY ACHIEVED', canvas.width / 2, canvas.height / 2 - 20);
-              ctx.font = '24px monospace'; ctx.fillText('Enemy Dreadnought eliminated.', canvas.width / 2, canvas.height / 2 + 30);
+              ctx.font = '24px monospace'; ctx.fillText('Enemy Command Capital eliminated.', canvas.width / 2, canvas.height / 2 + 30);
             }
             ctx.fillStyle = '#f59e0b'; ctx.font = '16px monospace';
             ctx.fillText('STAND BY FOR COMBAT RESET...', canvas.width / 2, canvas.height / 2 + 80);
@@ -281,7 +287,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
 
           if (u.type === 'asteroid') {
             ctx.fillStyle = '#475569'; ctx.fillRect(px - 1, py - 1, 3, 3);
-          } else if (u.id === 'player-flagship') {
+          } else if (u.id === 'player-flagship' || u.type === 'battalion_command_ship') {
             ctx.fillStyle = '#00f3ff'; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
           } else if (u.ownerId === 'player') {
             ctx.fillStyle = '#38bdf8'; ctx.fillRect(px - 1, py - 1, 2, 2);
@@ -424,7 +430,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
                 }}
               >
                 <div style={{ fontWeight: 'bold' }}>{unit.name}</div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.category} | Weight: {unit.weight}</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.role} | Weight: {unit.weight}W</div>
               </button>
             ))}
           </div>

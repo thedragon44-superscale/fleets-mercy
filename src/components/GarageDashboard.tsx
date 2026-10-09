@@ -29,6 +29,7 @@ export const UNIT_DB: UnitBlueprint[] = [
   { id: 'grav_extractor', name: 'Grav-Extractor', shortName: 'Grav Ext', weight: 2, classType: 'INDUSTRIAL', role: 'Gravity Harvest', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '1.50', cooldown: '45 Ticks', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Emits micro-gravity pulses to attract loose asteroid mineral nodes directly into the path of active Mining Barges.' },
 
   { id: 'assault_gunship', name: 'Assault Gunship', shortName: 'Gunship', weight: 3, classType: 'MEDIUM', role: 'Strafing Runs', speed: 'MEDIUM (0.30)', shields: '1.00', hull: '2.00', cooldown: '5 Ticks', aggroRange: '500px', aiState: 'SEEK', doctrine: 'SEEK AI: Heavy frontline brawler. Performs 500px strafing passes while discharging a high-rate-of-fire auto-cannon (5 tick cooldown).' },
+  { id: 'command_escort', name: 'Command Escort', shortName: 'Cmd Esc', weight: 3, classType: 'MEDIUM', role: 'Capital Bodyguard', speed: 'FAST (1.8)', shields: '2000.00', hull: '1500.00', cooldown: '5 Ticks', aggroRange: '600px', aiState: 'BODYGUARD', doctrine: 'BODYGUARD AI: Dedicated capital bodyguard. Automatically tethers to and shields flagship units, intercepting incoming hostile fire.' },
   { id: 'aegis_repair', name: 'Aegis Repair', shortName: 'Aegis Rep', weight: 3, classType: 'MEDIUM', role: 'Field Maintenance', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '0.50', cooldown: '20 Ticks', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Mobile repair station. Locks onto damaged friendly hulls within 400px, restoring 0.10 hull quadrant plating per pulse cycle.' },
   { id: 'vortex_minelayer', name: 'Vortex Minelayer', shortName: 'Minelayer', weight: 3, classType: 'MEDIUM', role: 'Spatial Traps', speed: 'FAST (0.35)', shields: '0.80', hull: '0.80', cooldown: '100 Ticks', aggroRange: '300px', aiState: 'GUARD', doctrine: 'GUARD AI: Patrols flagship perimeter and drops explosive vortex mines every 100 ticks to disrupt pursuing enemy light swarms.' },
 
@@ -36,6 +37,7 @@ export const UNIT_DB: UnitBlueprint[] = [
   { id: 'cryo_flak', name: 'Cryo-Flak Frigate', shortName: 'Cryo-Flak', weight: 4, classType: 'HEAVY', role: 'Swarm Disruption', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '1.50', cooldown: '15 Ticks', aggroRange: '500px', aiState: 'GUARD', doctrine: 'GUARD AI: Fleet screen frigate. Fires AOE cryo-flak shells that deal area damage and freeze enemy engine RCS thrusters in a 150px burst radius.' },
   { id: 'specter_jammer', name: 'Specter Jammer', shortName: 'Jammer', weight: 4, classType: 'HEAVY', role: 'Electronic Warfare', speed: 'FAST (0.35)', shields: '1.00', hull: '0.80', cooldown: '45 Ticks', aggroRange: '800px', aiState: 'SEEK', doctrine: 'SEEK AI: EW Specialist. Generates active radar noise that breaks enemy auto-targeting lock-ons for all allied ships within its 800px aura.' },
 
+  { id: 'battalion_command_ship', name: 'Battalion Command Ship', shortName: 'Batt Cmd', weight: 5, classType: 'CAPITAL', role: 'Fleet Command Hub', speed: 'SLOW (0.9)', shields: '2500.00', hull: '1875.00', cooldown: '30 Ticks', aggroRange: '1200px', aiState: 'COMMAND_RELAY', doctrine: 'COMMAND_RELAY AI: Regional flagship command node with 4-quadrant shielding and internal repair bays for fleet coordination.' },
   { id: 'aegis_wall', name: 'Aegis Wall', shortName: 'Aegis Wall', weight: 5, classType: 'CAPITAL', role: 'Directional Shield', speed: 'SLOW (0.15)', shields: '4.00', hull: '1.00', cooldown: 'Instant', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Heavy barrier ship. Matches flagship vector orientation, projecting a 4.0 front shield quadrant barrier to tank incoming capital fire.' },
   { id: 'torpedo_bomber', name: 'Torpedo Bomber', shortName: 'T. Bomber', weight: 5, classType: 'CAPITAL', role: 'Capital Siege', speed: 'SLOW (0.10)', shields: '2.00', hull: '2.50', cooldown: '90 Ticks', aggroRange: '700px', aiState: 'SEEK', doctrine: 'SEEK AI: Anti-flagship siege platform. Fires heavy plasma torpedoes designed to bypass enemy escort screens and strike capital rear thrusters.' },
   { id: 'warp_frigate', name: 'Warp Frigate', shortName: 'Warp Frig', weight: 5, classType: 'CAPITAL', role: 'Teleport Anchor', speed: 'VERY SLOW (0.05)', shields: '3.00', hull: '1.50', cooldown: '120 Ticks', aggroRange: '0px', aiState: 'GUARD', doctrine: 'GUARD AI: Spatial relay anchor. Opens a temporary micro-wormhole allowing reserve fleet units to bypass flight travel time and warp directly into battle.' },
@@ -58,22 +60,22 @@ interface GarageProps {
   player: { id: number; username: string };
   onLaunchPractice: (activeLoadout: LoadoutData) => void;
   onLogout: () => void;
-  onNavigateHome: () => void; // Added callback prop definition
+  onNavigateHome: () => void;
 }
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
   mining_barge: 'mining.png', supply_tender: 'supply.png', plasma_skimmer: 'plasma.png', grav_extractor: 'grav.png',
-  assault_gunship: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png', lancer_corvette: 'lancer.png',
-  cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png', torpedo_bomber: 'torpedo.png',
-  warp_frigate: 'warp.png', gun_emplacement: 'turret.png'
+  assault_gunship: 'assault.png', command_escort: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png', 
+  lancer_corvette: 'lancer.png', cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png', 
+  torpedo_bomber: 'torpedo.png', warp_frigate: 'warp.png', gun_emplacement: 'turret.png', battalion_command_ship: 'flagship.png'
 };
 
 const PREVIEW_ROTATION_CSS: { [unitId: string]: string } = {
-  flagship: 'rotate(90deg)', aegis_repair: 'rotate(90deg)', assault_gunship: 'rotate(90deg)', 
-  grav_extractor: 'rotate(90deg)', mining_barge: 'rotate(90deg)', plasma_skimmer: 'rotate(90deg)', 
-  specter_jammer: 'rotate(90deg)', supply_tender: 'rotate(90deg)', torpedo_bomber: 'rotate(90deg)', 
-  vortex_minelayer: 'rotate(90deg)',
+  flagship: 'rotate(90deg)', battalion_command_ship: 'rotate(90deg)', command_escort: 'rotate(90deg)', 
+  aegis_repair: 'rotate(90deg)', assault_gunship: 'rotate(90deg)', grav_extractor: 'rotate(90deg)', 
+  mining_barge: 'rotate(90deg)', plasma_skimmer: 'rotate(90deg)', specter_jammer: 'rotate(90deg)', 
+  supply_tender: 'rotate(90deg)', torpedo_bomber: 'rotate(90deg)', vortex_minelayer: 'rotate(90deg)', 
   lancer_corvette: 'rotate(-90deg)', viper_interceptor: 'rotate(-90deg)',
   cryo_flak: 'rotate(0deg)', ion_interceptor: 'rotate(0deg)', phantom_transport: 'rotate(0deg)', 
   recon_probe: 'rotate(0deg)', gun_emplacement: 'rotate(0deg)', aegis_wall: 'rotate(0deg)', 
@@ -263,7 +265,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button 
-            onClick={onNavigateHome} // Uses the clean callback prop instead of a window event
+            onClick={onNavigateHome}
             style={{ padding: '4px 10px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #00f3ff', color: '#00f3ff', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 'bold' }}
           >
             &larr; MAIN MENU

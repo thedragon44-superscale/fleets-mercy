@@ -1,0 +1,139 @@
+Fleets' Mercy: Comprehensive Master Roadmap & Mechanics Specification
+This master catalog outlines all remaining system implementations required to achieve full feature parity for Fleets' Mercy, including squad/battalion command hierarchies, complete AI behavior profiles for all units, the addition of regional command vessels, and a deterministic finite-versus-infinite ammunition and resource logistics framework.
+
+Part 1: New Unit Integrations
+1. Battalion Command Ship (5W)
+Role & Weight Class: 5W Regional Fleet Command & Mobile Repair Hub.   
+MD
+
+Vitality & Mitigation: Rank S Quadrant Shields (10,000 HP total / 2,500 per quadrant) / Rank S Hull (8,000 HP total / 2,000 per quadrant). Front shield drops when firing; front quadrant damage disables main guns. Cannot repair itself (requires Aegis Repair units).   
+MD
++ 2
+
+Movement & Speed: Rank C Velocity (1.0). Massive inertia / slow acceleration; relies on Command Escort Ships to screen vulnerable vectors.   
+MD
+
+Vision & Telemetry: Active command relay broadcasting a 1,200m+ sensor bubble across the regional zone.   
+MD
+
+Combat & Ammo: Rank A Capital Battery Array (450 DPS). Uses Metal exclusively for structural upkeep (no ammo handling).   
+MD
++ 1
+
+AI & Logistics: Automatically pairs with assigned Command Escort Ships and manages automated repair queues for docked assets.   
+MD
+
+2. Command Escort Ship (3W)
+Role & Weight Class: 3W Capital Bodyguard & Vanguard Screen.   
+MD
+
+Vitality & Mitigation: Rank B Shields (1,500 HP) / Rank B Hull (2,000 HP). Disengages to seek the nearest active port/flagship drydock when compromised.   
+MD
++ 1
+
+Movement & Speed: Rank B Velocity (1.8). Cannot match flagship thruster boosts and must catch up post-burn.   
+MD
+
+Vision & Telemetry: Passive radar relay extending telemetry around its protected command vessel (1,200m engagement cap).   
+MD
+
+Combat & Ammo: Rank B Medium Point-Defense & Interception Batteries (150 DPS). Infinite ammunition: 3-second fire cycle with a 1-second cooldown.   
+MD
+
+AI & Logistics: Anchors within standard squad range around its assigned command vessel, placing its hull between the protected ship and highest enemy concentrations.   
+MD
+
+Part 2: Squad & Battalion Hierarchy Behaviors
+1. Squad Mechanics (Micro-Formation & Triage)
+Formation Anchoring: Units assigned to squads (Squads 1 through 4) maintain strict relative positioning around a squad leader or designated anchor (e.g., a "buddy" ship or heavy vanguard).
+
+Shared Telemetry & Target Prioritization: Squad members share a closed-loop target scoring matrix. If a squadmate is taking heavy hull damage, light units (like Ion Disablers) automatically shift focus to suppress the attacker targeting that specific squadmate.   
+MD
+
+Disengagement Routing: Individual units evaluate retreat triggers independently (e.g., Assault Gunships fleeing at 0% shields) while maintaining squad cohesion for surviving members.
+
+2. Battalion Mechanics (Macro-Operations)
+Regional Command Hubs: Battalion Command Ships act as localized hubs, issuing operational orders and coordinating automated repair/resupply queues for all attached escort and support vessels within their 1,200m sensor bubble.   
+MD
+
+Escort Screening Vectors: Command Escort Ships automatically calculate incoming threat vectors toward the Battalion Command Ship or Flagship, dynamically forming an interception wall.
+
+Part 3: Complete Unit AI Behavior Catalog
+Aegis Repair Corvette (2W): Anchors to a targeted unit or squadmate; never retreats due to low health; actively positions friendly units as meat-shields; cycles between repairing hulls/shields and traveling to Supply Tenders when its resource cache is empty.
+
+Aegis Wall (5W): Dynamic Intercept AI; actively thrusts its 5W frame between moving allies and incoming enemy hostiles; shatters and retreats to port if its directional front shield hits 0%.   
+MD
+
+Assault Gunship (2W): Executes high-velocity hit-and-run strafing passes; strictly governed by shield-break disengagement (instantly aborts and retreats to port when shields reach 0%).   
+MD
+
+Battalion Command Ship (5W): Anchors regional operations, pairs with Command Escort Ships, and manages automated repair queues.   
+MD
+
+Command Escort Ship (3W): Bodyguard AI; patrols within standard squad range of its command vessel, placing its hull between threats and the command ship.   
+MD
+
+Cryo-Flak Frigate (3W): Area-denial AI; blankets transit lanes and choke points with cryo-gas to disrupt enemy timing and detonate incoming torpedoes.   
+MD
+
+Command Dreadnought (Flagship): Central command hub controlled manually by the player via mouse raycasting and WASD/thruster inputs; handles manual squad recalls and spatial jumps.   
+MD
+
+Defensive Gun Emplacement (4W): Stationary defense AI; bolt-on anchored by Recon drones to celestial bodies; fights to the death covering designated chokepoints.   
+MD
+
+Ion Disabler (1W): Suppressor AI; targets the specific enemy locked on by the squadmate with the highest hull-damage output; enters "Buddy Mode" to shadow the fleet's primary damage dealer.   
+MD
+
+Lancer Railgun Corvette (4W): Sniper AI; tethered exclusively to Flagship telemetry, maintaining maximum standoff distance to target high-value assets (flagships, command ships, harvesters).
+
+Mining Barge (2W): Industrial harvester AI; extracts Metal and Ore from surface crusts; retreats to port if shields break; offloads directly to field Supply Tenders.
+
+Phantom Transport (1W): Stealth infiltrator/Recon hunter AI; stays cloaked until firing or taking damage; actively hunts enemy Recon Probes.
+
+Plasma Skimmer (2W): Nebula harvester AI; extracts Plasma Gas and Isotopes; utilizes Recon stealth pathing; offloads cargo to Supply Tenders parked at nebula perimeters.
+
+Recon Probe (1W): Scout AI; flies outward in a blind sweep pattern upon deployment, anchoring into high-speed orbits (~1,800m away) upon finding targets; flees directly away at max speed if enemies close within 1,000m.
+
+Specter Radar Jammer (3W): Electronic warfare AI; follows behind squadmates to passively blanket them in radar invisibility (requires shields >75%).
+
+Supply Tender (2W): Logistics AI; monitors raw cache levels and ammunition depletion across combat units via Fleet Array telemetry, pathing directly to units to deliver synthesized ordnance via wireless tethers.
+
+Heavy Torpedo Bomber (4W): Siege platform AI; executes rapid approach/salvo/loop cycles against stripped capital targets, requiring clear approach vectors.
+
+Viper Interceptor (1W): "Cut the Pie" swarm AI; flies at max speed to range, then aggressively strafes in semi-circles in front of enemy trajectories to box them in.
+
+Vortex Minelayer (3W): Area-denial AI; patrols between Recon sensors and enemy positions to sow staggered lines of graviton mines.
+
+Relay Warp Frigate (5W): Strategic warp anchor AI; drops to stationary anchor upon reaching a target Recon Drone to maintain quantum wormhole stability for squad deployments.   
+MD
+
+Grav Extractor (2W): Singularity harvester AI; utilizes unique immunity to operate inside spatial singularity repulsion fields to extract Exotic Crystals and Graviton Cores.   
+MD
+
+Part 4: Ammunition, Cooldowns, & Resource Logistics Matrix
+1. Infinite vs. Finite Ammunition Architecture
+Infinite Ammo Units: Light energy weapons and defensive point-defense systems (e.g., Viper Lasers, Assault Gunship Rotary Cannons, Ion Disablers, Command Escort Point-Defense) operate on standardized fire cycles with built-in heat cooldowns requiring zero resource restocking.
+
+Finite Ammo Units: Heavy siege and specialized ordnance platforms (e.g., Lancer Railguns with 10 slugs, Heavy Torpedo Bombers, Vortex Minelayers with 50 mines, Relay Warp Frigates with 10 warp canisters) consume physical inventory per attack.
+
+2. The Supply Tender Resupply Loop
+Resource Synthesis: Supply Tenders (3W) hold automated manufacturing bays that convert raw materials (Metal, Ore, Isotopes, Plasma Gas, Graviton Cores) into specific finite ammunition types on-the-fly.
+
+Field Delivery: When telemetry flags a combat unit's magazine or cache dropping below critical thresholds, a Supply Tender vectors directly to the unit, establishing a wireless fabrication tether to replenish ammunition without requiring a return trip to port.
+
+Proposed Tactical Stat Expansions for unit_templatesTo achieve AAA tactical immersion, let's expand our database schema and model definitions to include these granular combat parameters:1. Mobility & Vectoring Statsstrafing_speed (NUMERIC): Lateral and reverse thruster multiplier (e.g., Assault Gunships have high strafing agility, while Capital Ships have near-zero lateral drift).turn_rate (NUMERIC): Angular velocity / rotational inertia limit (how fast a unit can pivot its nose to face a target).acceleration (NUMERIC): Rate at which the unit reaches its max speed vector.2. Defense & Mitigation Statsshield_regen_rate (NUMERIC): Passive shield restoration in HP per second (e.g., Aegis Wall features massive regeneration, whereas light fighters have zero in-combat regen).armor_mitigation (NUMERIC): Flat damage reduction or percentage resistance applied after shields fail (e.g., Flagship 95% dreadnought reduction, heavy capital plating vs. light frigate hulls).   3. Weaponry, Ballistics & Range Statsfire_rate (NUMERIC): Rounds per minute or precise cooldown ticks between individual projectiles.projectile_range (NUMERIC): Maximum weapon travel distance before dissipation (e.g., 400m for Viper lasers, 2,000m+ for Lancer Railguns).projectile_speed (NUMERIC): Muzzle velocity determining lead-targeting difficulty.ammo_capacity (INTEGER): Maximum storage limit for finite units (-1 for infinite energy weapons like Viper lasers; 10 for Lancer slugs, 50 for mines, etc.).   4. Electronic & Sensor Statssensor_signature (NUMERIC): Radar cross-section multiplier determining how far away enemy radar arrays can detect the unit (e.g., Phantom transports have near-zero signatures when cloaked).
+
+
+1. Squad & Battalion Command HierarchiesSquad Mechanics: Implementation of micro-formation anchoring, relative positioning around squad leaders/vanguards, shared closed-loop target scoring matrices, and individual unit retreat triggers that preserve broader squad cohesion.Battalion Mechanics: Integration of regional command operations via Battalion Command Ships acting as localized hubs, issuing operational orders, and managing automated repair/resupply queues within their 1,200m sensor bubble.   Escort Screening Vectors: Automated calculation of incoming threat vectors by Command Escort Ships to dynamically form interception walls protecting command vessels and flagships.   2. New Unit Integrations & RolesBattalion Command Ship (5W): Regional fleet command hub, mobile repair facility, and capital battery combat asset.   Command Escort Ship (3W): Capital bodyguard and vanguard screen unit providing localized Point-Defense protection.   3. Comprehensive Unit AI Behavior CatalogGranular Behavioral Rules: Cataloged individual, deterministic AI routines for all 21 fleet units, ranging from Recon Probe sweep-and-evade protocols and Viper Interceptor "Cut the Pie" swarming to Lancer Railgun standoff sniping and Aegis Repair corvette buddy-anchoring.4. Finite vs. Infinite Ammunition & Logistics FrameworkInfinite Energy Weapons: Standardized fire cycles with heat cooldowns for light lasers, rotary cannons, and point-defense systems requiring zero resource restocking.Finite Ordnance Platforms: Physical inventory tracking for heavy siege assets (e.g., Lancer railgun slugs, torpedoes, mine caches, warp canisters).Supply Tender Field Resupply: Automated manufacturing loops where Supply Tenders convert raw harvested materials (Metal, Ore, Isotopes, Plasma Gas, Graviton Cores) into finite ammunition and deliver it via wireless fabrication tethers directly in the field.5. Expanded Tactical Combat StatisticsMobility & Vectoring: Explicit separation of strafing speed (lateral/reverse thruster multipliers), turn rate (angular velocity / rotational inertia), and acceleration.Defense & Mitigation: Dedicated shield regeneration rate (passive HP/sec restoration) and armor mitigation (flat damage reduction or percentage resistance post-shield break).Weaponry & Ballistics: Precise tracking for fire rate (cooldown ticks), projectile range (max travel distance), projectile speed (muzzle velocity), and ammo capacity.Electronic Warfare: Sensor signature multipliers determining radar cross-sections and detection thresholds.
+
+Most Environmental Structures Are Not Coded Yet:
+
+While Gas Giants (Structure 03) and Asteroid Belts (Structure 07) have basic collision logic in physics.go (ApplyEnvironmentalCollisions, ApplyMajorWorldGravity), the remaining structures listed in that log file—such as Spatial Singularity Rifts (05) with their repulsion physics and trajectory refraction, Deep Nebula Plasma Fields (04) with radar-blindness and speed drag, Drifting Mineral Planetoids (02) with continuous movement, and Comets (09) with high-speed impact scaling—are currently design notes on paper, not active code in your Go backend loops.
+
+Resource Extraction & Harvesting Loops:
+
+The economic flows for Mining Barges, Plasma Skimmers, and Grav Extractors, along with the 5-tier macro-resource tracking and Supply Tender wreckage-salvage pipelines, are fully detailed in the logs but not yet implemented in the active API or server loops.
+
+
+

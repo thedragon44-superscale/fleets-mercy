@@ -36,7 +36,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
   const isInitialized = useRef(false);
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
-  const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
+  const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
@@ -191,8 +191,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
 
-          if (u.type === 'flagship') {
-            const isControlled = u.id === controlledUnitIdRef.current;
+          if (u.type === 'flagship' || u.type === 'battalion_command_ship') {
             const isAccelerating = isControlled && !!keys.current['w'];
             drawFlagship(ctx, rx, ry, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed, isAccelerating);
           } else {
@@ -388,7 +387,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
                 }}
               >
                 <div style={{ fontWeight: 'bold' }}>{unit.name}</div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.category} | Weight: {unit.weight}</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.role} | Weight: {unit.weight}W</div>
               </button>
             ))}
           </div>

@@ -125,7 +125,7 @@ type MapStructure struct {
 	ID                         int                      `json:"id"`
 	MapID                      int                      `json:"mapId"`
 	EnvironmentalStructureID   int                      `json:"environmentalStructureId"`
-	StructureType              string                   `json:"structureType"` // Kept for transition compatibility
+	StructureType              string                   `json:"structureType"`
 	PosX                       float64                  `json:"posX"`
 	PosY                       float64                  `json:"posY"`
 	Radius                     float64                  `json:"radius"`

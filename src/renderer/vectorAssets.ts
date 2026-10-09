@@ -9,6 +9,8 @@ const spriteCache: { [key: string]: HTMLImageElement } = {};
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   flagship: 'flagship.png',
+  battalion_command_ship: 'flagship.png',
+  command_escort: 'assault.png',
   viper_interceptor: 'viper.png',
   recon_probe: 'recon.png',
   phantom_transport: 'phantom.png',
@@ -41,6 +43,8 @@ Object.entries(ASSET_FILENAME_MAP).forEach(([unitId, filename]) => {
 
 const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
   flagship: { w: 90, h: 90 },
+  battalion_command_ship: { w: 90, h: 90 },
+  command_escort: { w: 52, h: 52 },
   viper_interceptor: { w: 36, h: 36 },
   recon_probe: { w: 32, h: 32 },
   phantom_transport: { w: 38, h: 38 },
@@ -63,7 +67,8 @@ const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
 };
 
 const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
-  flagship: Math.PI, aegis_repair: Math.PI, assault_gunship: Math.PI, 
+  flagship: Math.PI, battalion_command_ship: Math.PI, command_escort: Math.PI, 
+  aegis_repair: Math.PI, assault_gunship: Math.PI, 
   grav_extractor: Math.PI, mining_barge: Math.PI, plasma_skimmer: Math.PI, 
   specter_jammer: Math.PI, supply_tender: Math.PI, torpedo_bomber: Math.PI, 
   vortex_minelayer: Math.PI,

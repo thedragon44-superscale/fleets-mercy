@@ -112,9 +112,9 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 
 		score := 2000.0 - dist 
 
-		if unit.Type == "torpedo_bomber" && (target.Type == "flagship" || target.Type == "target_dummy") {
+		if unit.Type == "torpedo_bomber" && (target.Type == "flagship" || target.Type == "battalion_command_ship" || target.Type == "target_dummy") {
 			score += 5000.0 
-		} else if target.Type == "flagship" || target.Type == "target_dummy" {
+		} else if target.Type == "flagship" || target.Type == "battalion_command_ship" || target.Type == "target_dummy" {
 			score -= 1500.0 
 		}
 
@@ -151,6 +151,12 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 			id = "player-flagship"
 		} else {
 			id = "enemy-flagship"
+		}
+	} else if unitType == "battalion_command_ship" {
+		if owner == "player" {
+			id = "player-battalion-command"
+		} else {
+			id = "enemy-battalion-command"
 		}
 	}
 
@@ -213,8 +219,8 @@ func (r *GameRoom) runAI() {
 	var player *models.FleetUnit
 
 	for _, u := range r.units {
-		if u.Type == "flagship" && u.OwnerID == "enemy" { ai = u }
-		if u.Type == "flagship" && u.OwnerID == "player" { player = u }
+		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "enemy" { ai = u }
+		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "player" { player = u }
 	}
 
 	if ai == nil || player == nil || ai.IsDestroyed || player.IsDestroyed { return }
@@ -232,7 +238,7 @@ func (r *GameRoom) runAI() {
 	}
 
 	if dist < 8000 && rand.Float64() < 0.025 {
-		reserves := []string{"viper_interceptor", "viper_interceptor", "lancer_corvette", "torpedo_bomber", "aegis_wall"}
+		reserves := []string{"viper_interceptor", "viper_interceptor", "lancer_corvette", "torpedo_bomber", "aegis_wall", "command_escort"}
 		choice := reserves[rand.Intn(len(reserves))]
 		spawnX := ai.Pos.X + (rand.Float64() - 0.5) * 300
 		spawnY := ai.Pos.Y + (rand.Float64() - 0.5) * 300
@@ -259,7 +265,16 @@ func (r *GameRoom) Run() {
 		r.runAI()
 
 		if deployDebounce > 0 { deployDebounce-- }
-		flagship := r.units["player-flagship"]
+		
+		var flagship *models.FleetUnit = r.units["player-flagship"]
+		if flagship == nil || flagship.IsDestroyed {
+			for _, u := range r.units {
+				if u.OwnerID == "player" && (u.Type == "flagship" || u.Type == "battalion_command_ship") && !u.IsDestroyed {
+					flagship = u
+					break
+				}
+			}
+		}
 
 		if flagship != nil && !flagship.IsDestroyed && deployDebounce == 0 && len(r.deployQueue) > 0 {
 			toDeploy := r.deployQueue[0]
@@ -279,7 +294,7 @@ func (r *GameRoom) Run() {
 
 		for id, unit := range r.units {
 			if unit.IsDestroyed {
-				if unit.Type == "flagship" && !r.isSandbox {
+				if (unit.Type == "flagship" || unit.Type == "battalion_command_ship") && !r.isSandbox {
 					deadCount++
 				} else {
 					delete(r.units, id)
@@ -318,36 +333,111 @@ func (r *GameRoom) Run() {
 					unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
 				}
 			} else {
-				target := r.findBestTarget(unit)
-
-				if unit.OwnerID == "enemy" && target == nil { target = flagship }
-
-				if target != nil && !target.IsDestroyed {
-					dx := target.Pos.X - unit.Pos.X
-					dy := target.Pos.Y - unit.Pos.Y
-					dist := math.Hypot(dx, dy)
-					unit.Angle = math.Atan2(dy, dx)
-
-					if dist > 250 {
-						unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
-						unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
-						unit.IsFiring = false
-					} else {
-						unit.IsFiring = true
+				if unit.Type == "recon_probe" {
+					// 1. Absolute Dedication: 20 unified HP pool, 0 DPS, zero retreat[cite: 6]
+					// 2. Scan for nearest enemy entity within the 2,500m detection bubble[cite: 6]
+					var nearestTarget *models.FleetUnit
+					minDist := math.MaxFloat64
+					for _, other := range r.units {
+						if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
+							d := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
+							if d <= 2500.0 && d < minDist {
+								minDist = d
+								nearestTarget = other
+							}
+						}
 					}
-				} else if unit.AIState == "GUARD" && flagship != nil && !flagship.IsDestroyed {
-					dx := flagship.Pos.X - unit.Pos.X
-					dy := flagship.Pos.Y - unit.Pos.Y
-					if math.Hypot(dx, dy) > 200 {
-						unit.Angle = math.Atan2(dy, dx)
-						unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
-						unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
+
+					if nearestTarget != nil {
+						dx := nearestTarget.Pos.X - unit.Pos.X
+						dy := nearestTarget.Pos.Y - unit.Pos.Y
+						currentDist := math.Hypot(dx, dy)
+
+						// 3. Evasion Protocol: If enemy closes within 1,000m, flee directly away at max speed (3.5)[cite: 6]
+						if currentDist < 1000.0 {
+							fleeAngle := math.Atan2(-dy, -dx)
+							unit.Angle = fleeAngle
+							unit.Vel.X = math.Cos(fleeAngle) * 3.5
+							unit.Vel.Y = math.Sin(fleeAngle) * 3.5
+						} else {
+							// 4. High-Speed Orbit: Maintain a stable distance of ~1,800m around the target[cite: 6]
+							targetOrbitDist := 1800.0
+							angleToTarget := math.Atan2(dy, dx)
+							
+							orbitAngle := angleToTarget + (math.Pi / 2)
+							if currentDist > targetOrbitDist + 100 {
+								orbitAngle = angleToTarget
+							}
+
+							unit.Angle = angleToTarget
+							unit.Vel.X = math.Cos(orbitAngle) * 3.5
+							unit.Vel.Y = math.Sin(orbitAngle) * 3.5
+						}
 					} else {
-						unit.Angle = flagship.Angle
+						// 5. Blind Sweep: Continue forward sweep pattern through radar fog when no entities are in range[cite: 6]
+						unit.Vel.X = math.Cos(unit.Angle) * 3.5
+						unit.Vel.Y = math.Sin(unit.Angle) * 3.5
 					}
 					unit.IsFiring = false
 				} else {
-					unit.IsFiring = false
+					target := r.findBestTarget(unit)
+
+					if unit.OwnerID == "enemy" && target == nil { target = flagship }
+
+					if target != nil && !target.IsDestroyed {
+						dx := target.Pos.X - unit.Pos.X
+						dy := target.Pos.Y - unit.Pos.Y
+						dist := math.Hypot(dx, dy)
+						unit.Angle = math.Atan2(dy, dx)
+
+						if dist > 250 {
+							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
+							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
+							unit.IsFiring = false
+						} else {
+							unit.IsFiring = true
+						}
+					} else if (unit.AIState == "BODYGUARD" || unit.Type == "command_escort") && flagship != nil && !flagship.IsDestroyed {
+						dx := flagship.Pos.X - unit.Pos.X
+						dy := flagship.Pos.Y - unit.Pos.Y
+						distToCapital := math.Hypot(dx, dy)
+						
+						guardTarget := r.findBestTarget(unit)
+						if guardTarget != nil {
+							tdx := guardTarget.Pos.X - unit.Pos.X
+							tdy := guardTarget.Pos.Y - unit.Pos.Y
+							tdist := math.Hypot(tdx, tdy)
+							unit.Angle = math.Atan2(tdy, tdx)
+							if tdist > 300 {
+								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
+								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
+								unit.IsFiring = false
+							} else {
+								unit.IsFiring = true
+							}
+						} else if distToCapital > 130 {
+							unit.Angle = math.Atan2(dy, dx)
+							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 1.1
+							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.1
+							unit.IsFiring = false
+						} else {
+							unit.Angle = flagship.Angle
+							unit.IsFiring = false
+						}
+					} else if unit.AIState == "GUARD" && flagship != nil && !flagship.IsDestroyed {
+						dx := flagship.Pos.X - unit.Pos.X
+						dy := flagship.Pos.Y - unit.Pos.Y
+						if math.Hypot(dx, dy) > 200 {
+							unit.Angle = math.Atan2(dy, dx)
+							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
+							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
+						} else {
+							unit.Angle = flagship.Angle
+						}
+						unit.IsFiring = false
+					} else {
+						unit.IsFiring = false
+					}
 				}
 			}
 
@@ -391,7 +481,7 @@ func (r *GameRoom) Run() {
 			if unit.IsFiring && unit.Cooldown <= 0 {
 				r.idCounter++
 				projSpeed, projDmg, projColor := 18.0, 50.0, "laser"
-				if unit.Type == "lancer_corvette" || unit.Type == "flagship" {
+				if unit.Type == "lancer_corvette" || unit.Type == "flagship" || unit.Type == "battalion_command_ship" {
 					projSpeed = 25.0
 					projDmg = 120.0
 					projColor = "railgun"
