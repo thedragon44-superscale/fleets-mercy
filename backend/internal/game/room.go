@@ -255,7 +255,6 @@ func (r *GameRoom) Run() {
 				continue
 			}
 
-			// If this unit is currently possessed/controlled by the player
 			if unit.ID == controlledID && unit.OwnerID == "player" {
 				unit.Angle = r.lastInput.Angle
 				unit.IsFiring = r.lastInput.IsFiring
@@ -412,4 +411,3 @@ func (r *GameRoom) Run() {
 		r.mu.Unlock()
 	}
 }
-```[cite: 8]
