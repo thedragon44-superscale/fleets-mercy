@@ -163,7 +163,6 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if input.SandboxSpawn != "" {
 				r.deployQueue = append(r.deployQueue, "SANDBOX:"+input.SandboxSpawn)
 				if input.SpawnX != nil && input.SpawnY != nil {
-					// Add a slight random spread offset so units don't spawn stacked on top of each other
 					offsetX := *input.SpawnX + (rand.Float64()-0.5)*120
 					offsetY := *input.SpawnY + (rand.Float64()-0.5)*120
 					r.spawnUnit(input.SandboxSpawn, "player", offsetX, offsetY, "GUARD")
@@ -261,12 +260,22 @@ func (r *GameRoom) Run() {
 				unit.Angle = r.lastInput.Angle
 				unit.IsFiring = r.lastInput.IsFiring
 				accel := unit.Speed * 1.5
-				if r.lastInput.W { unit.Vel.X += math.Cos(unit.Angle) * accel; unit.Vel.Y += math.Sin(unit.Angle) * accel }
+				maxSpeed := unit.Speed * 2.0
+
+				if r.lastInput.W { 
+					unit.Vel.X += math.Cos(unit.Angle) * accel 
+					unit.Vel.Y += math.Sin(unit.Angle) * accel 
+					
+					currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+					if currentSpeed > maxSpeed {
+						unit.Vel.X = (unit.Vel.X / currentSpeed) * maxSpeed
+						unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
+					}
+				}
 				if r.lastInput.S { unit.Vel.X -= math.Cos(unit.Angle) * (accel * 0.5); unit.Vel.Y -= math.Sin(unit.Angle) * (accel * 0.5) }
 				if r.lastInput.A { strafeAngle := unit.Angle - (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
 				if r.lastInput.D { strafeAngle := unit.Angle + (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
 			} else {
-				// Standard AI handling for unpossessed or enemy units
 				target := r.findBestTarget(unit)
 
 				if unit.OwnerID == "enemy" && target == nil { target = flagship }
@@ -324,7 +333,6 @@ func (r *GameRoom) Run() {
 					other.Pos.X += nx * overlap * 0.5
 					other.Pos.Y += ny * overlap * 0.5
 
-					// Skip collision damage between friendly units in sandbox mode to prevent instant self-destruction
 					if !(r.isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
 						impactVel := math.Hypot(unit.Vel.X, unit.Vel.Y)
 						if impactVel > 2.0 {
@@ -404,3 +412,4 @@ func (r *GameRoom) Run() {
 		r.mu.Unlock()
 	}
 }
+```[cite: 8]

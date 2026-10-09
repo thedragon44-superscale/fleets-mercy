@@ -18,6 +18,7 @@ interface ServerState {
 
 export const PracticeViewport: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const serverState = useRef<ServerState | null>(null);
   const cameraPos = useRef({ x: 6000, y: 10000 });
@@ -25,14 +26,25 @@ export const PracticeViewport: React.FC = () => {
   const mousePos = useRef({ x: 0, y: 0 });
   const isFiring = useRef(false);
 
+  // Smooth interpolated render positions to eliminate jitter/rubberbanding while keeping drift
+  const renderPos = useRef({ x: 6000, y: 10000 });
+  const isInitialized = useRef(false);
+
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
+  const controlledUnitIdRef = useRef<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
   const [, forceRender] = useState({});
 
+  useEffect(() => {
+    controlledUnitIdRef.current = controlledUnitId;
+    isInitialized.current = false;
+  }, [controlledUnitId]);
+
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
-      const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId) || 
+      const currentId = controlledUnitIdRef.current;
+      const controlledUnit = serverState.current.units?.find(u => u.id === currentId) || 
                              serverState.current.units?.find(u => u.id === 'player-flagship');
       let angle = 0;
       if (controlledUnit) {
@@ -43,7 +55,7 @@ export const PracticeViewport: React.FC = () => {
       wsRef.current.send(JSON.stringify({
         w: !!keys.current['w'], s: !!keys.current['s'], a: !!keys.current['a'], d: !!keys.current['d'],
         angle, isFiring: isFiring.current && !!controlledUnit, 
-        controlledUnitId,
+        controlledUnitId: currentId,
         reset: actionParams.reset || false,
         sandboxSpawn: actionParams.sandboxSpawn || null,
         spawnX: actionParams.spawnX || null,
@@ -66,6 +78,12 @@ export const PracticeViewport: React.FC = () => {
     wsRef.current.onmessage = (e) => { 
       const state = JSON.parse(e.data);
       serverState.current = state;
+
+      const controlledUnit = state.units?.find((u: FleetUnit) => u.id === controlledUnitIdRef.current);
+      if (controlledUnit && !isInitialized.current) {
+        renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
+        isInitialized.current = true;
+      }
       forceRender({});
     };
 
@@ -90,16 +108,47 @@ export const PracticeViewport: React.FC = () => {
     const render = () => {
       const ctx = canvasRef.current?.getContext('2d');
       const canvas = canvasRef.current;
+      const radarCtx = radarCanvasRef.current?.getContext('2d');
+      const radarCanvas = radarCanvasRef.current;
       
       if (!ctx || !canvas) { animId = requestAnimationFrame(render); return; }
 
       ctx.fillStyle = '#050811'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (serverState.current) {
-        const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId);
+        const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitIdRef.current);
         if (controlledUnit) {
-          cameraPos.current.x += (controlledUnit.pos.x + (mousePos.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
-          cameraPos.current.y += (controlledUnit.pos.y + (mousePos.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
+          if (!isInitialized.current) {
+            renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
+            isInitialized.current = true;
+          }
+
+          // Smoothly interpolate (lerp) render position toward authoritative server position
+          const lerpRate = 0.35;
+          renderPos.current.x += (controlledUnit.pos.x - renderPos.current.x) * lerpRate;
+          renderPos.current.y += (controlledUnit.pos.y - renderPos.current.y) * lerpRate;
+
+          const worldMouseX = mousePos.current.x - canvas.width / 2 + cameraPos.current.x;
+          const worldMouseY = mousePos.current.y - canvas.height / 2 + cameraPos.current.y;
+          const dx = worldMouseX - renderPos.current.x;
+          const dy = worldMouseY - renderPos.current.y;
+          const dist = Math.hypot(dx, dy);
+
+          let targetCamX = renderPos.current.x;
+          let targetCamY = renderPos.current.y;
+
+          if (keys.current['w'] && dist > 1) {
+            const lookAheadRatio = 0.5;
+            targetCamX += (dx / dist) * Math.min(dist * lookAheadRatio, canvas.width * 0.35);
+            targetCamY += (dy / dist) * Math.min(dist * lookAheadRatio, canvas.height * 0.35);
+          } else {
+            targetCamX += (mousePos.current.x - canvas.width / 2) * 0.2;
+            targetCamY += (mousePos.current.y - canvas.height / 2) * 0.2;
+          }
+
+          const camLerpFactor = keys.current['w'] ? 0.45 : 0.15;
+          cameraPos.current.x += (targetCamX - cameraPos.current.x) * camLerpFactor;
+          cameraPos.current.y += (targetCamY - cameraPos.current.y) * camLerpFactor;
         }
 
         ctx.save();
@@ -114,14 +163,59 @@ export const PracticeViewport: React.FC = () => {
         ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
 
         (serverState.current.units || []).forEach((u: any) => {
-          if (u.type === 'flagship') drawFlagship(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
-          else drawTargetDummy(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
+          const isControlled = u.id === controlledUnitIdRef.current;
+          const rx = isControlled ? renderPos.current.x : u.pos.x;
+          const ry = isControlled ? renderPos.current.y : u.pos.y;
+
+          if (u.type === 'flagship') {
+            drawFlagship(ctx, rx, ry, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
+          } else {
+            drawTargetDummy(ctx, rx, ry, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
+          }
         });
 
         (serverState.current.projectiles || []).forEach(p => drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type));
         ctx.restore();
         
-        if (controlledUnit) drawHUDDiagnostics(ctx, controlledUnit.shields, controlledUnit.hull);
+        if (serverState.current.units?.find(u => u.id === controlledUnitIdRef.current)) {
+          const cu = serverState.current.units.find(u => u.id === controlledUnitIdRef.current)!;
+          drawHUDDiagnostics(ctx, cu.shields, cu.hull);
+        }
+
+        // --- Render Mini-Map Radar ---
+        if (radarCtx && radarCanvas) {
+          const mapW = serverState.current.mapBounds.width;
+          const mapH = serverState.current.mapBounds.height;
+          const rw = radarCanvas.width;
+          const rh = radarCanvas.height;
+
+          radarCtx.fillStyle = 'rgba(5, 8, 17, 0.85)';
+          radarCtx.fillRect(0, 0, rw, rh);
+
+          radarCtx.strokeStyle = '#a855f7';
+          radarCtx.lineWidth = 1.5;
+          radarCtx.strokeRect(0, 0, rw, rh);
+
+          const scaleX = rw / mapW;
+          const scaleY = rh / mapH;
+
+          (serverState.current.units || []).forEach((u: any) => {
+            const isControlled = u.id === controlledUnitIdRef.current;
+            const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
+            const ry = (isControlled ? renderPos.current.y : u.pos.y) * scaleY;
+
+            radarCtx.fillStyle = isControlled ? '#38bdf8' : (u.ownerId === 'player' ? '#22c55e' : '#ef4444');
+            radarCtx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
+          });
+
+          const camRx = (cameraPos.current.x - canvas.width / 2) * scaleX;
+          const camRy = (cameraPos.current.y - canvas.height / 2) * scaleY;
+          const camRw = canvas.width * scaleX;
+          const camRh = canvas.height * scaleY;
+          radarCtx.strokeStyle = 'rgba(0, 243, 255, 0.6)';
+          radarCtx.lineWidth = 1;
+          radarCtx.strokeRect(camRx, camRy, camRw, camRh);
+        }
       }
 
       animId = requestAnimationFrame(render);
@@ -134,9 +228,8 @@ export const PracticeViewport: React.FC = () => {
       window.removeEventListener('keydown', onKeyDown); 
       window.removeEventListener('keyup', onKeyUp); 
     };
-  }, [controlledUnitId]);
+  }, []);
 
-  // Stable, alphabetically/chronologically sorted player units list to prevent flickering
   const playerUnits = serverState.current?.units
     ?.filter(u => u.ownerId === 'player' && !u.isDestroyed)
     ?.sort((a, b) => {
@@ -155,6 +248,13 @@ export const PracticeViewport: React.FC = () => {
     >
       <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
 
+      <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)' }}>
+        <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', pointerEvents: 'none', zIndex: 2 }}>
+          TACTICAL RADAR
+        </div>
+        <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
+      </div>
+
       {!isSidebarVisible && (
         <div style={{ position: 'absolute', top: 60, left: 15, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid #581c87', padding: '6px 10px', borderRadius: '4px', color: '#c084fc', fontSize: '0.7rem', fontFamily: 'monospace', zIndex: 50, pointerEvents: 'none' }}>
           [Right-Click to Open Unit Catalog]
@@ -167,9 +267,13 @@ export const PracticeViewport: React.FC = () => {
             <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: 0, fontWeight: 'bold' }}>
               🧪 UNIT TESTING SANDBOX
             </h3>
-            <span style={{ fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer' }} onClick={() => setIsSidebarVisible(false)}>
+            <button 
+              type="button" 
+              style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: 0 }} 
+              onClick={() => setIsSidebarVisible(false)}
+            >
               [CLOSE]
-            </span>
+            </button>
           </div>
           <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '12px' }}>
             Right-click anywhere to hide panel. Click any spawned unit to manually pilot it.
@@ -184,6 +288,7 @@ export const PracticeViewport: React.FC = () => {
                 const isControlled = controlledUnitId === unit.id;
                 return (
                   <button
+                    type="button"
                     key={unit.id}
                     onClick={() => setControlledUnitId(unit.id)}
                     style={{
@@ -211,6 +316,7 @@ export const PracticeViewport: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
             {UNIT_DB.map(unit => (
               <button
+                type="button"
                 key={unit.id}
                 onClick={() => setSelectedSandboxUnit(unit.id)}
                 style={{
@@ -231,6 +337,7 @@ export const PracticeViewport: React.FC = () => {
           </div>
 
           <button
+            type="button"
             onClick={() => handleSpawnUnit(selectedSandboxUnit)}
             style={{
               marginTop: '14px', width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
@@ -241,6 +348,7 @@ export const PracticeViewport: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => sendAction({ reset: true })}
             style={{
               marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
