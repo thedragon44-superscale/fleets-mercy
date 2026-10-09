@@ -264,16 +264,27 @@ func (r *GameRoom) Run() {
 				if r.lastInput.W { 
 					unit.Vel.X += math.Cos(unit.Angle) * accel 
 					unit.Vel.Y += math.Sin(unit.Angle) * accel 
-					
-					currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-					if currentSpeed > maxSpeed {
-						unit.Vel.X = (unit.Vel.X / currentSpeed) * maxSpeed
-						unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
-					}
 				}
-				if r.lastInput.S { unit.Vel.X -= math.Cos(unit.Angle) * (accel * 0.5); unit.Vel.Y -= math.Sin(unit.Angle) * (accel * 0.5) }
-				if r.lastInput.A { strafeAngle := unit.Angle - (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
-				if r.lastInput.D { strafeAngle := unit.Angle + (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
+				if r.lastInput.S { 
+					unit.Vel.X -= math.Cos(unit.Angle) * (accel * 0.5) 
+					unit.Vel.Y -= math.Sin(unit.Angle) * (accel * 0.5) 
+				}
+				if r.lastInput.A { 
+					strafeAngle := unit.Angle - (math.Pi / 2) 
+					unit.Vel.X += math.Cos(strafeAngle) * (accel * 0.75) 
+					unit.Vel.Y += math.Sin(strafeAngle) * (accel * 0.75) 
+				}
+				if r.lastInput.D { 
+					strafeAngle := unit.Angle + (math.Pi / 2) 
+					unit.Vel.X += math.Cos(strafeAngle) * (accel * 0.75) 
+					unit.Vel.Y += math.Sin(strafeAngle) * (accel * 0.75) 
+				}
+
+				currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+				if currentSpeed > maxSpeed {
+					unit.Vel.X = (unit.Vel.X / currentSpeed) * maxSpeed
+					unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
+				}
 			} else {
 				target := r.findBestTarget(unit)
 
