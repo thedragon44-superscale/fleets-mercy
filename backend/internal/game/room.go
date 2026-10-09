@@ -20,10 +20,10 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 type SandboxClientInput struct {
 	models.ClientInput
-	SandboxSpawn    string   `json:"sandboxSpawn"`
-	SpawnX          *float64 `json:"spawnX"`
-	SpawnY          *float64 `json:"spawnY"`
-	ControlledUnitID string  `json:"controlledUnitId"`
+	SandboxSpawn     string   `json:"sandboxSpawn"`
+	SpawnX           *float64 `json:"spawnX"`
+	SpawnY           *float64 `json:"spawnY"`
+	ControlledUnitID string   `json:"controlledUnitId"`
 }
 
 type GameRoom struct {
@@ -163,7 +163,10 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if input.SandboxSpawn != "" {
 				r.deployQueue = append(r.deployQueue, "SANDBOX:"+input.SandboxSpawn)
 				if input.SpawnX != nil && input.SpawnY != nil {
-					r.spawnUnit(input.SandboxSpawn, "player", *input.SpawnX, *input.SpawnY, "GUARD")
+					// Add a slight random spread offset so units don't spawn stacked on top of each other
+					offsetX := *input.SpawnX + (rand.Float64()-0.5)*120
+					offsetY := *input.SpawnY + (rand.Float64()-0.5)*120
+					r.spawnUnit(input.SandboxSpawn, "player", offsetX, offsetY, "GUARD")
 				}
 			}
 			r.lastInput = input
@@ -321,9 +324,12 @@ func (r *GameRoom) Run() {
 					other.Pos.X += nx * overlap * 0.5
 					other.Pos.Y += ny * overlap * 0.5
 
-					impactVel := math.Hypot(unit.Vel.X, unit.Vel.Y)
-					if impactVel > 2.0 {
-						applyDamage(other, impactVel*0.05, math.Atan2(dy, dx))
+					// Skip collision damage between friendly units in sandbox mode to prevent instant self-destruction
+					if !(r.isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
+						impactVel := math.Hypot(unit.Vel.X, unit.Vel.Y)
+						if impactVel > 2.0 {
+							applyDamage(other, impactVel*0.05, math.Atan2(dy, dx))
+						}
 					}
 				}
 			}
