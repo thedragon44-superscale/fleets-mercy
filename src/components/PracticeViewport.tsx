@@ -28,7 +28,7 @@ export const PracticeViewport: React.FC = () => {
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
-  const [activeUnits, setActiveUnits] = useState<FleetUnit[]>([]);
+  const [, forceRender] = useState({}); // Used only to stable-render UI controls when needed
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
@@ -66,9 +66,8 @@ export const PracticeViewport: React.FC = () => {
     wsRef.current.onmessage = (e) => { 
       const state = JSON.parse(e.data);
       serverState.current = state;
-      // Real-time update for React sidebar
-      const playerList = (state.units || []).filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed);
-      setActiveUnits(playerList);
+      // Force a gentle render tick every few frames to keep UI lists populated without thrashing
+      forceRender({});
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -138,6 +137,9 @@ export const PracticeViewport: React.FC = () => {
     };
   }, [controlledUnitId]);
 
+  // Stable derivation from serverState reference without trigger loops
+  const playerUnits = serverState.current?.units?.filter(u => u.ownerId === 'player' && !u.isDestroyed) || [];
+
   return (
     <div 
       style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}
@@ -173,7 +175,7 @@ export const PracticeViewport: React.FC = () => {
               ACTIVE SPAWNED UNITS (PILOT)
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
-              {activeUnits.map(unit => {
+              {playerUnits.map(unit => {
                 const isControlled = controlledUnitId === unit.id;
                 return (
                   <button
@@ -191,7 +193,7 @@ export const PracticeViewport: React.FC = () => {
                     }}
                   >
                     <div style={{ fontWeight: 'bold' }}>{unit.id} {isControlled ? '🕹️ (ACTIVE)' : ''}</div>
-                    <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Type: {unit.type} | Shields: {Math.round(unit.shields?.current ?? 0)}</div>
+                    <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Type: {unit.type}</div>
                   </button>
                 );
               })}
