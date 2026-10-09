@@ -20,9 +20,10 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 type SandboxClientInput struct {
 	models.ClientInput
-	SandboxSpawn string   `json:"sandboxSpawn"`
-	SpawnX       *float64 `json:"spawnX"`
-	SpawnY       *float64 `json:"spawnY"`
+	SandboxSpawn    string   `json:"sandboxSpawn"`
+	SpawnX          *float64 `json:"spawnX"`
+	SpawnY          *float64 `json:"spawnY"`
+	ControlledUnitID string  `json:"controlledUnitId"`
 }
 
 type GameRoom struct {
@@ -237,6 +238,10 @@ func (r *GameRoom) Run() {
 		}
 
 		deadCount := 0
+		controlledID := r.lastInput.ControlledUnitID
+		if controlledID == "" {
+			controlledID = "player-flagship"
+		}
 
 		for id, unit := range r.units {
 			if unit.IsDestroyed {
@@ -248,7 +253,8 @@ func (r *GameRoom) Run() {
 				continue
 			}
 
-			if unit.Type == "flagship" && unit.OwnerID == "player" {
+			// If this unit is currently possessed/controlled by the player
+			if unit.ID == controlledID && unit.OwnerID == "player" {
 				unit.Angle = r.lastInput.Angle
 				unit.IsFiring = r.lastInput.IsFiring
 				accel := unit.Speed * 1.5
@@ -257,6 +263,7 @@ func (r *GameRoom) Run() {
 				if r.lastInput.A { strafeAngle := unit.Angle - (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
 				if r.lastInput.D { strafeAngle := unit.Angle + (math.Pi / 2); unit.Vel.X += math.Cos(strafeAngle) * accel * 0.7; unit.Vel.Y += math.Sin(strafeAngle) * accel * 0.7 }
 			} else {
+				// Standard AI handling for unpossessed or enemy units
 				target := r.findBestTarget(unit)
 
 				if unit.OwnerID == "enemy" && target == nil { target = flagship }

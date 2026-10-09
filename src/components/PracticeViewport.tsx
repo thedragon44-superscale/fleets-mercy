@@ -26,19 +26,22 @@ export const PracticeViewport: React.FC = () => {
   const isFiring = useRef(false);
 
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
+  const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
+  const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
-      const flagship = serverState.current.units?.find(u => u.id === 'player-flagship');
+      const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId);
       let angle = 0;
-      if (flagship) {
+      if (controlledUnit) {
         const worldMouseX = mousePos.current.x - canvasRef.current.width / 2 + cameraPos.current.x;
         const worldMouseY = mousePos.current.y - canvasRef.current.height / 2 + cameraPos.current.y;
-        angle = Math.atan2(worldMouseY - flagship.pos.y, worldMouseX - flagship.pos.x);
+        angle = Math.atan2(worldMouseY - controlledUnit.pos.y, worldMouseX - controlledUnit.pos.x);
       }
       wsRef.current.send(JSON.stringify({
         w: !!keys.current['w'], s: !!keys.current['s'], a: !!keys.current['a'], d: !!keys.current['d'],
-        angle, isFiring: isFiring.current && !!flagship, 
+        angle, isFiring: isFiring.current && !!controlledUnit, 
+        controlledUnitId,
         reset: actionParams.reset || false,
         sandboxSpawn: actionParams.sandboxSpawn || null,
         spawnX: actionParams.spawnX || null,
@@ -56,7 +59,6 @@ export const PracticeViewport: React.FC = () => {
   };
 
   useEffect(() => {
-    // Pass mode flag or parameter to backend to suppress enemy spawning
     wsRef.current = new WebSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
     
     wsRef.current.onmessage = (e) => { 
@@ -91,10 +93,10 @@ export const PracticeViewport: React.FC = () => {
       ctx.fillStyle = '#050811'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (serverState.current) {
-        const flagship = serverState.current.units?.find(u => u.id === 'player-flagship');
-        if (flagship) {
-          cameraPos.current.x += (flagship.pos.x + (mousePos.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
-          cameraPos.current.y += (flagship.pos.y + (mousePos.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
+        const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId);
+        if (controlledUnit) {
+          cameraPos.current.x += (controlledUnit.pos.x + (mousePos.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
+          cameraPos.current.y += (controlledUnit.pos.y + (mousePos.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
         }
 
         ctx.save();
@@ -109,7 +111,6 @@ export const PracticeViewport: React.FC = () => {
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
 
-        // Render player-side units only (no automated hostile spawns)
         (serverState.current.units || []).forEach((u: any) => {
           if (u.type === 'flagship') drawFlagship(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
           else drawTargetDummy(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
@@ -118,7 +119,7 @@ export const PracticeViewport: React.FC = () => {
         (serverState.current.projectiles || []).forEach(p => drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type));
         ctx.restore();
         
-        if (flagship) drawHUDDiagnostics(ctx, flagship.shields, flagship.hull);
+        if (controlledUnit) drawHUDDiagnostics(ctx, controlledUnit.shields, controlledUnit.hull);
       }
 
       animId = requestAnimationFrame(render);
@@ -131,63 +132,118 @@ export const PracticeViewport: React.FC = () => {
       window.removeEventListener('keydown', onKeyDown); 
       window.removeEventListener('keyup', onKeyUp); 
     };
-  }, []);
+  }, [controlledUnitId]);
+
+  const playerUnits = serverState.current?.units?.filter(u => u.ownerId === 'player' && !u.isDestroyed) || [];
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}>
+    <div 
+      style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setIsSidebarVisible(prev => !prev);
+      }}
+    >
       <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
 
-      {/* Sandbox Unit Testing Control Sidebar */}
-      <div style={{ position: 'absolute', top: 60, left: 15, width: '280px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.92)', border: '1px solid #a855f7', borderRadius: '4px', padding: '12px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
-        <h3 style={{ fontSize: '0.9rem', color: '#c084fc', marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #581c87', paddingBottom: '6px' }}>
-          🧪 UNIT TESTING SANDBOX
-        </h3>
-        <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '12px' }}>
-          Zero enemy threats. Select any unit to spawn at camera center.
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {UNIT_DB.map(unit => (
-            <button
-              key={unit.id}
-              onClick={() => setSelectedSandboxUnit(unit.id)}
-              style={{
-                textAlign: 'left',
-                padding: '8px 10px',
-                background: selectedSandboxUnit === unit.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(30, 41, 59, 0.6)',
-                border: `1px solid ${selectedSandboxUnit === unit.id ? '#c084fc' : '#334155'}`,
-                color: selectedSandboxUnit === unit.id ? '#f3e8ff' : '#cbd5e1',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                borderRadius: '3px'
-              }}
-            >
-              <div style={{ fontWeight: 'bold' }}>{unit.name}</div>
-              <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.category} | Weight: {unit.weight}</div>
-            </button>
-          ))}
+      {!isSidebarVisible && (
+        <div style={{ position: 'absolute', top: 60, left: 15, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid #581c87', padding: '6px 10px', borderRadius: '4px', color: '#c084fc', fontSize: '0.7rem', fontFamily: 'monospace', zIndex: 50, pointerEvents: 'none' }}>
+          [Right-Click to Open Unit Catalog]
         </div>
+      )}
 
-        <button
-          onClick={() => handleSpawnUnit(selectedSandboxUnit)}
-          style={{
-            marginTop: '14px', width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
-            border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '3px'
-          }}
-        >
-          SPAWN SELECTED UNIT
-        </button>
+      {isSidebarVisible && (
+        <div style={{ position: 'absolute', top: 60, left: 15, width: '280px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.92)', border: '1px solid #a855f7', borderRadius: '4px', padding: '12px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #581c87', paddingBottom: '6px', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: 0, fontWeight: 'bold' }}>
+              🧪 UNIT TESTING SANDBOX
+            </h3>
+            <span style={{ fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer' }} onClick={() => setIsSidebarVisible(false)}>
+              [CLOSE]
+            </span>
+          </div>
+          <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '12px' }}>
+            Right-click anywhere to hide panel. Click any spawned unit to manually pilot it.
+          </p>
 
-        <button
-          onClick={() => sendAction({ reset: true })}
-          style={{
-            marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
-            border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'
-          }}
-        >
-          CLEAR / RESET SANDBOX
-        </button>
-      </div>
+          {/* Active Spawned Units Section for Manual Control */}
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
+              ACTIVE SPAWNED UNITS (PILOT)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
+              {playerUnits.map(unit => {
+                const isControlled = controlledUnitId === unit.id;
+                return (
+                  <button
+                    key={unit.id}
+                    onClick={() => setControlledUnitId(unit.id)}
+                    style={{
+                      textAlign: 'left',
+                      padding: '6px 8px',
+                      background: isControlled ? 'rgba(56, 189, 248, 0.25)' : 'rgba(30, 41, 59, 0.6)',
+                      border: `1px solid ${isControlled ? '#38bdf8' : '#334155'}`,
+                      color: isControlled ? '#e0f2fe' : '#cbd5e1',
+                      fontSize: '0.7rem',
+                      cursor: 'pointer',
+                      borderRadius: '3px'
+                    }}
+                  >
+                    <div style={{ fontWeight: 'bold' }}>{unit.id} {isControlled ? '🕹️ (ACTIVE)' : ''}</div>
+                    <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Type: {unit.type} | Shields: {Math.round(unit.shields?.current ?? 0)}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Unit Catalog Spawner Section */}
+          <div style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '6px' }}>
+            SPAWN FROM CATALOG
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+            {UNIT_DB.map(unit => (
+              <button
+                key={unit.id}
+                onClick={() => setSelectedSandboxUnit(unit.id)}
+                style={{
+                  textAlign: 'left',
+                  padding: '8px 10px',
+                  background: selectedSandboxUnit === unit.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(30, 41, 59, 0.6)',
+                  border: `1px solid ${selectedSandboxUnit === unit.id ? '#c084fc' : '#334155'}`,
+                  color: selectedSandboxUnit === unit.id ? '#f3e8ff' : '#cbd5e1',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  borderRadius: '3px'
+                }}
+              >
+                <div style={{ fontWeight: 'bold' }}>{unit.name}</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.category} | Weight: {unit.weight}</div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => handleSpawnUnit(selectedSandboxUnit)}
+            style={{
+              marginTop: '14px', width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
+              border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '3px'
+            }}
+          >
+            SPAWN SELECTED UNIT
+          </button>
+
+          <button
+            onClick={() => sendAction({ reset: true })}
+            style={{
+              marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
+              border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'
+            }}
+          >
+            CLEAR / RESET SANDBOX
+          </button>
+        </div>
+      )}
     </div>
   );
 };

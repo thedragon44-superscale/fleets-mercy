@@ -16,6 +16,7 @@ The Space Tactics frontend is a React and HTML5 Canvas-based tactical command te
 * **`src/components/LoginScreen.tsx`**: Handles pilot authentication against backend API endpoints and initializes command sessions.
 * **`src/components/GarageDashboard.tsx`**: Manages fleet blueprints, requisition allocation, hotkey squad assignments, and unit telemetry.
 * **`src/components/GameViewport.tsx`**: Implements the HTML5 Canvas render loop, camera tracking anchored to the flagship, input handling, radial deployment menus, and win/loss state tracking.
+* **`src/components/PracticeViewport.tsx`**: Implements the isolated, enemy-free unit testing sandbox canvas viewport with sidebar catalog controls for direct unit spawning.
 
 ### Renderer & Networking (`src/renderer/`, `src/hooks/`)
 * **`src/renderer/vectorAssets.ts`**: Handles image sprite caching, rotational offset calculations, quadrant shield arcs, HUD diagnostics, and projectile rendering.
