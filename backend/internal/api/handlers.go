@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -216,12 +217,14 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req SaveMapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("❌ SaveCustomMapHandler JSON Decode Error: %v", err)
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
 
 	tx, err := db.Conn.Begin()
 	if err != nil {
+		log.Printf("❌ SaveCustomMapHandler DB Begin Error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -236,12 +239,14 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 			req.Name, req.Description, req.Width, req.Height, mapID,
 		)
 		if err != nil {
+			log.Printf("❌ SaveCustomMapHandler Map Update Error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		_, err = tx.Exec("DELETE FROM map_structures WHERE map_id = $1", mapID)
 		if err != nil {
+			log.Printf("❌ SaveCustomMapHandler Clear Structures Error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -252,6 +257,7 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 			mapKey, req.Name, req.Description, req.Width, req.Height,
 		).Scan(&mapID)
 		if err != nil {
+			log.Printf("❌ SaveCustomMapHandler Map Insert Error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -262,6 +268,7 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 		var structureID int
 		err = tx.QueryRow("SELECT id FROM environmental_structures WHERE structure_key = $1", s.Type).Scan(&structureID)
 		if err != nil {
+			log.Printf("❌ SaveCustomMapHandler Structure Lookup Error for type '%s': %v", s.Type, err)
 			http.Error(w, "Invalid structure type: "+s.Type, http.StatusBadRequest)
 			return
 		}
@@ -271,12 +278,14 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 			mapID, structureID, s.X, s.Y, s.Radius,
 		)
 		if err != nil {
+			log.Printf("❌ SaveCustomMapHandler Structure Insert Error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
+		log.Printf("❌ SaveCustomMapHandler Commit Error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
