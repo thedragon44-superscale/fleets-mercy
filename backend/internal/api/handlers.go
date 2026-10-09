@@ -120,3 +120,66 @@ func SaveLoadoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+func GetMapsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w)
+	if r.Method == "OPTIONS" { return }
+
+	rows, err := db.Conn.Query("SELECT id, map_key, name, description, width, height FROM maps ORDER BY id ASC")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var maps []models.MapDefinition
+	for rows.Next() {
+		var m models.MapDefinition
+		if err := rows.Scan(&m.ID, &m.MapKey, &m.Name, &m.Description, &m.Width, &m.Height); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		maps = append(maps, m)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(maps)
+}
+
+func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w)
+	if r.Method == "OPTIONS" { return }
+
+	mapIdStr := r.URL.Query().Get("id")
+	mapId, err := strconv.Atoi(mapIdStr)
+	if err != nil {
+		http.Error(w, "Missing or invalid map id parameter", http.StatusBadRequest)
+		return
+	}
+
+	var m models.MapDefinition
+	err = db.Conn.QueryRow("SELECT id, map_key, name, description, width, height FROM maps WHERE id = $1", mapId).
+		Scan(&m.ID, &m.MapKey, &m.Name, &m.Description, &m.Width, &m.Height)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Map not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	structRows, err := db.Conn.Query("SELECT id, map_id, structure_type, pos_x, pos_y, radius, custom_props FROM map_structures WHERE map_id = $1", mapId)
+	if err == nil {
+		defer structRows.Close()
+		for structRows.Next() {
+			var s models.MapStructure
+			var props []byte
+			if err := structRows.Scan(&s.ID, &s.MapID, &s.StructureType, &s.PosX, &s.PosY, &s.Radius, &props); err == nil {
+				s.CustomProps = props
+				m.Structures = append(m.Structures, s)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(m)
+}

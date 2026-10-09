@@ -168,7 +168,9 @@ export const PracticeViewport: React.FC = () => {
           const ry = isControlled ? renderPos.current.y : u.pos.y;
 
           if (u.type === 'flagship') {
-            drawFlagship(ctx, rx, ry, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed);
+            const isControlled = u.id === controlledUnitIdRef.current;
+            const isAccelerating = isControlled && !!keys.current['w'];
+            drawFlagship(ctx, rx, ry, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed, isAccelerating);
           } else {
             drawTargetDummy(ctx, rx, ry, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
           }

@@ -79,7 +79,7 @@ const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
   warp_frigate: Math.PI / 2
 };
 
-export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, shields?: QuadrantStats, hull?: QuadrantStats, isFiring = false, isDestroyed = false) {
+export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, shields?: QuadrantStats, hull?: QuadrantStats, isFiring = false, isDestroyed = false, isAccelerating = false) {
   if (isDestroyed) return;
 
   ctx.save();
@@ -90,13 +90,40 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
 
   const img = spriteCache['flagship'];
   if (img && img.complete && img.naturalWidth !== 0) {
-    ctx.drawImage(img, -45, -45, 90, 90);
+    const srcWidth = img.naturalWidth * 0.78;
+    ctx.drawImage(img, 0, 0, srcWidth, img.naturalHeight, -45, -45, 90, 90);
   } else {
     ctx.strokeStyle = '#00f3ff';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, -35); ctx.lineTo(25, 25); ctx.lineTo(-25, 25); ctx.closePath();
     ctx.stroke();
+  }
+
+  if (isAccelerating) {
+    ctx.fillStyle = '#38bdf8';
+    ctx.shadowColor = '#00f3ff';
+    ctx.shadowBlur = 14;
+    
+    const flameLen = 22 + Math.random() * 16;
+    
+    // Top engine plume
+    ctx.beginPath();
+    ctx.moveTo(42, -22);
+    ctx.lineTo(42 + flameLen, -18);
+    ctx.lineTo(42, -14);
+    ctx.closePath();
+    ctx.fill();
+
+    // Bottom engine plume
+    ctx.beginPath();
+    ctx.moveTo(42, 14);
+    ctx.lineTo(42 + flameLen, 18);
+    ctx.lineTo(42, 22);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
   }
 
   if (isFiring) {
@@ -155,7 +182,7 @@ function drawShieldArcs(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, 
   if (!shields) return;
   const drawArc = (startDeg: number, endDeg: number, val: number) => {
     if (val <= 0) return;
-    ctx.strokeStyle = `rgba(0, 243, 255, ${Math.min(val, 1)})`;
+    ctx.strokeStyle = 'rgba(0, 243, 255,' + Math.min(val, 1) + ')';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.arc(0, 0, radius, (startDeg * Math.PI) / 180, (endDeg * Math.PI) / 180);
@@ -171,10 +198,10 @@ function drawShieldArcs(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, 
 export function drawHUDDiagnostics(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, hull?: QuadrantStats) {
   ctx.save();
   ctx.font = '10px monospace'; ctx.fillStyle = '#00f3ff';
-  ctx.fillText(`FRONT SHD: ${(shields?.front || 0).toFixed(1)}`, 20, window.innerHeight - 80);
-  ctx.fillText(`REAR  SHD: ${(shields?.rear || 0).toFixed(1)}`, 20, window.innerHeight - 65);
-  ctx.fillText(`PORT  SHD: ${(shields?.port || 0).toFixed(1)}`, 20, window.innerHeight - 50);
-  ctx.fillText(`STBD  SHD: ${(shields?.starboard || 0).toFixed(1)}`, 20, window.innerHeight - 35);
+  ctx.fillText('FRONT SHD: ' + (shields?.front || 0).toFixed(1), 20, window.innerHeight - 80);
+  ctx.fillText('REAR  SHD: ' + (shields?.rear || 0).toFixed(1), 20, window.innerHeight - 65);
+  ctx.fillText('PORT  SHD: ' + (shields?.port || 0).toFixed(1), 20, window.innerHeight - 50);
+  ctx.fillText('STBD  SHD: ' + (shields?.starboard || 0).toFixed(1), 20, window.innerHeight - 35);
   ctx.restore();
 }
 

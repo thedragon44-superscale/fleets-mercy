@@ -96,3 +96,23 @@ type ServerState struct {
 	MapBounds   struct { Width float64 `json:"width"`; Height float64 `json:"height"` } `json:"mapBounds"`
 	Tick        uint64       `json:"tick"`
 }
+
+type MapDefinition struct {
+	ID          int             `json:"id"`
+	MapKey      string          `json:"mapKey"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Width       float64         `json:"width"`
+	Height      float64         `json:"height"`
+	Structures  []MapStructure  `json:"structures,omitempty"`
+}
+
+type MapStructure struct {
+	ID            int             `json:"id"`
+	MapID         int             `json:"mapId"`
+	StructureType string          `json:"structureType"`
+	PosX          float64         `json:"posX"`
+	PosY          float64         `json:"posY"`
+	Radius        float64         `json:"radius"`
+	CustomProps   json.RawMessage `json:"customProps,omitempty"`
+}

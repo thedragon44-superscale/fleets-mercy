@@ -31,6 +31,8 @@ func main() {
 	http.HandleFunc("/api/login", api.LoginHandler)
 	http.HandleFunc("/api/loadouts", api.GetLoadoutsHandler)
 	http.HandleFunc("/api/loadouts/save", api.SaveLoadoutHandler)
+	http.HandleFunc("/api/maps", api.GetMapsHandler)
+	http.HandleFunc("/api/map-detail", api.GetMapDetailHandler)
 
 	log.Println("🚀 Space Tactics Server running on :8080 (Standard & Sandbox WS enabled)")
 	log.Fatal(http.ListenAndServe(":8080", nil))

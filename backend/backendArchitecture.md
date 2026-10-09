@@ -13,3 +13,12 @@
 * **Tick Rate**: The game loop updates at a fixed interval of 16 milliseconds (~62.5 ticks per second)[cite: 4].
 * **Database Backend**: PostgreSQL via `lib/pq` driver[cite: 2, 6], using user credentials `gameadmin` and database `spacetactics`[cite: 6].
 * **Communication Protocol**: WebSocket connections managed by `gorilla/websocket`[cite: 1, 4] for real-time bidirectional state streaming and client input parsing.
+
+## PostgreSQL Database Terminal Access
+
+To connect to the database locally and bypass Linux peer authentication[cite: 19], use the following TCP command:
+
+```bash
+psql -h 127.0.0.1 -U gameadmin -d spacetactics
+password: tactics123
+
