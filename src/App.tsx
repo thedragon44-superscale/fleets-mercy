@@ -6,13 +6,14 @@ import { PracticeViewport } from './components/PracticeViewport';
 import { MapEditorViewport } from './components/MapEditorViewport';
 import { fetchMaps, MapDefinition } from './services/mapService';
 
-export type AppView = 'login' | 'main-menu' | 'garage' | 'map-select' | 'standard-game' | 'sandbox-mode' | 'map-editor';
+export type AppView = 'login' | 'main-menu' | 'garage' | 'map-select' | 'standard-game' | 'sandbox-mode' | 'map-editor-select' | 'map-editor';
 
 export default function App() {
   const [player, setPlayer] = useState<{ id: number; username: string } | null>(null);
   const [view, setView] = useState<AppView>('login');
   const [activeLoadout, setActiveLoadout] = useState<LoadoutData | null>(null);
   const [selectedMapId, setSelectedMapId] = useState<number>(1);
+  const [editorTargetMapId, setEditorTargetMapId] = useState<number | null>(null);
   const [maps, setMaps] = useState<MapDefinition[]>([]);
   const [isSandboxLaunch, setIsSandboxLaunch] = useState<boolean>(false);
 
@@ -28,7 +29,6 @@ export default function App() {
       }
     }
 
-    // Fetch available maps from backend API
     fetchMaps().then(data => {
       if (data && data.length > 0) {
         setMaps(data);
@@ -50,6 +50,7 @@ export default function App() {
   const handleLaunchPractice = (loadout: LoadoutData) => {
     setActiveLoadout(loadout);
     setIsSandboxLaunch(false);
+    fetchMaps().then(data => { if (data) setMaps(data); });
     setView('map-select');
   };
 
@@ -81,6 +82,7 @@ export default function App() {
 
             <button 
               onClick={() => {
+                fetchMaps().then(data => { if (data) setMaps(data); });
                 if (activeLoadout) {
                   setIsSandboxLaunch(false);
                   setView('map-select');
@@ -95,6 +97,7 @@ export default function App() {
 
             <button 
               onClick={() => {
+                fetchMaps().then(data => { if (data) setMaps(data); });
                 setIsSandboxLaunch(true);
                 setView('map-select');
               }}
@@ -104,7 +107,10 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setView('map-editor')}
+              onClick={() => {
+                fetchMaps().then(data => { if (data) setMaps(data); });
+                setView('map-editor-select');
+              }}
               style={{ padding: '12px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid #eab308', color: '#facc15', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', textAlign: 'center' }}
             >
               MAP CREATOR STUDIO
@@ -122,7 +128,7 @@ export default function App() {
     );
   }
 
-  // Garage Dashboard View using the onNavigateHome callback prop
+  // Garage Dashboard View
   if (view === 'garage') {
     return (
       <GarageDashboard 
@@ -134,7 +140,7 @@ export default function App() {
     );
   }
 
-  // Map Selection View (Between Garage/Menu and Game/Sandbox Viewport)
+  // Map Selection View for Game / Sandbox
   if (view === 'map-select') {
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#050811', color: '#00f3ff', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', userSelect: 'none' }}>
@@ -188,6 +194,66 @@ export default function App() {
     );
   }
 
+  // Map Editor Target Selection Screen (New vs Load Existing)
+  if (view === 'map-editor-select') {
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#050811', color: '#facc15', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', userSelect: 'none' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(234,179,8,0.05) 0%, rgba(5,8,17,1) 100%)', pointerEvents: 'none' }} />
+        
+        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '460px', padding: '30px', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #eab308', boxShadow: '0 0 25px rgba(234, 179, 8, 0.15)' }}>
+          <h2 style={{ margin: '0 0 4px 0', color: '#facc15', fontSize: '1.4rem', textShadow: '0 0 8px #facc15', letterSpacing: '1px', textAlign: 'center' }}>
+            MAP CREATOR STUDIO
+          </h2>
+          <p style={{ color: '#64748b', fontSize: '0.75rem', letterSpacing: '1px', marginBottom: '20px', textTransform: 'uppercase' }}>
+            Select Sector to Edit or Create New
+          </p>
+
+          <button 
+            onClick={() => {
+              setEditorTargetMapId(null);
+              setView('map-editor');
+            }}
+            style={{ width: '100%', padding: '12px', background: '#eab308', color: '#050811', border: 'none', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', marginBottom: '15px', textAlign: 'center' }}
+          >
+            + CREATE NEW SECTOR
+          </button>
+
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', width: '100%', marginBottom: '8px', textAlign: 'left' }}>OR LOAD EXISTING SECTOR:</div>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+            {maps.length > 0 ? maps.map(m => (
+              <div 
+                key={m.id}
+                onClick={() => {
+                  setEditorTargetMapId(m.id);
+                  setView('map-editor');
+                }}
+                style={{ 
+                  background: '#090d1a', 
+                  border: '1px solid #334155', 
+                  padding: '10px', 
+                  cursor: 'pointer',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', color: '#facc15', fontWeight: 'bold' }}>{m.name}</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{m.description}</div>
+              </div>
+            )) : (
+              <div style={{ color: '#64748b', textAlign: 'center', padding: '15px', fontSize: '0.8rem' }}>Loading Sectors...</div>
+            )}
+          </div>
+
+          <button 
+            onClick={() => setView('main-menu')}
+            style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #64748b', color: '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'monospace' }}
+          >
+            &larr; BACK TO MAIN MENU
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Standard Game Viewport
   if (view === 'standard-game' && activeLoadout) {
     return (
@@ -209,7 +275,7 @@ export default function App() {
     );
   }
 
-  // Unit Testing Sandbox Viewport (No Enemies)
+  // Unit Testing Sandbox Viewport
   if (view === 'sandbox-mode') {
     return (
       <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
@@ -232,7 +298,7 @@ export default function App() {
 
   // Map Creator Studio View
   if (view === 'map-editor') {
-    return <MapEditorViewport onExit={() => setView('main-menu')} />;
+    return <MapEditorViewport mapId={editorTargetMapId} onExit={() => setView('main-menu')} />;
   }
 
   return null;

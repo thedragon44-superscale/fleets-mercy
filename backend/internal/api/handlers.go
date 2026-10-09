@@ -186,6 +186,7 @@ func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type SaveMapRequest struct {
+	ID          *int    `json:"id"`
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Width       float64 `json:"width"`
@@ -213,8 +214,6 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mapKey := "custom_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-
 	tx, err := db.Conn.Begin()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -223,14 +222,33 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	var mapID int
-	err = tx.QueryRow(
-		"INSERT INTO maps (map_key, name, description, width, height) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		mapKey, req.Name, req.Description, req.Width, req.Height,
-	).Scan(&mapID)
 
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if req.ID != nil && *req.ID > 0 {
+		mapID = *req.ID
+		_, err = tx.Exec(
+			"UPDATE maps SET name = $1, description = $2, width = $3, height = $4 WHERE id = $5",
+			req.Name, req.Description, req.Width, req.Height, mapID,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		_, err = tx.Exec("DELETE FROM map_structures WHERE map_id = $1", mapID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		mapKey := "custom_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		err = tx.QueryRow(
+			"INSERT INTO maps (map_key, name, description, width, height) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+			mapKey, req.Name, req.Description, req.Width, req.Height,
+		).Scan(&mapID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	for _, s := range req.Structures {

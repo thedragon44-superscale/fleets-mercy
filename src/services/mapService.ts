@@ -64,6 +64,3 @@ export async function saveCustomMap(mapPayload: {
     return false;
   }
 }
-```[cite: 3]
-
-Let me know once you have updated `mapService.ts`, and we will wire the map editor into `App.tsx`!

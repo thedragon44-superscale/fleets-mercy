@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { renderEnvironmentVector } from '../renderer/vectorAssets';
-import { saveCustomMap, MapDefinition } from '../services/mapService';
+import { saveCustomMap, fetchMapDetail } from '../services/mapService';
 
 interface PlacedStructure {
   id: string;
@@ -19,7 +19,7 @@ const STRUCTURE_CATALOG = [
   { type: 'comet', name: 'Comet', defaultRadius: 250 }
 ];
 
-export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) => {
+export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => void }> = ({ mapId, onExit }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -29,7 +29,7 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
   const [mapWidth, setMapWidth] = useState<number>(12000);
   const [mapHeight, setMapHeight] = useState<number>(12000);
 
-  // Editor Placement & Camera State
+  // Editor Placement, UI Toggle & Camera State
   const cameraPos = useRef({ x: 6000, y: 10000 });
   const renderPos = useRef({ x: 6000, y: 10000 });
   const keys = useRef<{ [key: string]: boolean }>({});
@@ -38,15 +38,43 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
   const [structures, setStructures] = useState<PlacedStructure[]>([]);
   const [selectedToolType, setSelectedToolType] = useState<string>('asteroid_belt');
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [, forceRender] = useState({});
+  const [showUI, setShowUI] = useState<boolean>(true);
+
+  // Fetch existing map details if editing an existing map
+  useEffect(() => {
+    if (mapId) {
+      fetchMapDetail(mapId).then(detail => {
+        if (detail) {
+          setMapName(detail.name);
+          setMapDesc(detail.description);
+          setMapWidth(detail.width);
+          setMapHeight(detail.height);
+          if (detail.structures) {
+            setStructures(detail.structures.map(s => ({
+              id: `struct_${s.id}`,
+              type: s.structureType,
+              x: s.posX,
+              y: s.posY,
+              radius: s.radius
+            })));
+          }
+        }
+      });
+    }
+  }, [mapId]);
 
   // WASD Flight & Mouse Handlers
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { keys.current[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keys.current[e.key.toLowerCase()] = false; };
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      setShowUI(prev => !prev);
+    };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('mousemove', (e) => { mousePos.current = { x: e.clientX, y: e.clientY }; });
 
     let animId: number;
@@ -113,7 +141,7 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
       ctx.restore();
 
       // Render Proportional Radar Minimap
-      if (radarCtx && radarCanvas) {
+      if (radarCtx && radarCanvas && showUI) {
         const rw = radarCanvas.width;
         const rh = radarCanvas.height;
 
@@ -154,8 +182,9 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
       cancelAnimationFrame(animId);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [mapWidth, mapHeight, structures, selectedToolType]);
+  }, [mapWidth, mapHeight, structures, selectedToolType, showUI]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return;
@@ -180,6 +209,7 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
   const handleSaveMap = async () => {
     setIsSaving(true);
     const mapPayload = {
+      id: mapId || undefined,
       name: mapName,
       description: mapDesc,
       width: mapWidth,
@@ -204,140 +234,144 @@ export const MapEditorViewport: React.FC<{ onExit: () => void }> = ({ onExit }) 
     >
       <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
 
-      {/* Top Bar Navigation & Controls */}
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <button 
-          onClick={onExit}
-          style={{ padding: '6px 12px', fontSize: '0.75rem', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #ff2a6d', color: '#ff2a6d', fontFamily: 'monospace', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          &larr; EXIT EDITOR
-        </button>
-        <span style={{ padding: '6px 12px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', fontSize: '0.7rem', color: '#c084fc', fontFamily: 'monospace' }}>
-          MODE: TACTICAL MAP CREATOR [WASD to Fly, Click to Place]
-        </span>
-      </div>
-
-      {/* Proportional Tactical Radar */}
-      <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)' }}>
-        <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', pointerEvents: 'none', zIndex: 2 }}>
-          SECTOR RADAR ({mapWidth}M)
-        </div>
-        <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
-      </div>
-
-      {/* Editor Sidebar Catalog & Config */}
-      <div style={{ position: 'absolute', top: 60, left: 15, width: '300px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #a855f7', borderRadius: '4px', padding: '14px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
-        <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: '0 0 10px 0', fontWeight: 'bold', borderBottom: '1px solid #581c87', paddingBottom: '6px' }}>
-          🗺️ MAP CREATOR STUDIO
-        </h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
-          <div>
-            <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>MAP NAME</label>
-            <input 
-              type="text" 
-              value={mapName} 
-              onChange={e => setMapName(e.target.value)}
-              style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
-            />
+      {showUI && (
+        <>
+          {/* Top Bar Navigation & Controls */}
+          <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button 
+              onClick={onExit}
+              style={{ padding: '6px 12px', fontSize: '0.75rem', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #ff2a6d', color: '#ff2a6d', fontFamily: 'monospace', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              &larr; EXIT EDITOR
+            </button>
+            <span style={{ padding: '6px 12px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', fontSize: '0.7rem', color: '#c084fc', fontFamily: 'monospace' }}>
+              MODE: TACTICAL MAP CREATOR {mapId ? `[EDITING MAP #${mapId}]` : '[NEW MAP]'} [WASD, Click to Place, Right-Click Toggle UI]
+            </span>
           </div>
-          <div>
-            <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>DESCRIPTION</label>
-            <input 
-              type="text" 
-              value={mapDesc} 
-              onChange={e => setMapDesc(e.target.value)}
-              style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>WIDTH (M)</label>
-              <input 
-                type="number" 
-                value={mapWidth} 
-                onChange={e => setMapWidth(parseInt(e.target.value) || 12000)}
-                style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
-              />
+
+          {/* Proportional Tactical Radar */}
+          <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)' }}>
+            <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', pointerEvents: 'none', zIndex: 2 }}>
+              SECTOR RADAR ({mapWidth}M)
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>HEIGHT (M)</label>
-              <input 
-                type="number" 
-                value={mapHeight} 
-                onChange={e => setMapHeight(parseInt(e.target.value) || 12000)}
-                style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
-              />
-            </div>
+            <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
           </div>
-        </div>
 
-        <div style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '6px' }}>
-          STRUCTURE PALETTE (CLICK TO SELECT)
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-          {STRUCTURE_CATALOG.map(item => (
+          {/* Editor Sidebar Catalog & Config */}
+          <div style={{ position: 'absolute', top: 60, left: 15, width: '300px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #a855f7', borderRadius: '4px', padding: '14px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
+            <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: '0 0 10px 0', fontWeight: 'bold', borderBottom: '1px solid #581c87', paddingBottom: '6px' }}>
+              🗺️ MAP CREATOR STUDIO
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>MAP NAME</label>
+                <input 
+                  type="text" 
+                  value={mapName} 
+                  onChange={e => setMapName(e.target.value)}
+                  style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>DESCRIPTION</label>
+                <input 
+                  type="text" 
+                  value={mapDesc} 
+                  onChange={e => setMapDesc(e.target.value)}
+                  style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>WIDTH (M)</label>
+                  <input 
+                    type="number" 
+                    value={mapWidth} 
+                    onChange={e => setMapWidth(parseInt(e.target.value) || 12000)}
+                    style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>HEIGHT (M)</label>
+                  <input 
+                    type="number" 
+                    value={mapHeight} 
+                    onChange={e => setMapHeight(parseInt(e.target.value) || 12000)}
+                    style={{ width: '100%', background: '#090d1a', border: '1px solid #334155', color: '#fff', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '6px' }}>
+              STRUCTURE PALETTE (CLICK TO SELECT)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+              {STRUCTURE_CATALOG.map(item => (
+                <button
+                  type="button"
+                  key={item.type}
+                  onClick={() => setSelectedToolType(item.type)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    background: selectedToolType === item.type ? 'rgba(168, 85, 247, 0.25)' : 'rgba(30, 41, 59, 0.6)',
+                    border: `1px solid ${selectedToolType === item.type ? '#c084fc' : '#334155'}`,
+                    color: selectedToolType === item.type ? '#f3e8ff' : '#cbd5e1',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    borderRadius: '3px'
+                  }}
+                >
+                  <div style={{ fontWeight: 'bold' }}>{item.name}</div>
+                  <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Default Radius: {item.defaultRadius}m</div>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
+              PLACED STRUCTURES ({structures.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', marginBottom: '14px' }}>
+              {structures.map((s, idx) => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#090d1a', padding: '4px 8px', fontSize: '0.65rem', border: '1px solid #334155' }}>
+                  <span>{idx + 1}. {s.type} ({Math.round(s.x)}, {Math.round(s.y)})</span>
+                  <button 
+                    onClick={() => setStructures(prev => prev.filter(item => item.id !== s.id))}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem' }}
+                  >
+                    [X]
+                  </button>
+                </div>
+              ))}
+            </div>
+
             <button
               type="button"
-              key={item.type}
-              onClick={() => setSelectedToolType(item.type)}
+              onClick={handleSaveMap}
+              disabled={isSaving}
               style={{
-                textAlign: 'left',
-                padding: '8px 10px',
-                background: selectedToolType === item.type ? 'rgba(168, 85, 247, 0.25)' : 'rgba(30, 41, 59, 0.6)',
-                border: `1px solid ${selectedToolType === item.type ? '#c084fc' : '#334155'}`,
-                color: selectedToolType === item.type ? '#f3e8ff' : '#cbd5e1',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                borderRadius: '3px'
+                width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
+                border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '3px'
               }}
             >
-              <div style={{ fontWeight: 'bold' }}>{item.name}</div>
-              <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Default Radius: {item.defaultRadius}m</div>
+              {isSaving ? 'SAVING SECTOR...' : (mapId ? 'UPDATE SECTOR' : 'SAVE & EXPORT MAP')}
             </button>
-          ))}
-        </div>
 
-        <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
-          PLACED STRUCTURES ({structures.length})
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', marginBottom: '14px' }}>
-          {structures.map((s, idx) => (
-            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#090d1a', padding: '4px 8px', fontSize: '0.65rem', border: '1px solid #334155' }}>
-              <span>{idx + 1}. {s.type} ({Math.round(s.x)}, {Math.round(s.y)})</span>
-              <button 
-                onClick={() => setStructures(prev => prev.filter(item => item.id !== s.id))}
-                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem' }}
-              >
-                [X]
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSaveMap}
-          disabled={isSaving}
-          style={{
-            width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
-            border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '3px'
-          }}
-        >
-          {isSaving ? 'SAVING SECTOR...' : 'SAVE & EXPORT MAP'}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setStructures([])}
-          style={{
-            marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
-            border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'
-          }}
-        >
-          CLEAR ALL STRUCTURES
-        </button>
-      </div>
+            <button
+              type="button"
+              onClick={() => setStructures([])}
+              style={{
+                marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
+                border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'
+              }}
+            >
+              CLEAR ALL STRUCTURES
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
