@@ -11,12 +11,12 @@ import (
 func main() {
 	db.InitDB()
 	
-	// Standard game room
-	standardRoom := game.NewGameRoom(false)
+	// Standard game room (Map ID 1)
+	standardRoom := game.NewGameRoom(1, false)
 	go standardRoom.Run()
 
-	// Dedicated unit testing sandbox room (no enemies, free spawning)
-	sandboxRoom := game.NewGameRoom(true)
+	// Dedicated unit testing sandbox room (Map ID 1, no enemies, free spawning)
+	sandboxRoom := game.NewGameRoom(1, true)
 	go sandboxRoom.Run()
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
