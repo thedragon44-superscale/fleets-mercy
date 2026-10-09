@@ -31,7 +31,16 @@ func main() {
 	http.HandleFunc("/api/login", api.LoginHandler)
 	http.HandleFunc("/api/loadouts", api.GetLoadoutsHandler)
 	http.HandleFunc("/api/loadouts/save", api.SaveLoadoutHandler)
-	http.HandleFunc("/api/maps", api.GetMapsHandler)
+	
+	// Maps endpoint handles both fetching (GET) and saving custom maps (POST)
+	http.HandleFunc("/api/maps", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			api.SaveCustomMapHandler(w, r)
+		} else {
+			api.GetMapsHandler(w, r)
+		}
+	})
+	
 	http.HandleFunc("/api/map-detail", api.GetMapDetailHandler)
 
 	log.Println("🚀 Space Tactics Server running on :8080 (Standard & Sandbox WS enabled)")

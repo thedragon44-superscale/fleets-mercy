@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics } from '../renderer/vectorAssets';
 import { UNIT_DB } from './GarageDashboard';
 import { WS_BASE_URL } from '../config';
+import { fetchMapDetail, MapDefinition } from '../services/mapService';
 
 interface FleetUnit {
   id: string; type: string; ownerId: string;
@@ -16,7 +17,11 @@ interface ServerState {
   mapBounds: { width: number; height: number };
 }
 
-export const PracticeViewport: React.FC = () => {
+interface PracticeViewportProps {
+  mapId?: number;
+}
+
+export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -30,6 +35,7 @@ export const PracticeViewport: React.FC = () => {
   const renderPos = useRef({ x: 6000, y: 10000 });
   const isInitialized = useRef(false);
 
+  const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
@@ -40,6 +46,14 @@ export const PracticeViewport: React.FC = () => {
     controlledUnitIdRef.current = controlledUnitId;
     isInitialized.current = false;
   }, [controlledUnitId]);
+
+  useEffect(() => {
+    if (mapId) {
+      fetchMapDetail(mapId).then(data => {
+        if (data) setMapDetails(data);
+      });
+    }
+  }, [mapId]);
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {

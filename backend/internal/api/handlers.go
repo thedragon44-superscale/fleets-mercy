@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 	"space-tactics-server/internal/db"
 	"space-tactics-server/internal/models"
 )
@@ -182,4 +183,72 @@ func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(m)
+}
+
+type SaveMapRequest struct {
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Width       float64 `json:"width"`
+	Height      float64 `json:"height"`
+	Structures  []struct {
+		Type   string  `json:"type"`
+		X      float64 `json:"x"`
+		Y      float64 `json:"y"`
+		Radius float64 `json:"radius"`
+	} `json:"structures"`
+}
+
+func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w)
+	if r.Method == "OPTIONS" { return }
+
+	if r.Method != "POST" {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SaveMapRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	mapKey := "custom_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+
+	tx, err := db.Conn.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var mapID int
+	err = tx.QueryRow(
+		"INSERT INTO maps (map_key, name, description, width, height) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		mapKey, req.Name, req.Description, req.Width, req.Height,
+	).Scan(&mapID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, s := range req.Structures {
+		_, err = tx.Exec(
+			"INSERT INTO map_structures (map_id, structure_type, pos_x, pos_y, radius) VALUES ($1, $2, $3, $4, $5)",
+			mapID, s.Type, s.X, s.Y, s.Radius,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "mapId": mapID})
 }

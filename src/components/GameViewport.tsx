@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics } from '../renderer/vectorAssets';
 import { LoadoutData, UNIT_DB } from './GarageDashboard';
 import { WS_BASE_URL } from '../config';
+import { fetchMapDetail, MapDefinition } from '../services/mapService';
 
 interface FleetUnit {
   id: string; type: string; ownerId: string;
@@ -19,9 +20,10 @@ interface ServerState {
 interface GameViewportProps {
   activeLoadout?: LoadoutData;
   mode?: 'standard' | 'sandbox';
+  mapId?: number;
 }
 
-export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode = 'standard' }) => {
+export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode = 'standard', mapId = 1 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const serverState = useRef<ServerState | null>(null);
@@ -30,6 +32,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
   const mousePos = useRef({ x: 0, y: 0 });
   const isFiring = useRef(false);
   
+  const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const gameOverLatched = useRef<{winner: string, x: number, y: number} | null>(null);
 
   // Default dummy loadout if none provided (useful for sandbox mode)
@@ -56,6 +59,14 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
   const reservesRef = useRef(reserves);
   useEffect(() => { reservesRef.current = reserves; }, [reserves]);
 
+  useEffect(() => {
+    if (mapId) {
+      fetchMapDetail(mapId).then(data => {
+        if (data) setMapDetails(data);
+      });
+    }
+  }, [mapId]);
+
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
       const flagship = serverState.current.units?.find(u => u.id === 'player-flagship');
@@ -79,7 +90,6 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
 
   const queueDeployUnit = (unitId: string) => {
     if (mode === 'sandbox') {
-      // In sandbox mode, spawn at world center or camera view center
       const spawnX = cameraPos.current.x;
       const spawnY = cameraPos.current.y;
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -171,7 +181,6 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
         // Standard Mode Victory/Defeat Check
         if (mode === 'standard') {
           const units = serverState.current.units || [];
-          const hasDeadFlagship = units.some(u => u.type === 'flagship' && u.isDestroyed);
           const hasLiveFlagships = units.filter(u => u.type === 'flagship' && !u.isDestroyed).length === 2;
 
           if (hasLiveFlagships && gameOverLatched.current) {
@@ -395,7 +404,6 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
               width: '100%',
               padding: '10px',
               background: '#9333ea',
-              hover: { background: '#a855f7' },
               color: '#fff',
               border: 'none',
               fontWeight: 'bold',
