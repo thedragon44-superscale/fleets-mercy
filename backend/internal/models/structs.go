@@ -67,6 +67,16 @@ type FleetUnit struct {
 	WeightClass int           `json:"weightClass"`
 	VisionRange int           `json:"visionRange"`
 	DPS         float64       `json:"dps"`
+
+	// --- Tactical & Hierarchical Extensions ---
+	SquadID              int    `json:"squadId"`
+	IsSquadLeader        bool   `json:"isSquadLeader"`
+	IsBattalionCommander bool   `json:"isBattalionCommander"`
+	BuddyID              string `json:"buddyId"`
+
+	// --- Resource & Logistics Tracking (Flagships, Command Ships, Harvesters, Repair, Supply) ---
+	ResourceCache       float64 `json:"resourceCache"`
+	MaxResourceCapacity float64 `json:"maxResourceCapacity"`
 }
 
 type Projectile struct {
