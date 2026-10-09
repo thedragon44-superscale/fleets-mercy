@@ -31,7 +31,9 @@ export const PracticeViewport: React.FC = () => {
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
-      const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId);
+      // Correctly resolve the active unit based on controlledUnitId, falling back to flagship
+      const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId) || 
+                             serverState.current.units?.find(u => u.id === 'player-flagship');
       let angle = 0;
       if (controlledUnit) {
         const worldMouseX = mousePos.current.x - canvasRef.current.width / 2 + cameraPos.current.x;
