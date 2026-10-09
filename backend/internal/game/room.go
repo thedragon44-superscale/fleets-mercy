@@ -60,7 +60,10 @@ func (r *GameRoom) loadMapStructures() {
 	if r.mapID == 0 { r.mapID = 1 }
 
 	rows, err := db.Conn.Query(
-		"SELECT id, map_id, structure_type, pos_x, pos_y, radius, custom_props FROM map_structures WHERE map_id = $1", 
+		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
+		 FROM map_structures ms 
+		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
+		 WHERE ms.map_id = $1`, 
 		r.mapID,
 	)
 	if err != nil {
@@ -358,10 +361,7 @@ func (r *GameRoom) Run() {
 			if unit.Pos.Y < 50 { unit.Pos.Y = 50; unit.Vel.Y = 0 }
 			if unit.Pos.Y > 11950 { unit.Pos.Y = 11950; unit.Vel.Y = 0 }
 
-			// Apply Environmental Collisions (Planets, Moons, Planetoids, Gas Giant Cores)
 			ApplyEnvironmentalCollisions(unit, r.structures)
-
-			// Apply Major World Gravitational Pull
 			ApplyMajorWorldGravity(unit, r.structures)
 
 			for _, other := range r.units {

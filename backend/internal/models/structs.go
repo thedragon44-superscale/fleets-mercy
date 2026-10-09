@@ -97,6 +97,20 @@ type ServerState struct {
 	Tick        uint64       `json:"tick"`
 }
 
+type EnvironmentalStructure struct {
+	ID                int             `json:"id"`
+	StructureKey      string          `json:"structureKey"`
+	Name              string          `json:"name"`
+	Category          string          `json:"category"`
+	DefaultRadius     float64         `json:"defaultRadius"`
+	MinRadius         float64         `json:"minRadius,omitempty"`
+	MaxRadius         float64         `json:"maxRadius,omitempty"`
+	IsResizable       bool            `json:"isResizable"`
+	IsIndestructible  bool            `json:"isIndestructible"`
+	ResourceYieldType *int            `json:"resourceYieldType,omitempty"`
+	CustomMetadata    json.RawMessage `json:"customMetadata,omitempty"`
+}
+
 type MapDefinition struct {
 	ID          int             `json:"id"`
 	MapKey      string          `json:"mapKey"`
@@ -108,11 +122,13 @@ type MapDefinition struct {
 }
 
 type MapStructure struct {
-	ID            int             `json:"id"`
-	MapID         int             `json:"mapId"`
-	StructureType string          `json:"structureType"`
-	PosX          float64         `json:"posX"`
-	PosY          float64         `json:"posY"`
-	Radius        float64         `json:"radius"`
-	CustomProps   json.RawMessage `json:"customProps,omitempty"`
+	ID                         int                      `json:"id"`
+	MapID                      int                      `json:"mapId"`
+	EnvironmentalStructureID   int                      `json:"environmentalStructureId"`
+	StructureType              string                   `json:"structureType"` // Kept for transition compatibility
+	PosX                       float64                  `json:"posX"`
+	PosY                       float64                  `json:"posY"`
+	Radius                     float64                  `json:"radius"`
+	CustomProps                json.RawMessage          `json:"customProps,omitempty"`
+	Blueprint                  *EnvironmentalStructure  `json:"blueprint,omitempty"`
 }

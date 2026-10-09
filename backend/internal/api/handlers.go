@@ -168,7 +168,13 @@ func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	structRows, err := db.Conn.Query("SELECT id, map_id, structure_type, pos_x, pos_y, radius, custom_props FROM map_structures WHERE map_id = $1", mapId)
+	structRows, err := db.Conn.Query(
+		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
+		 FROM map_structures ms 
+		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
+		 WHERE ms.map_id = $1`, 
+		mapId,
+	)
 	if err == nil {
 		defer structRows.Close()
 		for structRows.Next() {
@@ -252,9 +258,17 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, s := range req.Structures {
+		// Resolve structure_key to master catalog ID
+		var structureID int
+		err = tx.QueryRow("SELECT id FROM environmental_structures WHERE structure_key = $1", s.Type).Scan(&structureID)
+		if err != nil {
+			http.Error(w, "Invalid structure type: "+s.Type, http.StatusBadRequest)
+			return
+		}
+
 		_, err = tx.Exec(
-			"INSERT INTO map_structures (map_id, structure_type, pos_x, pos_y, radius) VALUES ($1, $2, $3, $4, $5)",
-			mapID, s.Type, s.X, s.Y, s.Radius,
+			"INSERT INTO map_structures (map_id, environmental_structure_id, pos_x, pos_y, radius) VALUES ($1, $2, $3, $4, $5)",
+			mapID, structureID, s.X, s.Y, s.Radius,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
