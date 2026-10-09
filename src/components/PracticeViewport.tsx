@@ -28,7 +28,7 @@ export const PracticeViewport: React.FC = () => {
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
-  const [, forceRender] = useState({}); // Used only to stable-render UI controls when needed
+  const [, forceRender] = useState({});
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
@@ -66,7 +66,6 @@ export const PracticeViewport: React.FC = () => {
     wsRef.current.onmessage = (e) => { 
       const state = JSON.parse(e.data);
       serverState.current = state;
-      // Force a gentle render tick every few frames to keep UI lists populated without thrashing
       forceRender({});
     };
 
@@ -137,8 +136,14 @@ export const PracticeViewport: React.FC = () => {
     };
   }, [controlledUnitId]);
 
-  // Stable derivation from serverState reference without trigger loops
-  const playerUnits = serverState.current?.units?.filter(u => u.ownerId === 'player' && !u.isDestroyed) || [];
+  // Stable, alphabetically/chronologically sorted player units list to prevent flickering
+  const playerUnits = serverState.current?.units
+    ?.filter(u => u.ownerId === 'player' && !u.isDestroyed)
+    ?.sort((a, b) => {
+      if (a.id === 'player-flagship') return -1;
+      if (b.id === 'player-flagship') return 1;
+      return a.id.localeCompare(b.id);
+    }) || [];
 
   return (
     <div 
