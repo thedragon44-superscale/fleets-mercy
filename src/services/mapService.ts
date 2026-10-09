@@ -46,6 +46,7 @@ export async function fetchMapDetail(mapId: number): Promise<MapDefinition | nul
 }
 
 export async function saveCustomMap(mapPayload: {
+  id?: number;
   name: string;
   description: string;
   width: number;
