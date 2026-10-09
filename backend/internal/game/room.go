@@ -18,7 +18,6 @@ import (
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
-// Extended client input structure to handle sandbox spawn payloads
 type SandboxClientInput struct {
 	models.ClientInput
 	SandboxSpawn string   `json:"sandboxSpawn"`
@@ -56,16 +55,13 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	
-	// Spawn player flagship in center or starting sector
 	r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
 	
-	// Skip enemy flagship if running in sandbox mode
 	if !r.isSandbox {
 		r.spawnUnit("flagship", "enemy", 6000, 2000, "SEEK")
 	}
 }
 
-// Threat Hierarchy Target Selection
 func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 	var bestTarget *models.FleetUnit
 	bestScore := -999999.0
@@ -166,7 +162,6 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if input.SandboxSpawn != "" {
 				r.deployQueue = append(r.deployQueue, "SANDBOX:"+input.SandboxSpawn)
 				if input.SpawnX != nil && input.SpawnY != nil {
-					// Store coordinates temporarily or spawn immediately with custom pos
 					r.spawnUnit(input.SandboxSpawn, "player", *input.SpawnX, *input.SpawnY, "GUARD")
 				}
 			}
@@ -176,9 +171,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// Native PvE AI Brain
 func (r *GameRoom) runAI() {
-	if r.isSandbox { return } // Bypass AI entirely in sandbox mode
+	if r.isSandbox { return }
 
 	var ai *models.FleetUnit
 	var player *models.FleetUnit
@@ -236,7 +230,6 @@ func (r *GameRoom) Run() {
 			toDeploy := r.deployQueue[0]
 			r.deployQueue = r.deployQueue[1:]
 			
-			// If it's a regular deployment queue item (not custom coordinate sandbox spawn)
 			if len(toDeploy) > 8 && toDeploy[:8] != "SANDBOX:" {
 				r.spawnUnit(toDeploy, "player", flagship.Pos.X, flagship.Pos.Y-100, "GUARD")
 				deployDebounce = 8 
