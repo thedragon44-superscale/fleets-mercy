@@ -225,16 +225,34 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
-          // Render Structure Footprints on Radar
+          // Render Structure Footprints on Radar (Cluster-Aware for Asteroid Belts)
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
               const rx = s.posX * scaleX;
               const ry = s.posY * scaleY;
               const rr = Math.max(2, s.radius * scaleX);
-              radarCtx.fillStyle = 'rgba(168, 85, 247, 0.6)';
-              radarCtx.beginPath();
-              radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
-              radarCtx.fill();
+
+              if (s.structureType === 'asteroid_belt') {
+                radarCtx.fillStyle = 'rgba(100, 116, 139, 0.7)';
+                radarCtx.strokeStyle = 'rgba(148, 163, 184, 0.9)';
+                radarCtx.lineWidth = 0.5;
+                for (let i = 0; i < 12; i++) {
+                  const angle = (i / 12) * Math.PI * 2;
+                  const dist = s.radius * (0.6 + Math.sin(i) * 0.3) * scaleX;
+                  const nodeX = rx + Math.cos(angle) * dist;
+                  const nodeY = ry + Math.sin(angle) * dist;
+                  const nodeR = Math.max(1.5, (3 + (i % 3) * 2) * scaleX);
+                  radarCtx.beginPath();
+                  radarCtx.arc(nodeX, nodeY, nodeR, 0, Math.PI * 2);
+                  radarCtx.fill();
+                  radarCtx.stroke();
+                }
+              } else {
+                radarCtx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(168, 85, 247, 0.6)';
+                radarCtx.beginPath();
+                radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
+                radarCtx.fill();
+              }
             });
           }
 

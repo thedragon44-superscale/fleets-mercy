@@ -242,6 +242,38 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
         ctx.moveTo(radarX, radarY + radarSize / 2); ctx.lineTo(radarX + radarSize, radarY + radarSize / 2);
         ctx.stroke();
 
+        // Render Structure Footprints on Radar (Cluster-Aware for Asteroid Belts)
+        if (mapDetails?.structures) {
+          const scaleX = radarSize / mapW;
+          mapDetails.structures.forEach(s => {
+            const rx = radarX + (s.posX / mapW) * radarSize;
+            const ry = radarY + (s.posY / mapH) * radarSize;
+            const rr = Math.max(2, s.radius * scaleX);
+
+            if (s.structureType === 'asteroid_belt') {
+              ctx.fillStyle = 'rgba(100, 116, 139, 0.7)';
+              ctx.strokeStyle = 'rgba(148, 163, 184, 0.9)';
+              ctx.lineWidth = 0.5;
+              for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const dist = s.radius * (0.6 + Math.sin(i) * 0.3) * scaleX;
+                const nodeX = rx + Math.cos(angle) * dist;
+                const nodeY = ry + Math.sin(angle) * dist;
+                const nodeR = Math.max(1.5, (3 + (i % 3) * 2) * scaleX);
+                ctx.beginPath();
+                ctx.arc(nodeX, nodeY, nodeR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+              }
+            } else {
+              ctx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(0, 243, 255, 0.3)';
+              ctx.beginPath();
+              ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          });
+        }
+
         (serverState.current.units || []).forEach((u: any) => {
           if (u.isDestroyed) return;
           const px = radarX + (u.pos.x / mapW) * radarSize;
@@ -276,7 +308,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
 
     render();
     return () => { cancelAnimationFrame(animId); if (wsRef.current) wsRef.current.close(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
-  }, [mode]);
+  }, [mode, mapDetails]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2 && mode === 'standard') {

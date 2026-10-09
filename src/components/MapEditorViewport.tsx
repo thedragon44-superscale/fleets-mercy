@@ -140,8 +140,8 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
 
       ctx.restore();
 
-      // Render Proportional Radar Minimap
-      if (radarCtx && radarCanvas && showUI) {
+      // Render Proportional Radar Minimap (Cluster-Aware)
+      if (radarCtx && radarCanvas) {
         const rw = radarCanvas.width;
         const rh = radarCanvas.height;
 
@@ -158,10 +158,28 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
           const rx = s.x * scaleX;
           const ry = s.y * scaleY;
           const rr = Math.max(2, s.radius * scaleX);
-          radarCtx.fillStyle = 'rgba(168, 85, 247, 0.6)';
-          radarCtx.beginPath();
-          radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
-          radarCtx.fill();
+
+          if (s.type === 'asteroid_belt') {
+            radarCtx.fillStyle = 'rgba(100, 116, 139, 0.7)';
+            radarCtx.strokeStyle = 'rgba(148, 163, 184, 0.9)';
+            radarCtx.lineWidth = 0.5;
+            for (let i = 0; i < 12; i++) {
+              const angle = (i / 12) * Math.PI * 2;
+              const dist = s.radius * (0.6 + Math.sin(i) * 0.3) * scaleX;
+              const nodeX = rx + Math.cos(angle) * dist;
+              const nodeY = ry + Math.sin(angle) * dist;
+              const nodeR = Math.max(1.5, (3 + (i % 3) * 2) * scaleX);
+              radarCtx.beginPath();
+              radarCtx.arc(nodeX, nodeY, nodeR, 0, Math.PI * 2);
+              radarCtx.fill();
+              radarCtx.stroke();
+            }
+          } else {
+            radarCtx.fillStyle = s.type === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(168, 85, 247, 0.6)';
+            radarCtx.beginPath();
+            radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
+            radarCtx.fill();
+          }
         });
 
         // Viewport Box on Radar
@@ -184,7 +202,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [mapWidth, mapHeight, structures, selectedToolType, showUI]);
+  }, [mapWidth, mapHeight, structures, selectedToolType]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return;
@@ -234,6 +252,14 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
     >
       <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
 
+      {/* Persistent Sector Radar (Independent of UI toggle) */}
+      <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', zIndex: 2 }}>
+          SECTOR RADAR ({mapWidth}M)
+        </div>
+        <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
+      </div>
+
       {showUI && (
         <>
           {/* Top Bar Navigation & Controls */}
@@ -247,14 +273,6 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
             <span style={{ padding: '6px 12px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', fontSize: '0.7rem', color: '#c084fc', fontFamily: 'monospace' }}>
               MODE: TACTICAL MAP CREATOR {mapId ? `[EDITING MAP #${mapId}]` : '[NEW MAP]'} [WASD, Click to Place, Right-Click Toggle UI]
             </span>
-          </div>
-
-          {/* Proportional Tactical Radar */}
-          <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)' }}>
-            <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', pointerEvents: 'none', zIndex: 2 }}>
-              SECTOR RADAR ({mapWidth}M)
-            </div>
-            <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
           </div>
 
           {/* Editor Sidebar Catalog & Config */}

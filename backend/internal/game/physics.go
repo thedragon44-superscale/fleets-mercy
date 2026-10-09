@@ -51,6 +51,39 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 	if unit.IsDestroyed { return }
 
 	for _, s := range structures {
+		if s.StructureType == "asteroid_belt" {
+			// Cluster-aware collision check across individual nodes to allow gap navigation
+			for i := 0; i < 12; i++ {
+				angle := float64(i) / 12.0 * 2 * math.Pi
+				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
+				nodeX := s.PosX + math.Cos(angle)*nodeDist
+				nodeY := s.PosY + math.Sin(angle)*nodeDist
+				
+				nodeRadius := (15.0 + float64(i%3)*8.0) + 25.0
+
+				dx := unit.Pos.X - nodeX
+				dy := unit.Pos.Y - nodeY
+				dist := math.Hypot(dx, dy)
+
+				if dist < nodeRadius {
+					if dist > 0.1 {
+						nx := dx / dist
+						ny := dy / dist
+						overlap := nodeRadius - dist
+						unit.Pos.X += nx * overlap
+						unit.Pos.Y += ny * overlap
+
+						dot := unit.Vel.X*nx + unit.Vel.Y*ny
+						if dot < 0 {
+							unit.Vel.X -= dot * nx
+							unit.Vel.Y -= dot * ny
+						}
+					}
+				}
+			}
+			continue
+		}
+
 		dx := unit.Pos.X - s.PosX
 		dy := unit.Pos.Y - s.PosY
 		dist := math.Hypot(dx, dy)
