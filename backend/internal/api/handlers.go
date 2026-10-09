@@ -126,7 +126,7 @@ func GetMapsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
 	if r.Method == "OPTIONS" { return }
 
-	rows, err := db.Conn.Query("SELECT id, map_key, name, description, width, height FROM maps ORDER BY id ASC")
+	rows, err := db.Conn.Query("SELECT id, map_key, map_name, description, width, height FROM maps ORDER BY id ASC")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -159,7 +159,7 @@ func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var m models.MapDefinition
-	err = db.Conn.QueryRow("SELECT id, map_key, name, description, width, height FROM maps WHERE id = $1", mapId).
+	err = db.Conn.QueryRow("SELECT id, map_key, map_name, description, width, height FROM maps WHERE id = $1", mapId).
 		Scan(&m.ID, &m.MapKey, &m.Name, &m.Description, &m.Width, &m.Height)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Map not found", http.StatusNotFound)
@@ -235,7 +235,7 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	if req.ID != nil && *req.ID > 0 {
 		mapID = *req.ID
 		_, err = tx.Exec(
-			"UPDATE maps SET name = $1, description = $2, width = $3, height = $4 WHERE id = $5",
+			"UPDATE maps SET map_name = $1, description = $2, width = $3, height = $4 WHERE id = $5",
 			req.Name, req.Description, req.Width, req.Height, mapID,
 		)
 		if err != nil {
@@ -253,7 +253,7 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		mapKey := "custom_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 		err = tx.QueryRow(
-			"INSERT INTO maps (map_key, name, description, width, height) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+			"INSERT INTO maps (map_key, map_name, description, width, height) VALUES ($1, $2, $3, $4, $5) RETURNING id",
 			mapKey, req.Name, req.Description, req.Width, req.Height,
 		).Scan(&mapID)
 		if err != nil {
