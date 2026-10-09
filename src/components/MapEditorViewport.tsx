@@ -11,6 +11,8 @@ interface PlacedStructure {
 }
 
 const STRUCTURE_CATALOG = [
+  { type: 'major_world', name: 'Major World', defaultRadius: 1200 },
+  { type: 'planetoid', name: 'Planetoid', defaultRadius: 450 },
   { type: 'gas_giant', name: 'Gas Giant', defaultRadius: 800 },
   { type: 'asteroid_belt', name: 'Asteroid Belt', defaultRadius: 600 },
   { type: 'nebula', name: 'Nebula Cloud', defaultRadius: 1000 },
@@ -356,7 +358,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#090d1a', padding: '4px 8px', fontSize: '0.65rem', border: '1px solid #334155' }}>
                   <span>{idx + 1}. {s.type} ({Math.round(s.x)}, {Math.round(s.y)})</span>
                   <button 
-                    onClick={() => setStructures(prev => prev.filter(item => item.id !== s.id))}
+                    onClick={() => setStructures(prev => prev.prev.filter(item => item.id !== s.id))}
                     style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem' }}
                   >
                     [X]

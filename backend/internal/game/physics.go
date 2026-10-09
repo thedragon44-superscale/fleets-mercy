@@ -52,14 +52,15 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
-			// Cluster-aware collision check across individual nodes to allow gap navigation
+			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances
 			for i := 0; i < 12; i++ {
 				angle := float64(i) / 12.0 * 2 * math.Pi
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
 				nodeX := s.PosX + math.Cos(angle)*nodeDist
 				nodeY := s.PosY + math.Sin(angle)*nodeDist
 				
-				nodeRadius := (15.0 + float64(i%3)*8.0) + 25.0
+				// Tighter collision radius to allow gap navigation between nodes
+				nodeRadius := (15.0 + float64(i%3)*8.0) + 5.0
 
 				dx := unit.Pos.X - nodeX
 				dy := unit.Pos.Y - nodeY
@@ -93,9 +94,12 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 		if dist < collisionRadius {
 			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
 				// Core Death Zone: Instant destruction[cite: 3]
-				unit.IsDestroyed = true
-				unit.Shields = models.QuadrantStats{}
-				return
+				targetDestroyed := true
+				if targetDestroyed {
+					unit.IsDestroyed = true
+					unit.Shields = models.QuadrantStats{}
+					return
+				}
 			}
 
 			if dist > 0.1 {
