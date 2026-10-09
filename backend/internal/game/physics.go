@@ -8,7 +8,7 @@ import (
 func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
 	if target.IsDestroyed { return }
 
-	// 95% Damage Reduction for Dreadnought Armor
+	// 95% Damage Reduction for Dreadnought Armor[cite: 5]
 	if target.Type == "flagship" {
 		damage *= 0.05
 	}
@@ -59,7 +59,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 		if dist < collisionRadius {
 			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
-				// Core Death Zone: Instant destruction
+				// Core Death Zone: Instant destruction[cite: 3]
 				unit.IsDestroyed = true
 				unit.Shields = models.QuadrantStats{}
 				return
@@ -78,6 +78,29 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 					unit.Vel.Y -= dot * ny
 				}
 			}
+		}
+	}
+}
+
+func ApplyMajorWorldGravity(unit *models.FleetUnit, structures []models.MapStructure) {
+	if unit.IsDestroyed { return }
+
+	for _, s := range structures {
+		if s.StructureType != "major_world" && s.StructureType != "terrestrial" { continue }
+
+		dx := s.PosX - unit.Pos.X
+		dy := s.PosY - unit.Pos.Y
+		dist := math.Hypot(dx, dy)
+
+		gravityRadius := s.Radius * 2.5
+
+		if dist < gravityRadius && dist > s.Radius {
+			pullFactor := (1.0 - (dist / gravityRadius)) * 0.15
+			nx := dx / dist
+			ny := dy / dist
+
+			unit.Vel.X += nx * pullFactor
+			unit.Vel.Y += ny * pullFactor
 		}
 	}
 }

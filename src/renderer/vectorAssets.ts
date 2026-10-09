@@ -62,18 +62,12 @@ const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
   default: { w: 40, h: 40 }
 };
 
-// Canvas Angle = 0 points RIGHT (3 o'clock)
 const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
-  // Native LEFT -> rotate +180deg (Math.PI)
   flagship: Math.PI, aegis_repair: Math.PI, assault_gunship: Math.PI, 
   grav_extractor: Math.PI, mining_barge: Math.PI, plasma_skimmer: Math.PI, 
   specter_jammer: Math.PI, supply_tender: Math.PI, torpedo_bomber: Math.PI, 
   vortex_minelayer: Math.PI,
-
-  // Native RIGHT -> rotate 0deg (0)
   lancer_corvette: 0, viper_interceptor: 0,
-
-  // Native UP -> rotate +90deg (Math.PI / 2)
   cryo_flak: Math.PI / 2, ion_interceptor: Math.PI / 2, phantom_transport: Math.PI / 2, 
   recon_probe: Math.PI / 2, gun_emplacement: Math.PI / 2, aegis_wall: Math.PI / 2, 
   warp_frigate: Math.PI / 2
@@ -106,23 +100,10 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
     ctx.shadowBlur = 14;
     
     const flameLen = 22 + Math.random() * 16;
-    
-    // Top engine plume
     ctx.beginPath();
-    ctx.moveTo(42, -22);
-    ctx.lineTo(42 + flameLen, -18);
-    ctx.lineTo(42, -14);
-    ctx.closePath();
-    ctx.fill();
-
-    // Bottom engine plume
+    ctx.moveTo(42, -22); ctx.lineTo(42 + flameLen, -18); ctx.lineTo(42, -14); ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(42, 14);
-    ctx.lineTo(42 + flameLen, 18);
-    ctx.lineTo(42, 22);
-    ctx.closePath();
-    ctx.fill();
-
+    ctx.moveTo(42, 14); ctx.lineTo(42 + flameLen, 18); ctx.lineTo(42, 22); ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
   }
 
@@ -224,6 +205,27 @@ export function renderEnvironmentVector(ctx: CanvasRenderingContext2D, type: str
     ctx.save();
     
     switch (type) {
+        case 'major_world':
+        case 'terrestrial':
+            ctx.fillStyle = '#1e3a8a';
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath(); ctx.arc(-radius * 0.3, -radius * 0.2, radius * 0.35, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(radius * 0.35, radius * 0.3, radius * 0.3, 0, Math.PI * 2); ctx.fill();
+            break;
+
+        case 'planetoid':
+            ctx.fillStyle = '#334155';
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#d97706';
+            ctx.beginPath(); ctx.arc(radius * 0.2, -radius * 0.25, radius * 0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-radius * 0.3, radius * 0.3, radius * 0.18, 0, Math.PI * 2); ctx.fill();
+            break;
+
         case 'gas_giant':
             ctx.strokeStyle = 'rgba(100, 150, 255, 0.4)';
             ctx.lineWidth = 2;
@@ -242,10 +244,7 @@ export function renderEnvironmentVector(ctx: CanvasRenderingContext2D, type: str
                 const dist = radius * (0.6 + Math.sin(i) * 0.3);
                 const x = Math.cos(angle) * dist;
                 const y = Math.sin(angle) * dist;
-                ctx.beginPath();
-                ctx.arc(x, y, 15 + (i % 3) * 8, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
+                ctx.beginPath(); ctx.arc(x, y, 15 + (i % 3) * 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
             }
             break;
 
@@ -273,20 +272,15 @@ export function renderEnvironmentVector(ctx: CanvasRenderingContext2D, type: str
             ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke();
             ctx.fillStyle = '#000000';
-            ctx.beginPath(); ctx.arc(0, 0, radius * 0.4, 0, Math.PI * 2); ctx.fill();
-            ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, radius * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
             break;
 
         case 'comet':
             ctx.strokeStyle = 'rgba(0, 200, 255, 0.6)';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(-radius * 6, -radius * 2);
-            ctx.lineTo(-radius * 4, radius * 2);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(0, 200, 255, 0.2)';
-            ctx.fill();
+            ctx.moveTo(0, 0); ctx.lineTo(-radius * 6, -radius * 2); ctx.lineTo(-radius * 4, radius * 2); ctx.closePath();
+            ctx.fillStyle = 'rgba(0, 200, 255, 0.2)'; ctx.fill();
             ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.stroke();
             break;
             
@@ -305,13 +299,8 @@ export function renderResourceNodeVector(ctx: CanvasRenderingContext2D, resource
     ctx.lineWidth = 1.5;
     
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(10, 0);
-    ctx.lineTo(0, 10);
-    ctx.lineTo(-10, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    ctx.moveTo(0, -10); ctx.lineTo(10, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.closePath();
+    ctx.fill(); ctx.stroke();
     
     ctx.restore();
 }

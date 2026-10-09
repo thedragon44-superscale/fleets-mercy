@@ -361,6 +361,9 @@ func (r *GameRoom) Run() {
 			// Apply Environmental Collisions (Planets, Moons, Planetoids, Gas Giant Cores)
 			ApplyEnvironmentalCollisions(unit, r.structures)
 
+			// Apply Major World Gravitational Pull
+			ApplyMajorWorldGravity(unit, r.structures)
+
 			for _, other := range r.units {
 				if unit.ID == other.ID || other.IsDestroyed { continue }
 				dx := other.Pos.X - unit.Pos.X
