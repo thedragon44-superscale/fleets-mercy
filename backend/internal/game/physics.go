@@ -52,14 +52,14 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
-			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances
+			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances[cite: 8, 19]
 			for i := 0; i < 12; i++ {
 				angle := float64(i) / 12.0 * 2 * math.Pi
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
 				nodeX := s.PosX + math.Cos(angle)*nodeDist
 				nodeY := s.PosY + math.Sin(angle)*nodeDist
 				
-				// Tighter collision radius to allow gap navigation between nodes
+				// Tighter collision radius to allow gap navigation between nodes[cite: 8, 19]
 				nodeRadius := (15.0 + float64(i%3)*8.0) + 5.0
 
 				dx := unit.Pos.X - nodeX

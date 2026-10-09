@@ -10,15 +10,16 @@ interface PlacedStructure {
   radius: number;
 }
 
+// Updated Catalog aligned with backend database blueprint constraints
 const STRUCTURE_CATALOG = [
-  { type: 'major_world', name: 'Major World', defaultRadius: 1200 },
-  { type: 'planetoid', name: 'Planetoid', defaultRadius: 450 },
-  { type: 'gas_giant', name: 'Gas Giant', defaultRadius: 800 },
-  { type: 'asteroid_belt', name: 'Asteroid Belt', defaultRadius: 600 },
-  { type: 'nebula', name: 'Nebula Cloud', defaultRadius: 1000 },
-  { type: 'moon', name: 'Planetary Moon', defaultRadius: 400 },
-  { type: 'singularity', name: 'Singularity', defaultRadius: 300 },
-  { type: 'comet', name: 'Comet', defaultRadius: 250 }
+  { type: 'major_world', name: 'Major World', defaultRadius: 1200, minRadius: 1000, maxRadius: 1500, isResizable: true },
+  { type: 'planetoid', name: 'Planetoid', defaultRadius: 450, minRadius: 300, maxRadius: 600, isResizable: true },
+  { type: 'gas_giant', name: 'Gas Giant', defaultRadius: 3500, minRadius: 3000, maxRadius: 4000, isResizable: true },
+  { type: 'asteroid_belt', name: 'Asteroid Belt', defaultRadius: 800, minRadius: 500, maxRadius: 1200, isResizable: true },
+  { type: 'nebula', name: 'Nebula Cloud', defaultRadius: 1000, minRadius: 800, maxRadius: 1500, isResizable: true },
+  { type: 'moon', name: 'Planetary Moon', defaultRadius: 600, minRadius: 400, maxRadius: 900, isResizable: true },
+  { type: 'singularity', name: 'Singularity', defaultRadius: 200, minRadius: 200, maxRadius: 200, isResizable: false },
+  { type: 'comet', name: 'Comet', defaultRadius: 150, minRadius: 150, maxRadius: 150, isResizable: false }
 ];
 
 export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => void }> = ({ mapId, onExit }) => {
@@ -39,8 +40,18 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
 
   const [structures, setStructures] = useState<PlacedStructure[]>([]);
   const [selectedToolType, setSelectedToolType] = useState<string>('asteroid_belt');
+  const [selectedToolRadius, setSelectedToolRadius] = useState<number>(800);
+  const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showUI, setShowUI] = useState<boolean>(true);
+
+  // Active catalog item definition
+  const activeCatalogItem = STRUCTURE_CATALOG.find(c => c.type === selectedToolType) || STRUCTURE_CATALOG[3];
+
+  // Sync default radius when switching palette tools
+  useEffect(() => {
+    setSelectedToolRadius(activeCatalogItem.defaultRadius);
+  }, [selectedToolType]);
 
   // Fetch existing map details if editing an existing map
   useEffect(() => {
@@ -125,19 +136,27 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
         ctx.save();
         ctx.translate(s.x, s.y);
         renderEnvironmentVector(ctx, s.type, s.radius);
+        
+        // Highlight selected structure
+        if (s.id === selectedStructureId) {
+          ctx.strokeStyle = '#00f3ff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, s.radius + 15, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
         ctx.restore();
       });
 
       // Render Active Ghost Preview at Cursor World Position
       const worldMouseX = mousePos.current.x - canvas.width / 2 + cameraPos.current.x;
       const worldMouseY = mousePos.current.y - canvas.height / 2 + cameraPos.current.y;
-      
-      const activeCatalogItem = STRUCTURE_CATALOG.find(c => c.type === selectedToolType) || STRUCTURE_CATALOG[0];
 
       ctx.save();
       ctx.translate(worldMouseX, worldMouseY);
       ctx.globalAlpha = 0.5;
-      renderEnvironmentVector(ctx, activeCatalogItem.type, activeCatalogItem.defaultRadius);
+      renderEnvironmentVector(ctx, activeCatalogItem.type, selectedToolRadius);
       ctx.restore();
 
       ctx.restore();
@@ -204,7 +223,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [mapWidth, mapHeight, structures, selectedToolType]);
+  }, [mapWidth, mapHeight, structures, selectedToolType, selectedToolRadius, selectedStructureId]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return;
@@ -213,17 +232,25 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
 
     const worldMouseX = e.clientX - canvas.width / 2 + cameraPos.current.x;
     const worldMouseY = e.clientY - canvas.height / 2 + cameraPos.current.y;
-    const activeCatalogItem = STRUCTURE_CATALOG.find(c => c.type === selectedToolType) || STRUCTURE_CATALOG[0];
 
+    // Check if clicking an existing structure to select it
+    const clicked = structures.find(s => Math.hypot(s.x - worldMouseX, s.y - worldMouseY) <= s.radius);
+    if (clicked) {
+      setSelectedStructureId(clicked.id);
+      return;
+    }
+
+    // Otherwise, place new structure with selected radius
     const newStructure: PlacedStructure = {
       id: `struct_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       type: selectedToolType,
       x: worldMouseX,
       y: worldMouseY,
-      radius: activeCatalogItem.defaultRadius
+      radius: selectedToolRadius
     };
 
     setStructures(prev => [...prev, newStructure]);
+    setSelectedStructureId(newStructure.id);
   };
 
   const handleSaveMap = async () => {
@@ -247,6 +274,8 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
     }
   };
 
+  const selectedStructure = structures.find(s => s.id === selectedStructureId);
+
   return (
     <div 
       style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}
@@ -254,7 +283,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
     >
       <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
 
-      {/* Persistent Sector Radar (Independent of UI toggle) */}
+      {/* Persistent Sector Radar */}
       <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)', pointerEvents: 'none' }}>
         <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', zIndex: 2 }}>
           SECTOR RADAR ({mapWidth}M)
@@ -278,7 +307,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
           </div>
 
           {/* Editor Sidebar Catalog & Config */}
-          <div style={{ position: 'absolute', top: 60, left: 15, width: '300px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #a855f7', borderRadius: '4px', padding: '14px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
+          <div style={{ position: 'absolute', top: 60, left: 15, width: '310px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #a855f7', borderRadius: '4px', padding: '14px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
             <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: '0 0 10px 0', fontWeight: 'bold', borderBottom: '1px solid #581c87', paddingBottom: '6px' }}>
               🗺️ MAP CREATOR STUDIO
             </h3>
@@ -345,20 +374,81 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
                   }}
                 >
                   <div style={{ fontWeight: 'bold' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Default Radius: {item.defaultRadius}m</div>
+                  <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>
+                    {item.isResizable ? `Radius: ${item.minRadius}-${item.maxRadius}m` : `Fixed Radius: ${item.defaultRadius}m`}
+                  </div>
                 </button>
               ))}
             </div>
+
+            {/* Dynamic Radius Inspector / Slider */}
+            <div style={{ background: '#090d1a', border: '1px solid #334155', padding: '10px', borderRadius: '4px', marginBottom: '14px' }}>
+              <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
+                PLACEMENT RADIUS CONFIG
+              </div>
+              {activeCatalogItem.isResizable ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94a3b8', marginBottom: '4px' }}>
+                    <span>Scale: {selectedToolRadius}m</span>
+                    <span>[{activeCatalogItem.minRadius}m - {activeCatalogItem.maxRadius}m]</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min={activeCatalogItem.minRadius} 
+                    max={activeCatalogItem.maxRadius} 
+                    step={10}
+                    value={selectedToolRadius}
+                    onChange={e => setSelectedToolRadius(parseInt(e.target.value))}
+                    style={{ width: '100%', accentColor: '#c084fc' }}
+                  />
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.65rem', color: '#ef4444', fontStyle: 'italic' }}>
+                  ⚠️ {activeCatalogItem.name} has a fixed footprint ({activeCatalogItem.defaultRadius}m) and cannot be resized.
+                </div>
+              )}
+            </div>
+
+            {/* Selected Instance Properties Inspector */}
+            {selectedStructure && (
+              <div style={{ background: 'rgba(0, 243, 255, 0.05)', border: '1px solid #00f3ff', padding: '10px', borderRadius: '4px', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#00f3ff', fontWeight: 'bold' }}>SELECTED INSTANCE</span>
+                  <button 
+                    onClick={() => {
+                      setStructures(prev => prev.filter(s => s.id !== selectedStructureId));
+                      setSelectedStructureId(null);
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem' }}
+                  >
+                    [DELETE]
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div>Type: {selectedStructure.type}</div>
+                  <div>Position: ({Math.round(selectedStructure.x)}, {Math.round(selectedStructure.y)})</div>
+                  <div>Radius: {selectedStructure.radius}m</div>
+                </div>
+              </div>
+            )}
 
             <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
               PLACED STRUCTURES ({structures.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', marginBottom: '14px' }}>
               {structures.map((s, idx) => (
-                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#090d1a', padding: '4px 8px', fontSize: '0.65rem', border: '1px solid #334155' }}>
+                <div 
+                  key={s.id} 
+                  onClick={() => setSelectedStructureId(s.id)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: selectedStructureId === s.id ? 'rgba(0, 243, 255, 0.15)' : '#090d1a', padding: '4px 8px', fontSize: '0.65rem', border: `1px solid ${selectedStructureId === s.id ? '#00f3ff' : '#334155'}`, cursor: 'pointer' }}
+                >
                   <span>{idx + 1}. {s.type} ({Math.round(s.x)}, {Math.round(s.y)})</span>
                   <button 
-                    onClick={() => setStructures(prev => prev.prev.filter(item => item.id !== s.id))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStructures(prev => prev.filter(item => item.id !== s.id));
+                      if (selectedStructureId === s.id) setSelectedStructureId(null);
+                    }}
                     style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem' }}
                   >
                     [X]
@@ -381,7 +471,7 @@ export const MapEditorViewport: React.FC<{ mapId?: number | null; onExit: () => 
 
             <button
               type="button"
-              onClick={() => setStructures([])}
+              onClick={() => { setStructures([]); setSelectedStructureId(null); }}
               style={{
                 marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
                 border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'

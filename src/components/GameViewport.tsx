@@ -514,3 +514,5 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mode 
     </div>
   );
 };
+
+export default GameViewport;
