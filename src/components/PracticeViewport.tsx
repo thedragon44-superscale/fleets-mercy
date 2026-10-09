@@ -28,10 +28,10 @@ export const PracticeViewport: React.FC = () => {
   const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
+  const [activeUnits, setActiveUnits] = useState<FleetUnit[]>([]);
 
   const sendAction = (actionParams: any = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
-      // Correctly resolve the active unit based on controlledUnitId, falling back to flagship
       const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitId) || 
                              serverState.current.units?.find(u => u.id === 'player-flagship');
       let angle = 0;
@@ -66,6 +66,9 @@ export const PracticeViewport: React.FC = () => {
     wsRef.current.onmessage = (e) => { 
       const state = JSON.parse(e.data);
       serverState.current = state;
+      // Real-time update for React sidebar
+      const playerList = (state.units || []).filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed);
+      setActiveUnits(playerList);
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -104,7 +107,6 @@ export const PracticeViewport: React.FC = () => {
         ctx.save();
         ctx.translate(canvas.width / 2 - cameraPos.current.x, canvas.height / 2 - cameraPos.current.y);
 
-        // Grid lines
         ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
         for (let i = 0; i <= serverState.current.mapBounds.width; i += 200) { ctx.moveTo(i, 0); ctx.lineTo(i, serverState.current.mapBounds.height); }
         for (let i = 0; i <= serverState.current.mapBounds.height; i += 200) { ctx.moveTo(0, i); ctx.lineTo(serverState.current.mapBounds.width, i); }
@@ -136,8 +138,6 @@ export const PracticeViewport: React.FC = () => {
     };
   }, [controlledUnitId]);
 
-  const playerUnits = serverState.current?.units?.filter(u => u.ownerId === 'player' && !u.isDestroyed) || [];
-
   return (
     <div 
       style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}
@@ -168,13 +168,12 @@ export const PracticeViewport: React.FC = () => {
             Right-click anywhere to hide panel. Click any spawned unit to manually pilot it.
           </p>
 
-          {/* Active Spawned Units Section for Manual Control */}
           <div style={{ marginBottom: '14px' }}>
             <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
               ACTIVE SPAWNED UNITS (PILOT)
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
-              {playerUnits.map(unit => {
+              {activeUnits.map(unit => {
                 const isControlled = controlledUnitId === unit.id;
                 return (
                   <button
@@ -199,7 +198,6 @@ export const PracticeViewport: React.FC = () => {
             </div>
           </div>
 
-          {/* Unit Catalog Spawner Section */}
           <div style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '6px' }}>
             SPAWN FROM CATALOG
           </div>
