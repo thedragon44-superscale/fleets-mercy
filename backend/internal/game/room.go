@@ -411,6 +411,3 @@ func (r *GameRoom) Run() {
 		r.mu.Unlock()
 	}
 }
-```[cite: 7]
-
-How does the flagship's top speed and drift feel now when you test it out in your sandbox?
