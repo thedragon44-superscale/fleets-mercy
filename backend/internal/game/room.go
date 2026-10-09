@@ -258,8 +258,8 @@ func (r *GameRoom) Run() {
 			if unit.ID == controlledID && unit.OwnerID == "player" {
 				unit.Angle = r.lastInput.Angle
 				unit.IsFiring = r.lastInput.IsFiring
-				accel := unit.Speed * 1.5
-				maxSpeed := unit.Speed * 2.0
+				accel := unit.Speed * 3.5
+				maxSpeed := unit.Speed * 6.0
 
 				if r.lastInput.W { 
 					unit.Vel.X += math.Cos(unit.Angle) * accel 
@@ -411,3 +411,6 @@ func (r *GameRoom) Run() {
 		r.mu.Unlock()
 	}
 }
+```[cite: 7]
+
+How does the flagship's top speed and drift feel now when you test it out in your sandbox?
