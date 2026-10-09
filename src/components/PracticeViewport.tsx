@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics } from '../renderer/vectorAssets';
+import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
 import { UNIT_DB } from './GarageDashboard';
 import { WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
@@ -176,6 +176,16 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
 
+        // Render Map Structures from Database Detail
+        if (mapDetails?.structures) {
+          mapDetails.structures.forEach(s => {
+            ctx.save();
+            ctx.translate(s.posX, s.posY);
+            renderEnvironmentVector(ctx, s.structureType, s.radius);
+            ctx.restore();
+          });
+        }
+
         (serverState.current.units || []).forEach((u: any) => {
           const isControlled = u.id === controlledUnitIdRef.current;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
@@ -215,6 +225,19 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
+          // Render Structure Footprints on Radar
+          if (mapDetails?.structures) {
+            mapDetails.structures.forEach(s => {
+              const rx = s.posX * scaleX;
+              const ry = s.posY * scaleY;
+              const rr = Math.max(2, s.radius * scaleX);
+              radarCtx.fillStyle = 'rgba(168, 85, 247, 0.6)';
+              radarCtx.beginPath();
+              radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
+              radarCtx.fill();
+            });
+          }
+
           (serverState.current.units || []).forEach((u: any) => {
             const isControlled = u.id === controlledUnitIdRef.current;
             const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
@@ -244,7 +267,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
       window.removeEventListener('keydown', onKeyDown); 
       window.removeEventListener('keyup', onKeyUp); 
     };
-  }, []);
+  }, [mapDetails]);
 
   const playerUnits = serverState.current?.units
     ?.filter(u => u.ownerId === 'player' && !u.isDestroyed)

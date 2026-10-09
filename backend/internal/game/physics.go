@@ -1,8 +1,8 @@
 package game
 
 import (
-	"space-tactics-server/internal/models"
 	"math"
+	"space-tactics-server/internal/models"
 )
 
 func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
@@ -47,3 +47,37 @@ func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) 
 	}
 }
 
+func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.MapStructure) {
+	if unit.IsDestroyed { return }
+
+	for _, s := range structures {
+		dx := unit.Pos.X - s.PosX
+		dy := unit.Pos.Y - s.PosY
+		dist := math.Hypot(dx, dy)
+
+		collisionRadius := s.Radius + 30.0
+
+		if dist < collisionRadius {
+			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
+				// Core Death Zone: Instant destruction
+				unit.IsDestroyed = true
+				unit.Shields = models.QuadrantStats{}
+				return
+			}
+
+			if dist > 0.1 {
+				nx := dx / dist
+				ny := dy / dist
+				overlap := collisionRadius - dist
+				unit.Pos.X += nx * overlap
+				unit.Pos.Y += ny * overlap
+
+				dot := unit.Vel.X*nx + unit.Vel.Y*ny
+				if dot < 0 {
+					unit.Vel.X -= dot * nx
+					unit.Vel.Y -= dot * ny
+				}
+			}
+		}
+	}
+}

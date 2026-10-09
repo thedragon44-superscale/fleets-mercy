@@ -30,6 +30,8 @@ type GameRoom struct {
 	resetTimer  int
 	deployQueue []string
 	isSandbox   bool
+	mapID       int
+	structures  []models.MapStructure
 
 	clients     map[*websocket.Conn]bool
 	mu          sync.Mutex
@@ -40,15 +42,42 @@ type GameRoom struct {
 	idCounter   uint64
 }
 
-func NewGameRoom(isSandbox bool) *GameRoom {
+func NewGameRoom(mapID int, isSandbox bool) *GameRoom {
 	room := &GameRoom{
 		clients:     make(map[*websocket.Conn]bool),
 		units:       make(map[string]*models.FleetUnit),
 		deployQueue: make([]string, 0),
 		isSandbox:   isSandbox,
+		mapID:       mapID,
 	}
+	room.loadMapStructures()
 	room.resetWorld()
 	return room
+}
+
+func (r *GameRoom) loadMapStructures() {
+	r.structures = []models.MapStructure{}
+	if r.mapID == 0 { r.mapID = 1 }
+
+	rows, err := db.Conn.Query(
+		"SELECT id, map_id, structure_type, pos_x, pos_y, radius, custom_props FROM map_structures WHERE map_id = $1", 
+		r.mapID,
+	)
+	if err != nil {
+		log.Printf("⚠️ Warning: Failed to load structures for map %d: %v", r.mapID, err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s models.MapStructure
+		var props []byte
+		if err := rows.Scan(&s.ID, &s.MapID, &s.StructureType, &s.PosX, &s.PosY, &s.Radius, &props); err == nil {
+			s.CustomProps = props
+			r.structures = append(r.structures, s)
+		}
+	}
+	log.Printf("🗺️ Loaded %d environmental structures for map ID %d", len(r.structures), r.mapID)
 }
 
 func (r *GameRoom) resetWorld() {
@@ -328,6 +357,9 @@ func (r *GameRoom) Run() {
 			if unit.Pos.X > 11950 { unit.Pos.X = 11950; unit.Vel.X = 0 }
 			if unit.Pos.Y < 50 { unit.Pos.Y = 50; unit.Vel.Y = 0 }
 			if unit.Pos.Y > 11950 { unit.Pos.Y = 11950; unit.Vel.Y = 0 }
+
+			// Apply Environmental Collisions (Planets, Moons, Planetoids, Gas Giant Cores)
+			ApplyEnvironmentalCollisions(unit, r.structures)
 
 			for _, other := range r.units {
 				if unit.ID == other.ID || other.IsDestroyed { continue }
