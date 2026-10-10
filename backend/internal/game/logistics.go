@@ -2,7 +2,6 @@ package game
 
 import (
 	"math"
-	"space-tactics-server/internal/models"
 )
 
 // ProcessLogisticsLoops manages resource harvesting tethers, ammunition replenishment, and capital ship support loops

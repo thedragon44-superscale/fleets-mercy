@@ -2,7 +2,6 @@ package game
 
 import (
 	"math"
-	"math/rand"
 	"space-tactics-server/internal/models"
 )
 
