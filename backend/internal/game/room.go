@@ -116,7 +116,6 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 			continue
 		}
 
-		// Verify target is visible via shared telemetry grid
 		if !r.IsUnitVisible(unit.OwnerID, target) {
 			continue
 		}
@@ -164,17 +163,9 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 	id := fmt.Sprintf("%s-%d", unitType, r.idCounter)
 
 	if unitType == "flagship" {
-		if owner == "player" {
-			id = "player-flagship"
-		} else {
-			id = "enemy-flagship"
-		}
+		if owner == "player" { id = "player-flagship" } else { id = "enemy-flagship" }
 	} else if unitType == "battalion_command_ship" {
-		if owner == "player" {
-			id = "player-battalion-command"
-		} else {
-			id = "enemy-battalion-command"
-		}
+		if owner == "player" { id = "player-battalion-command" } else { id = "enemy-battalion-command" }
 	}
 
 	aiState := template.AIState
@@ -183,7 +174,11 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 	unit := &models.FleetUnit{
 		ID: id, Type: unitType, OwnerID: owner, Pos: models.Vector2D{X: x, Y: y},
 		Shields: template.Shields, Hull: template.Hull, AIState: aiState,
-		Speed: template.Speed, MaxCooldown: template.MaxCooldown,
+		Speed: template.Speed, MaxCooldown: template.MaxCooldown, WeightClass: template.WeightClass,
+		VisionRange: template.VisionRange, DPS: template.DPS,
+		MaxThermalCapacity: template.MaxThermalCapacity, CurrentThermal: 0.0,
+		MaxAmmoCapacity: template.MaxAmmoCapacity, CurrentAmmo: template.CurrentAmmo,
+		RadarImmunityActive: template.RadarImmunityActive, StealthTimer: template.StealthTimer,
 		IsBattalionCommander: (unitType == "battalion_command_ship"),
 		ResourceCache:       100.0,
 		MaxResourceCapacity: 500.0,
@@ -308,9 +303,7 @@ func (r *GameRoom) Run() {
 
 		deadCount := 0
 		controlledID := r.lastInput.ControlledUnitID
-		if controlledID == "" {
-			controlledID = "player-flagship"
-		}
+		if controlledID == "" { controlledID = "player-flagship" }
 
 		for id, unit := range r.units {
 			if unit.IsDestroyed {
@@ -322,7 +315,7 @@ func (r *GameRoom) Run() {
 				continue
 			}
 
-			// Squad Leader Cascading Retreat Check (Shield-Break Trigger)
+			// Shield-Break Cascading Retreat Trigger
 			if unit.IsSquadLeader && !unit.IsDestroyed && unit.AIState != "RETREAT" {
 				totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
 				if totalShields <= 0.0 {
@@ -367,7 +360,6 @@ func (r *GameRoom) Run() {
 				}
 			} else {
 				if unit.AIState == "RETREAT" {
-					// Vector back to nearest friendly capital port for repair
 					var portTarget *models.FleetUnit
 					minDistToPort := math.MaxFloat64
 
@@ -389,20 +381,15 @@ func (r *GameRoom) Run() {
 						unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.2
 						unit.IsFiring = false
 
-						if minDistToPort < 150.0 {
-							unit.AIState = "GUARD" // Safe at port
-						}
+						if minDistToPort < 150.0 { unit.AIState = "GUARD" }
 					} else {
 						unit.IsFiring = false
 					}
 				} else if unit.SquadID > 0 && !unit.IsSquadLeader {
-					// Squad Member Behavior: Track Leader & Shared Target Scoring[cite: 2]
 					leader := r.findSquadLeader(unit.OwnerID, unit.SquadID)
 					if leader != nil && !leader.IsDestroyed {
 						target := r.findBestTarget(leader)
-						if target == nil {
-							target = r.findBestTarget(unit)
-						}
+						if target == nil { target = r.findBestTarget(unit) }
 
 						if target != nil && !target.IsDestroyed {
 							dx := target.Pos.X - unit.Pos.X
@@ -418,7 +405,6 @@ func (r *GameRoom) Run() {
 								unit.IsFiring = true
 							}
 						} else {
-							// Formation Anchoring around leader[cite: 2]
 							targetX := leader.Pos.X + 100.0
 							targetY := leader.Pos.Y + 100.0
 							dx := targetX - unit.Pos.X
@@ -435,7 +421,6 @@ func (r *GameRoom) Run() {
 							unit.IsFiring = false
 						}
 					} else {
-						// Fallback if leader is destroyed
 						target := r.findBestTarget(unit)
 						if target != nil && !target.IsDestroyed {
 							dx := target.Pos.X - unit.Pos.X
@@ -453,12 +438,11 @@ func (r *GameRoom) Run() {
 							unit.IsFiring = false
 						}
 					}
-				} else if unit.BuddyID != "" || unit.Type == "aegis_repair_corvette" {
-					// Secondary Buddy Protocol: 1:1 support tether / repair orbit[cite: 6]
+				} else if unit.BuddyID != "" || unit.Type == "aegis_repair" {
 					var buddyTarget *models.FleetUnit
 					if unit.BuddyID != "" {
 						buddyTarget = r.units[unit.BuddyID]
-					} else if unit.Type == "aegis_repair_corvette" {
+					} else if unit.Type == "aegis_repair" {
 						minDist := math.MaxFloat64
 						for _, ally := range r.units {
 							if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && ally.Type != "flagship" && !ally.IsDestroyed {
@@ -480,15 +464,13 @@ func (r *GameRoom) Run() {
 						angleToBuddy := math.Atan2(dy, dx)
 						
 						orbitAngle := angleToBuddy + (math.Pi / 2)
-						if distToBuddy > targetOrbitDist + 50 {
-							orbitAngle = angleToBuddy
-						}
+						if distToBuddy > targetOrbitDist + 50 { orbitAngle = angleToBuddy }
 
 						unit.Angle = angleToBuddy
 						unit.Vel.X += math.Cos(orbitAngle) * unit.Speed
 						unit.Vel.Y += math.Sin(orbitAngle) * unit.Speed
 
-						if unit.Type == "aegis_repair_corvette" && distToBuddy <= 200.0 {
+						if unit.Type == "aegis_repair" && distToBuddy <= 200.0 {
 							buddyTarget.Hull.Front = math.Min(100.0, buddyTarget.Hull.Front + 0.2)
 						}
 						unit.IsFiring = false
@@ -523,9 +505,7 @@ func (r *GameRoom) Run() {
 							angleToTarget := math.Atan2(dy, dx)
 							
 							orbitAngle := angleToTarget + (math.Pi / 2)
-							if currentDist > targetOrbitDist + 100 {
-								orbitAngle = angleToTarget
-							}
+							if currentDist > targetOrbitDist + 100 { orbitAngle = angleToTarget }
 
 							unit.Angle = angleToTarget
 							unit.Vel.X = math.Cos(orbitAngle) * 3.5
@@ -537,7 +517,6 @@ func (r *GameRoom) Run() {
 					}
 					unit.IsFiring = false
 				} else if unit.Type == "battalion_command_ship" {
-					// 1. Autonomous Radar Vectoring via Telemetry Grid
 					var bestTarget *models.FleetUnit
 					minDist := math.MaxFloat64
 
@@ -569,7 +548,6 @@ func (r *GameRoom) Run() {
 						unit.IsFiring = false
 					}
 
-					// 2. Automated Drydock Repair Loop: Pull in damaged squadmates within 150m
 					for _, ally := range r.units {
 						if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && !ally.IsDestroyed {
 							distToDock := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
@@ -581,7 +559,6 @@ func (r *GameRoom) Run() {
 					}
 				} else {
 					target := r.findBestTarget(unit)
-
 					if unit.OwnerID == "enemy" && target == nil { target = flagship }
 
 					if target != nil && !target.IsDestroyed {

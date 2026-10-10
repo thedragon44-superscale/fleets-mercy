@@ -264,7 +264,6 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, s := range req.Structures {
-		// Resolve structure_key to master catalog ID
 		var structureID int
 		err = tx.QueryRow("SELECT id FROM environmental_structures WHERE structure_key = $1", s.Type).Scan(&structureID)
 		if err != nil {
