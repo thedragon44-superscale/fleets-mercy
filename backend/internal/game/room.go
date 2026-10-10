@@ -396,7 +396,7 @@ func (r *GameRoom) Run() {
 						unit.IsFiring = false
 					}
 				} else if unit.SquadID > 0 && !unit.IsSquadLeader {
-					// Squad Member Behavior: Track Leader & Shared Target Scoring
+					// Squad Member Behavior: Track Leader & Shared Target Scoring[cite: 2]
 					leader := r.findSquadLeader(unit.OwnerID, unit.SquadID)
 					if leader != nil && !leader.IsDestroyed {
 						target := r.findBestTarget(leader)
@@ -418,7 +418,7 @@ func (r *GameRoom) Run() {
 								unit.IsFiring = true
 							}
 						} else {
-							// Formation Anchoring around leader
+							// Formation Anchoring around leader[cite: 2]
 							targetX := leader.Pos.X + 100.0
 							targetY := leader.Pos.Y + 100.0
 							dx := targetX - unit.Pos.X
@@ -452,6 +452,48 @@ func (r *GameRoom) Run() {
 						} else {
 							unit.IsFiring = false
 						}
+					}
+				} else if unit.BuddyID != "" || unit.Type == "aegis_repair_corvette" {
+					// Secondary Buddy Protocol: 1:1 support tether / repair orbit[cite: 6]
+					var buddyTarget *models.FleetUnit
+					if unit.BuddyID != "" {
+						buddyTarget = r.units[unit.BuddyID]
+					} else if unit.Type == "aegis_repair_corvette" {
+						minDist := math.MaxFloat64
+						for _, ally := range r.units {
+							if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && ally.Type != "flagship" && !ally.IsDestroyed {
+								d := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
+								if d < minDist {
+									minDist = d
+									buddyTarget = ally
+								}
+							}
+						}
+					}
+
+					if buddyTarget != nil && !buddyTarget.IsDestroyed {
+						dx := buddyTarget.Pos.X - unit.Pos.X
+						dy := buddyTarget.Pos.Y - unit.Pos.Y
+						distToBuddy := math.Hypot(dx, dy)
+
+						targetOrbitDist := 150.0
+						angleToBuddy := math.Atan2(dy, dx)
+						
+						orbitAngle := angleToBuddy + (math.Pi / 2)
+						if distToBuddy > targetOrbitDist + 50 {
+							orbitAngle = angleToBuddy
+						}
+
+						unit.Angle = angleToBuddy
+						unit.Vel.X += math.Cos(orbitAngle) * unit.Speed
+						unit.Vel.Y += math.Sin(orbitAngle) * unit.Speed
+
+						if unit.Type == "aegis_repair_corvette" && distToBuddy <= 200.0 {
+							buddyTarget.Hull.Front = math.Min(100.0, buddyTarget.Hull.Front + 0.2)
+						}
+						unit.IsFiring = false
+					} else {
+						unit.IsFiring = false
 					}
 				} else if unit.Type == "recon_probe" {
 					var nearestTarget *models.FleetUnit
