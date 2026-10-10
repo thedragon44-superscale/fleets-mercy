@@ -88,11 +88,23 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	
+	// Spawn Flagship and 5W Battalion Command Ship for Player
 	r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
+	r.spawnUnit("battalion_command_ship", "player", 6000, 9500, "COMMAND")
 	
 	if !r.isSandbox {
 		r.spawnUnit("flagship", "enemy", 6000, 2000, "SEEK")
+		r.spawnUnit("battalion_command_ship", "enemy", 6000, 2500, "COMMAND")
 	}
+}
+
+func (r *GameRoom) findSquadLeader(ownerID string, squadID int) *models.FleetUnit {
+	for _, unit := range r.units {
+		if unit.OwnerID == ownerID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
+			return unit
+		}
+	}
+	return nil
 }
 
 func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
@@ -101,6 +113,11 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 
 	for _, target := range r.units {
 		if target.IsDestroyed || target.OwnerID == unit.OwnerID || target.Type == "asteroid" {
+			continue
+		}
+
+		// Verify target is visible via shared telemetry grid
+		if !r.IsUnitVisible(unit.OwnerID, target) {
 			continue
 		}
 
@@ -167,6 +184,9 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		ID: id, Type: unitType, OwnerID: owner, Pos: models.Vector2D{X: x, Y: y},
 		Shields: template.Shields, Hull: template.Hull, AIState: aiState,
 		Speed: template.Speed, MaxCooldown: template.MaxCooldown,
+		IsBattalionCommander: (unitType == "battalion_command_ship"),
+		ResourceCache:       100.0,
+		MaxResourceCapacity: 500.0,
 	}
 	r.units[unit.ID] = unit
 }
@@ -302,6 +322,19 @@ func (r *GameRoom) Run() {
 				continue
 			}
 
+			// Squad Leader Cascading Retreat Check (Shield-Break Trigger)
+			if unit.IsSquadLeader && !unit.IsDestroyed && unit.AIState != "RETREAT" {
+				totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
+				if totalShields <= 0.0 {
+					unit.AIState = "RETREAT"
+					for _, member := range r.units {
+						if member.SquadID == unit.SquadID && member.OwnerID == unit.OwnerID && !member.IsDestroyed {
+							member.AIState = "RETREAT"
+						}
+					}
+				}
+			}
+
 			if unit.ID == controlledID && unit.OwnerID == "player" {
 				unit.Angle = r.lastInput.Angle
 				unit.IsFiring = r.lastInput.IsFiring
@@ -333,9 +366,94 @@ func (r *GameRoom) Run() {
 					unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
 				}
 			} else {
-				if unit.Type == "recon_probe" {
-					// 1. Absolute Dedication: 20 unified HP pool, 0 DPS, zero retreat[cite: 6]
-					// 2. Scan for nearest enemy entity within the 2,500m detection bubble[cite: 6]
+				if unit.AIState == "RETREAT" {
+					// Vector back to nearest friendly capital port for repair
+					var portTarget *models.FleetUnit
+					minDistToPort := math.MaxFloat64
+
+					for _, ally := range r.units {
+						if ally.OwnerID == unit.OwnerID && (ally.Type == "flagship" || ally.Type == "battalion_command_ship") && !ally.IsDestroyed {
+							d := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
+							if d < minDistToPort {
+								minDistToPort = d
+								portTarget = ally
+							}
+						}
+					}
+
+					if portTarget != nil {
+						dx := portTarget.Pos.X - unit.Pos.X
+						dy := portTarget.Pos.Y - unit.Pos.Y
+						unit.Angle = math.Atan2(dy, dx)
+						unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 1.2
+						unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.2
+						unit.IsFiring = false
+
+						if minDistToPort < 150.0 {
+							unit.AIState = "GUARD" // Safe at port
+						}
+					} else {
+						unit.IsFiring = false
+					}
+				} else if unit.SquadID > 0 && !unit.IsSquadLeader {
+					// Squad Member Behavior: Track Leader & Shared Target Scoring
+					leader := r.findSquadLeader(unit.OwnerID, unit.SquadID)
+					if leader != nil && !leader.IsDestroyed {
+						target := r.findBestTarget(leader)
+						if target == nil {
+							target = r.findBestTarget(unit)
+						}
+
+						if target != nil && !target.IsDestroyed {
+							dx := target.Pos.X - unit.Pos.X
+							dy := target.Pos.Y - unit.Pos.Y
+							dist := math.Hypot(dx, dy)
+							unit.Angle = math.Atan2(dy, dx)
+
+							if dist > 300 {
+								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
+								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
+								unit.IsFiring = false
+							} else {
+								unit.IsFiring = true
+							}
+						} else {
+							// Formation Anchoring around leader
+							targetX := leader.Pos.X + 100.0
+							targetY := leader.Pos.Y + 100.0
+							dx := targetX - unit.Pos.X
+							dy := targetY - unit.Pos.Y
+							distToAnchor := math.Hypot(dx, dy)
+
+							if distToAnchor > 40.0 {
+								unit.Angle = math.Atan2(dy, dx)
+								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.9
+								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.9
+							} else {
+								unit.Angle = leader.Angle
+							}
+							unit.IsFiring = false
+						}
+					} else {
+						// Fallback if leader is destroyed
+						target := r.findBestTarget(unit)
+						if target != nil && !target.IsDestroyed {
+							dx := target.Pos.X - unit.Pos.X
+							dy := target.Pos.Y - unit.Pos.Y
+							dist := math.Hypot(dx, dy)
+							unit.Angle = math.Atan2(dy, dx)
+							if dist > 250 {
+								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
+								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
+								unit.IsFiring = false
+							} else {
+								unit.IsFiring = true
+							}
+						} else {
+							unit.IsFiring = false
+						}
+					}
+				} else if unit.Type == "recon_probe" {
 					var nearestTarget *models.FleetUnit
 					minDist := math.MaxFloat64
 					for _, other := range r.units {
@@ -353,14 +471,12 @@ func (r *GameRoom) Run() {
 						dy := nearestTarget.Pos.Y - unit.Pos.Y
 						currentDist := math.Hypot(dx, dy)
 
-						// 3. Evasion Protocol: If enemy closes within 1,000m, flee directly away at max speed (3.5)[cite: 6]
 						if currentDist < 1000.0 {
 							fleeAngle := math.Atan2(-dy, -dx)
 							unit.Angle = fleeAngle
 							unit.Vel.X = math.Cos(fleeAngle) * 3.5
 							unit.Vel.Y = math.Sin(fleeAngle) * 3.5
 						} else {
-							// 4. High-Speed Orbit: Maintain a stable distance of ~1,800m around the target[cite: 6]
 							targetOrbitDist := 1800.0
 							angleToTarget := math.Atan2(dy, dx)
 							
@@ -374,11 +490,53 @@ func (r *GameRoom) Run() {
 							unit.Vel.Y = math.Sin(orbitAngle) * 3.5
 						}
 					} else {
-						// 5. Blind Sweep: Continue forward sweep pattern through radar fog when no entities are in range[cite: 6]
 						unit.Vel.X = math.Cos(unit.Angle) * 3.5
 						unit.Vel.Y = math.Sin(unit.Angle) * 3.5
 					}
 					unit.IsFiring = false
+				} else if unit.Type == "battalion_command_ship" {
+					// 1. Autonomous Radar Vectoring via Telemetry Grid
+					var bestTarget *models.FleetUnit
+					minDist := math.MaxFloat64
+
+					for _, other := range r.units {
+						if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
+							if r.IsUnitVisible(unit.OwnerID, other) {
+								dist := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
+								if dist < minDist {
+									minDist = dist
+									bestTarget = other
+								}
+							}
+						}
+					}
+
+					if bestTarget != nil {
+						dx := bestTarget.Pos.X - unit.Pos.X
+						dy := bestTarget.Pos.Y - unit.Pos.Y
+						unit.Angle = math.Atan2(dy, dx)
+
+						if minDist > 800.0 {
+							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
+							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
+							unit.IsFiring = false
+						} else {
+							unit.IsFiring = true
+						}
+					} else {
+						unit.IsFiring = false
+					}
+
+					// 2. Automated Drydock Repair Loop: Pull in damaged squadmates within 150m
+					for _, ally := range r.units {
+						if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && !ally.IsDestroyed {
+							distToDock := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
+							if distToDock < 150.0 && unit.ResourceCache >= 1.0 {
+								unit.ResourceCache -= 0.1
+								ally.Hull.Front = math.Min(100.0, ally.Hull.Front + 0.5)
+							}
+						}
+					}
 				} else {
 					target := r.findBestTarget(unit)
 
