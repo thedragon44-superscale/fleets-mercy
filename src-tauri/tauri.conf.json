@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "space-tactics-ui",
-        "width": 800,
-        "height": 600
+        "title": "Space Tactics",
+        "width": 1200,
+        "height": 650,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {

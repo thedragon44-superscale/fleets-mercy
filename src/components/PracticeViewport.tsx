@@ -19,9 +19,12 @@ interface ServerState {
 
 interface PracticeViewportProps {
   mapId?: number;
+  onNavigateGarage: () => void;
+  onLogout: () => void;
+  onNavigateHome?: () => void;
 }
 
-export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 }) => {
+export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, onNavigateGarage, onLogout, onNavigateHome }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -31,7 +34,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
   const mousePos = useRef({ x: 0, y: 0 });
   const isFiring = useRef(false);
 
-  // Smooth interpolated render positions to eliminate jitter/rubberbanding while keeping drift
   const renderPos = useRef({ x: 6000, y: 10000 });
   const isInitialized = useRef(false);
 
@@ -40,6 +42,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
+  const [simulationSpeed, setSimulationSpeed] = useState<number>(1.0);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [, forceRender] = useState({});
 
   useEffect(() => {
@@ -111,12 +115,34 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
       sendAction();
     };
 
+    const onMouseMove = (e: MouseEvent) => {
+      mousePos.current = { x: e.clientX, y: e.clientY };
+      sendAction();
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) {
+        const target = e.target as HTMLElement;
+        if (target.closest('.ui-interactive')) return;
+
+        isFiring.current = true; 
+        sendAction(); 
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) {
+        isFiring.current = false; 
+        sendAction(); 
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', () => { keys.current = {}; sendAction(); });
-    window.addEventListener('mousemove', (e) => { mousePos.current = { x: e.clientX, y: e.clientY }; sendAction(); });
-    window.addEventListener('mousedown', (e) => { if (e.button === 0) { isFiring.current = true; sendAction(); } });
-    window.addEventListener('mouseup', (e) => { if (e.button === 0) { isFiring.current = false; sendAction(); } });
+    window.addEventListener('blur', () => { keys.current = {}; isFiring.current = false; sendAction(); });
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
 
     let animId: number;
     const render = () => {
@@ -137,7 +163,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
             isInitialized.current = true;
           }
 
-          // Smoothly interpolate (lerp) render position toward authoritative server position
           const lerpRate = 0.35;
           renderPos.current.x += (controlledUnit.pos.x - renderPos.current.x) * lerpRate;
           renderPos.current.y += (controlledUnit.pos.y - renderPos.current.y) * lerpRate;
@@ -176,7 +201,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
 
-        // Render Map Structures from Database Detail
         if (mapDetails?.structures) {
           mapDetails.structures.forEach(s => {
             ctx.save();
@@ -207,7 +231,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
           drawHUDDiagnostics(ctx, cu.shields, cu.hull);
         }
 
-        // --- Render Mini-Map Radar ---
         if (radarCtx && radarCanvas) {
           const mapW = serverState.current.mapBounds.width;
           const mapH = serverState.current.mapBounds.height;
@@ -224,7 +247,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
-          // Render Structure Footprints on Radar (Cluster-Aware for Asteroid Belts)
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
               const rx = s.posX * scaleX;
@@ -283,6 +305,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
       if (wsRef.current) wsRef.current.close(); 
       window.removeEventListener('keydown', onKeyDown); 
       window.removeEventListener('keyup', onKeyUp); 
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [mapDetails]);
 
@@ -296,125 +321,185 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1 })
 
   return (
     <div 
-      style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000', userSelect: 'none' }}
+      className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-2 gap-2 font-mono select-none"
       onContextMenu={(e) => {
         e.preventDefault();
         setIsSidebarVisible(prev => !prev);
       }}
     >
-      <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
-
-      <div style={{ position: 'absolute', bottom: 20, right: 20, width: '180px', height: '180px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', borderRadius: '6px', overflow: 'hidden', zIndex: 50, boxShadow: '0 0 15px rgba(168, 85, 247, 0.2)' }}>
-        <div style={{ position: 'absolute', top: 4, left: 6, fontSize: '0.6rem', color: '#c084fc', fontFamily: 'monospace', fontWeight: 'bold', pointerEvents: 'none', zIndex: 2 }}>
-          TACTICAL RADAR
-        </div>
-        <canvas ref={radarCanvasRef} width={180} height={180} style={{ display: 'block' }} />
-      </div>
-
-      {!isSidebarVisible && (
-        <div style={{ position: 'absolute', top: 60, left: 15, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid #581c87', padding: '6px 10px', borderRadius: '4px', color: '#c084fc', fontSize: '0.7rem', fontFamily: 'monospace', zIndex: 50, pointerEvents: 'none' }}>
-          [Right-Click to Open Unit Catalog]
-        </div>
-      )}
-
-      {isSidebarVisible && (
-        <div style={{ position: 'absolute', top: 60, left: 15, width: '280px', maxHeight: 'calc(100vh - 80px)', background: 'rgba(15, 23, 42, 0.92)', border: '1px solid #a855f7', borderRadius: '4px', padding: '12px', zIndex: 50, overflowY: 'auto', fontFamily: 'monospace', color: '#e2e8f0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #581c87', paddingBottom: '6px', marginBottom: '10px' }}>
-            <h3 style={{ fontSize: '0.9rem', color: '#c084fc', margin: 0, fontWeight: 'bold' }}>
-              🧪 UNIT TESTING SANDBOX
-            </h3>
-            <button 
-              type="button" 
-              style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: 0 }} 
-              onClick={() => setIsSidebarVisible(false)}
-            >
-              [CLOSE]
-            </button>
+      
+      <header 
+        className="ui-interactive bg-[#0f1115] border border-slate-800/80 rounded-xl px-3 py-2 flex items-center justify-between shadow-lg shrink-0 gap-4 z-50"
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
+      >
+        
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">
+            🧪
           </div>
-          <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '12px' }}>
-            Right-click anywhere to hide panel. Click any spawned unit to manually pilot it.
-          </p>
+          <div>
+            <h1 className="text-xs font-black tracking-tight text-white uppercase leading-tight">Practice Sandbox</h1>
+            <p className="text-[9px] font-bold text-slate-400 tracking-wider uppercase">Sector 01 — Combat Lab</p>
+          </div>
+        </div>
 
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold', marginBottom: '6px' }}>
-              ACTIVE SPAWNED UNITS (PILOT)
+        <div className="flex items-center gap-2 bg-[#161922] p-1 rounded-lg border border-slate-800 shrink-0">
+          <span className="text-[9px] font-black text-slate-400 px-1 uppercase">Time:</span>
+          {[0.25, 0.5, 1.0, 2.0].map(speed => (
+            <button
+              key={speed}
+              onClick={() => { setSimulationSpeed(speed); setIsPaused(false); }}
+              className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all ${!isPaused && simulationSpeed === speed ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
+            >
+              {speed}x
+            </button>
+          ))}
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase transition-all ${isPaused ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
+          >
+            {isPaused ? 'PAUSED' : 'PAUSE'}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-4 bg-[#161922] px-3 py-1 rounded-lg border border-slate-800 flex-1 max-w-sm justify-between">
+          <span className="text-[9px] font-bold text-slate-400">FPS: <strong className="text-cyan-400">60.0</strong></span>
+          <span className="text-[9px] font-bold text-slate-400">Tick: <strong className="text-amber-400">16ms</strong></span>
+          <span className="text-[9px] font-bold text-slate-400">Units: <strong className="text-white">{serverState.current?.units?.length || 0}</strong></span>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {onNavigateHome && (
+            <button 
+              onClick={onNavigateHome}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
+            >
+              Menu
+            </button>
+          )}
+          <button 
+            onClick={onNavigateGarage}
+            className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 px-3 py-1 rounded-lg font-black text-[10px] uppercase transition-all"
+          >
+            Garage
+          </button>
+          <button 
+            onClick={onLogout}
+            className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
+          >
+            ✕
+          </button>
+        </div>
+
+      </header>
+
+      <div className="relative flex-1 w-full h-full rounded-xl overflow-hidden bg-[#050811] border border-slate-800/80 shadow-2xl">
+        <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="w-full h-full block cursor-crosshair" />
+
+        <div 
+          className="ui-interactive absolute bottom-4 right-4 w-[180px] h-[180px] bg-[#0f1115]/90 border border-amber-500/40 rounded-lg overflow-hidden shadow-2xl z-40 backdrop-blur-md"
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="absolute top-1 left-2 text-[8px] font-black text-amber-400 uppercase tracking-widest pointer-events-none z-10">
+            Tactical Radar
+          </div>
+          <canvas ref={radarCanvasRef} width={180} height={180} className="block w-full h-full" />
+        </div>
+
+        {!isSidebarVisible && (
+          <div className="absolute top-4 left-4 bg-[#0f1115]/90 border border-slate-800 px-3 py-1.5 rounded-lg text-[9px] font-bold text-cyan-400 uppercase tracking-widest pointer-events-none z-40 shadow-lg">
+            [Right-Click Anywhere to Open Sandbox Catalog]
+          </div>
+        )}
+
+        {isSidebarVisible && (
+          <div 
+            className="ui-interactive absolute top-4 left-4 w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-slate-800 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+          >
+            
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
+              <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider">
+                🧪 Unit Testing Sandbox
+              </span>
+              <button 
+                onClick={() => setIsSidebarVisible(false)}
+                className="text-[9px] font-bold text-slate-400 hover:text-white"
+              >
+                [CLOSE]
+              </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
-              {playerUnits.map(unit => {
-                const isControlled = controlledUnitId === unit.id;
+
+            <p className="text-[9px] text-slate-400 font-medium leading-tight mb-3 shrink-0">
+              Right-click to toggle panel. Click any active unit below to instantly switch pilot focus.
+            </p>
+
+            <div className="flex flex-col gap-1.5 mb-3 shrink-0">
+              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Active Units (Pilot Switcher)</span>
+              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto pr-1">
+                {playerUnits.map(unit => {
+                  const isControlled = controlledUnitId === unit.id;
+                  return (
+                    <button
+                      key={unit.id}
+                      onClick={() => setControlledUnitId(unit.id)}
+                      className={`text-left px-2.5 py-1.5 rounded-lg border transition-all ${
+                        isControlled ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[9px] font-bold truncate flex justify-between items-center">
+                        <span>{unit.id}</span>
+                        {isControlled && <span className="text-[8px] text-cyan-400 font-black">ACTIVE</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5 shrink-0">Catalog Spawner</div>
+            <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 mb-3">
+              {UNIT_DB.map(unit => {
+                const isSelected = selectedSandboxUnit === unit.id;
                 return (
                   <button
-                    type="button"
                     key={unit.id}
-                    onClick={() => setControlledUnitId(unit.id)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '6px 8px',
-                      background: isControlled ? 'rgba(56, 189, 248, 0.25)' : 'rgba(30, 41, 59, 0.6)',
-                      border: `1px solid ${isControlled ? '#38bdf8' : '#334155'}`,
-                      color: isControlled ? '#e0f2fe' : '#cbd5e1',
-                      fontSize: '0.7rem',
-                      cursor: 'pointer',
-                      borderRadius: '3px'
-                    }}
+                    onClick={() => setSelectedSandboxUnit(unit.id)}
+                    className={`text-left p-2 rounded-lg border transition-all shrink-0 ${
+                      isSelected ? 'bg-amber-500/15 border-amber-400 text-white shadow-md' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
                   >
-                    <div style={{ fontWeight: 'bold' }}>{unit.id} {isControlled ? '🕹️ (ACTIVE)' : ''}</div>
-                    <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>Type: {unit.type}</div>
+                    <div className="text-[10px] font-bold">{unit.name}</div>
+                    <div className="text-[8px] text-slate-400">{unit.role} | Weight: {unit.weight}W</div>
                   </button>
                 );
               })}
             </div>
-          </div>
 
-          <div style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: 'bold', marginBottom: '6px' }}>
-            SPAWN FROM CATALOG
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-            {UNIT_DB.map(unit => (
+            <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-slate-800">
               <button
-                type="button"
-                key={unit.id}
-                onClick={() => setSelectedSandboxUnit(unit.id)}
-                style={{
-                  textAlign: 'left',
-                  padding: '8px 10px',
-                  background: selectedSandboxUnit === unit.id ? 'rgba(168, 85, 247, 0.25)' : 'rgba(30, 41, 59, 0.6)',
-                  border: `1px solid ${selectedSandboxUnit === unit.id ? '#c084fc' : '#334155'}`,
-                  color: selectedSandboxUnit === unit.id ? '#f3e8ff' : '#cbd5e1',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  borderRadius: '3px'
-                }}
+                onClick={() => handleSpawnUnit(selectedSandboxUnit)}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-all shadow-lg"
               >
-                <div style={{ fontWeight: 'bold' }}>{unit.name}</div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{unit.role} | Weight: {unit.weight}W</div>
+                Spawn Selected Unit
               </button>
-            ))}
+
+              <button
+                onClick={() => sendAction({ reset: true })}
+                className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all"
+              >
+                Reset Sandbox
+              </button>
+            </div>
+
           </div>
+        )}
 
-          <button
-            type="button"
-            onClick={() => handleSpawnUnit(selectedSandboxUnit)}
-            style={{
-              marginTop: '14px', width: '100%', padding: '10px', background: '#9333ea', color: '#fff',
-              border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '3px'
-            }}
-          >
-            SPAWN SELECTED UNIT
-          </button>
+      </div>
 
-          <button
-            type="button"
-            onClick={() => sendAction({ reset: true })}
-            style={{
-              marginTop: '8px', width: '100%', padding: '8px', background: 'transparent',
-              border: '1px solid #ef4444', color: '#ef4444', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '3px'
-            }}
-          >
-            CLEAR / RESET SANDBOX
-          </button>
-        </div>
-      )}
     </div>
   );
 };

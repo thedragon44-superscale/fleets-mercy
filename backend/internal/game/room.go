@@ -88,11 +88,11 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	
-	// Spawn Flagship and 5W Battalion Command Ship for Player
+	// Spawn Flagship for Player (Command ship is standard-game only)
 	r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
-	r.spawnUnit("battalion_command_ship", "player", 6000, 9500, "COMMAND")
 	
 	if !r.isSandbox {
+		r.spawnUnit("battalion_command_ship", "player", 6000, 9500, "COMMAND")
 		r.spawnUnit("flagship", "enemy", 6000, 2000, "SEEK")
 		r.spawnUnit("battalion_command_ship", "enemy", 6000, 2500, "COMMAND")
 	}

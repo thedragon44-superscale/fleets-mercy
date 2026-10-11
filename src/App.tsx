@@ -61,23 +61,26 @@ export default function App() {
   // Unified Sci-Fi Main Command Terminal Menu
   if (view === 'main-menu') {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#050811', color: '#00f3ff', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', userSelect: 'none' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(0,243,255,0.05) 0%, rgba(5,8,17,1) 100%)', pointerEvents: 'none' }} />
+      <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
         
-        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '360px', padding: '30px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #00f3ff', boxShadow: '0 0 25px rgba(0, 243, 255, 0.15)' }}>
-          <h1 style={{ margin: '0 0 4px 0', color: '#00f3ff', fontSize: '1.8rem', textShadow: '0 0 10px #00f3ff', letterSpacing: '2px', textAlign: 'center' }}>
-            SPACE TACTICS
+        <div className="relative z-10 flex flex-col items-center w-[380px] p-6 bg-[#0f1115] border border-cyan-500/40 rounded-xl shadow-2xl">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-black text-base mb-3 shadow-inner">
+            ⚡
+          </div>
+          <h1 className="text-xl font-black tracking-wider text-white uppercase text-center mb-1">
+            Space Tactics
           </h1>
-          <p style={{ color: '#64748b', fontSize: '0.75rem', letterSpacing: '1px', marginBottom: '25px', textTransform: 'uppercase' }}>
+          <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-6">
             Command & Testing Terminal
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+          <div className="flex flex-col gap-2.5 w-full">
             <button 
               onClick={() => setView('garage')}
-              style={{ padding: '12px', background: '#00f3ff', color: '#050811', border: 'none', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', textAlign: 'center' }}
+              className="w-full bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg"
             >
-              HANGAR & LOADOUT GARAGE
+              Hangar & Loadout Garage
             </button>
 
             <button 
@@ -90,9 +93,9 @@ export default function App() {
                   setView('garage');
                 }
               }}
-              style={{ padding: '12px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #00f3ff', color: '#00f3ff', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', textAlign: 'center' }}
+              className="w-full bg-[#161922] hover:bg-slate-800 text-cyan-400 border border-slate-800 hover:border-cyan-500/50 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
-              LAUNCH STANDARD GAME
+              Launch Standard Game
             </button>
 
             <button 
@@ -101,9 +104,9 @@ export default function App() {
                 setIsSandboxLaunch(true);
                 setView('map-select');
               }}
-              style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.2)', border: '1px solid #a855f7', color: '#c084fc', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', textAlign: 'center' }}
+              className="w-full bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 border border-amber-500/30 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
-              UNIT TESTING SANDBOX
+              Unit Testing Sandbox
             </button>
 
             <button 
@@ -111,14 +114,14 @@ export default function App() {
                 fetchMaps().then(data => { if (data) setMaps(data); });
                 setView('map-editor-select');
               }}
-              style={{ padding: '12px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid #eab308', color: '#facc15', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', letterSpacing: '1px', textAlign: 'center' }}
+              className="w-full bg-[#161922] hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
-              MAP CREATOR STUDIO
+              Map Creator Studio
             </button>
 
             <button 
               onClick={handleLogout}
-              style={{ marginTop: '10px', padding: '8px', background: 'transparent', border: '1px solid #ff2a6d', color: '#ff2a6d', fontSize: '0.75rem', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'monospace' }}
+              className="mt-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
             >
               Log Out Pilot ({player.username})
             </button>
@@ -143,50 +146,55 @@ export default function App() {
   // Map Selection View for Game / Sandbox
   if (view === 'map-select') {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#050811', color: '#00f3ff', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', userSelect: 'none' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(0,243,255,0.05) 0%, rgba(5,8,17,1) 100%)', pointerEvents: 'none' }} />
+      <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
         
-        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '460px', padding: '30px', background: 'rgba(15, 23, 42, 0.95)', border: `1px solid ${isSandboxLaunch ? '#a855f7' : '#00f3ff'}`, boxShadow: `0 0 25px ${isSandboxLaunch ? 'rgba(168, 85, 247, 0.15)' : 'rgba(0, 243, 255, 0.15)'}` }}>
-          <h2 style={{ margin: '0 0 4px 0', color: isSandboxLaunch ? '#c084fc' : '#00f3ff', fontSize: '1.4rem', textShadow: `0 0 8px ${isSandboxLaunch ? '#c084fc' : '#00f3ff'}`, letterSpacing: '1px', textAlign: 'center' }}>
-            OPERATIONAL SECTOR SELECT
+        <div className={`relative z-10 flex flex-col items-center w-[460px] p-6 bg-[#0f1115] border rounded-xl shadow-2xl ${isSandboxLaunch ? 'border-amber-500/40' : 'border-cyan-500/40'}`}>
+          <h2 className={`text-sm font-black uppercase tracking-wider mb-1 text-center ${isSandboxLaunch ? 'text-amber-400' : 'text-cyan-400'}`}>
+            Operational Sector Select
           </h2>
-          <p style={{ color: '#64748b', fontSize: '0.75rem', letterSpacing: '1px', marginBottom: '20px', textTransform: 'uppercase' }}>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4">
             Choose Target Theater ({isSandboxLaunch ? 'Sandbox Mode' : 'Standard Mode'})
           </p>
 
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', maxHeight: '280px', overflowY: 'auto' }}>
-            {maps.length > 0 ? maps.map(m => (
-              <div 
-                key={m.id}
-                onClick={() => setSelectedMapId(m.id)}
-                style={{ 
-                  background: selectedMapId === m.id ? (isSandboxLaunch ? 'rgba(168, 85, 247, 0.2)' : 'rgba(0, 243, 255, 0.15)') : '#090d1a', 
-                  border: `1px solid ${selectedMapId === m.id ? (isSandboxLaunch ? '#c084fc' : '#00f3ff') : '#334155'}`, 
-                  padding: '12px', 
-                  cursor: 'pointer',
-                  boxSizing: 'border-box'
-                }}
-              >
-                <div style={{ fontSize: '0.85rem', color: isSandboxLaunch ? '#c084fc' : '#00f3ff', fontWeight: 'bold', marginBottom: '4px' }}>{m.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: '1.4' }}>{m.description}</div>
-              </div>
-            )) : (
-              <div style={{ color: '#64748b', textAlign: 'center', padding: '20px', fontSize: '0.8rem' }}>Loading Sectors...</div>
+          <div className="w-full flex flex-col gap-1.5 mb-5 max-h-60 overflow-y-auto pr-1">
+            {maps.length > 0 ? maps.map(m => {
+              const isSelected = selectedMapId === m.id;
+              return (
+                <div 
+                  key={m.id}
+                  onClick={() => setSelectedMapId(m.id)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    isSelected 
+                      ? (isSandboxLaunch ? 'bg-amber-500/10 border-amber-400 shadow-md' : 'bg-cyan-500/10 border-cyan-400 shadow-md') 
+                      : 'bg-[#161922] border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className={`text-[11px] font-bold mb-0.5 ${isSelected ? (isSandboxLaunch ? 'text-amber-400' : 'text-cyan-400') : 'text-white'}`}>
+                    {m.name}
+                  </div>
+                  <div className="text-[9px] text-slate-400 leading-tight">{m.description}</div>
+                </div>
+              );
+            }) : (
+              <div className="text-slate-500 text-center py-6 text-xs">Loading Sectors...</div>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+          <div className="flex gap-2 w-full">
             <button 
               onClick={() => setView(isSandboxLaunch ? 'main-menu' : 'garage')}
-              style={{ flex: 1, padding: '10px', background: 'transparent', border: '1px solid #64748b', color: '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'monospace' }}
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
             >
-              &larr; BACK
+              &larr; Back
             </button>
             <button 
               onClick={() => setView(isSandboxLaunch ? 'sandbox-mode' : 'standard-game')}
-              style={{ flex: 1, padding: '10px', background: isSandboxLaunch ? '#9333ea' : '#00f3ff', color: '#050811', border: 'none', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'monospace' }}
+              className={`flex-1 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all shadow-lg ${
+                isSandboxLaunch ? 'bg-amber-500 hover:bg-amber-600 text-slate-950' : 'bg-cyan-400 hover:bg-cyan-300 text-slate-950'
+              }`}
             >
-              DEPLOY MATCH
+              Deploy Match
             </button>
           </div>
         </div>
@@ -197,14 +205,14 @@ export default function App() {
   // Map Editor Target Selection Screen (New vs Load Existing)
   if (view === 'map-editor-select') {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#050811', color: '#facc15', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', userSelect: 'none' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(234,179,8,0.05) 0%, rgba(5,8,17,1) 100%)', pointerEvents: 'none' }} />
+      <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(234,179,8,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
         
-        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '460px', padding: '30px', background: 'rgba(15, 23, 42, 0.95)', border: '1px solid #eab308', boxShadow: '0 0 25px rgba(234, 179, 8, 0.15)' }}>
-          <h2 style={{ margin: '0 0 4px 0', color: '#facc15', fontSize: '1.4rem', textShadow: '0 0 8px #facc15', letterSpacing: '1px', textAlign: 'center' }}>
-            MAP CREATOR STUDIO
+        <div className="relative z-10 flex flex-col items-center w-[460px] p-6 bg-[#0f1115] border border-amber-500/40 rounded-xl shadow-2xl">
+          <h2 className="text-sm font-black text-amber-400 uppercase tracking-wider mb-1 text-center">
+            Map Creator Studio
           </h2>
-          <p style={{ color: '#64748b', fontSize: '0.75rem', letterSpacing: '1px', marginBottom: '20px', textTransform: 'uppercase' }}>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4">
             Select Sector to Edit or Create New
           </p>
 
@@ -213,13 +221,13 @@ export default function App() {
               setEditorTargetMapId(null);
               setView('map-editor');
             }}
-            style={{ width: '100%', padding: '12px', background: '#eab308', color: '#050811', border: 'none', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'monospace', marginBottom: '15px', textAlign: 'center' }}
+            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider mb-4 transition-all shadow-lg"
           >
-            + CREATE NEW SECTOR
+            + Create New Sector
           </button>
 
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', width: '100%', marginBottom: '8px', textAlign: 'left' }}>OR LOAD EXISTING SECTOR:</div>
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest w-full mb-1.5">Or Load Existing Sector:</div>
+          <div className="w-full flex flex-col gap-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
             {maps.length > 0 ? maps.map(m => (
               <div 
                 key={m.id}
@@ -227,27 +235,21 @@ export default function App() {
                   setEditorTargetMapId(m.id);
                   setView('map-editor');
                 }}
-                style={{ 
-                  background: '#090d1a', 
-                  border: '1px solid #334155', 
-                  padding: '10px', 
-                  cursor: 'pointer',
-                  boxSizing: 'border-box'
-                }}
+                className="bg-[#161922] border border-slate-800 hover:border-amber-500/50 p-2.5 rounded-lg cursor-pointer transition-all"
               >
-                <div style={{ fontSize: '0.8rem', color: '#facc15', fontWeight: 'bold' }}>{m.name}</div>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{m.description}</div>
+                <div className="text-[11px] font-bold text-white mb-0.5">{m.name}</div>
+                <div className="text-[9px] text-slate-400 leading-tight">{m.description}</div>
               </div>
             )) : (
-              <div style={{ color: '#64748b', textAlign: 'center', padding: '15px', fontSize: '0.8rem' }}>Loading Sectors...</div>
+              <div className="text-slate-500 text-center py-4 text-xs">Loading Sectors...</div>
             )}
           </div>
 
           <button 
             onClick={() => setView('main-menu')}
-            style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #64748b', color: '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'monospace' }}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
           >
-            &larr; BACK TO MAIN MENU
+            &larr; Back to Main Menu
           </button>
         </div>
       </div>
@@ -257,16 +259,16 @@ export default function App() {
   // Standard Game Viewport
   if (view === 'standard-game' && activeLoadout) {
     return (
-      <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div className="relative w-screen h-screen overflow-hidden bg-[#0b0e14]">
+        <div className="absolute top-2 left-2 z-50 flex gap-2 items-center">
           <button 
             onClick={() => setView('main-menu')}
-            style={{ padding: '5px 10px', fontSize: '0.75rem', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #ff2a6d', color: '#ff2a6d', fontFamily: 'monospace', cursor: 'pointer', fontWeight: 'bold' }}
+            className="bg-slate-800 hover:bg-slate-700 text-red-400 border border-red-500/30 px-3 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all"
           >
-            &larr; EXIT TO MAIN MENU
+            &larr; Exit to Main Menu
           </button>
-          <span style={{ padding: '4px 8px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #334155', fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace' }}>
-            MODE: STANDARD TACTICAL
+          <span className="bg-[#161922] border border-slate-800 px-2.5 py-1 rounded-lg text-[9px] font-bold text-slate-400 uppercase">
+            Mode: Standard Tactical
           </span>
         </div>
 
@@ -278,21 +280,12 @@ export default function App() {
   // Unit Testing Sandbox Viewport
   if (view === 'sandbox-mode') {
     return (
-      <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button 
-            onClick={() => setView('main-menu')}
-            style={{ padding: '5px 10px', fontSize: '0.75rem', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #a855f7', color: '#c084fc', fontFamily: 'monospace', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            &larr; EXIT TO MAIN MENU
-          </button>
-          <span style={{ padding: '4px 8px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #581c87', fontSize: '0.70rem', color: '#c084fc', fontFamily: 'monospace' }}>
-            MODE: UNIT TESTING SANDBOX (NO ENEMIES)
-          </span>
-        </div>
-
-        <PracticeViewport mapId={selectedMapId} />
-      </div>
+      <PracticeViewport 
+        mapId={selectedMapId} 
+        onNavigateGarage={() => setView('garage')}
+        onNavigateHome={() => setView('main-menu')}
+        onLogout={handleLogout}
+      />
     );
   }
 
