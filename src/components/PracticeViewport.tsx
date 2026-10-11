@@ -65,6 +65,43 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
     }
   }, [mapId]);
 
+  // Fetch actual database specs on mount
+  useEffect(() => {
+    fetch(`${WS_BASE_URL.replace('/ws', '')}/api/templates`)
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          const initialOverrides: { [key: string]: any } = {};
+          Object.keys(data).forEach(key => {
+            const t = data[key];
+            initialOverrides[key] = {
+              speed: t.speed || 4.0,
+              strafingSpeed: t.strafing_speed || 3.0,
+              turnRate: t.turn_rate || 0.05,
+              angularVelocity: t.angular_velocity || 0.1,
+              accelerationCurve: t.acceleration_curve || 1.0,
+              dps: t.dps || 50.0,
+              maxCooldown: t.max_cooldown || 20,
+              projectileRange: t.projectile_range || 1500,
+              projectileSpeed: t.projectile_speed || 18.0,
+              maxThermalCapacity: t.max_thermal_capacity || 100.0,
+              shieldBase: t.shield_base || 100.0,
+              hullBase: t.hull_base || 100.0,
+              shieldRegenRate: t.shield_regen_rate || 0.5,
+              shieldRechargeDelayTicks: t.shield_recharge_delay_ticks || 180,
+              armorMitigation: t.armor_mitigation || 10.0,
+              visionRange: t.vision_range || 2500.0,
+              aggroRange: t.aggro_range || 1500.0,
+              retreatMoraleThreshold: t.retreat_morale_threshold || 0.15,
+              squadCohesionLeashRange: t.squad_cohesion_leash_range || 300.0
+            };
+          });
+          setCustomUnitOverrides(initialOverrides);
+        }
+      })
+      .catch(err => console.log('⚠️ Failed to fetch DB templates:', err));
+  }, []);
+
   const selectedTemplate = UNIT_DB.find(u => u.id === selectedCatalogUnitId) || UNIT_DB[0];
   const activeOverrides = customUnitOverrides[selectedCatalogUnitId] || {
     speed: 4.0, strafingSpeed: 3.0, turnRate: 0.05, angularVelocity: 0.1, accelerationCurve: 1.0,
@@ -97,6 +134,23 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         [field]: val
       }
     }));
+  };
+
+  const saveConfigurationToDB = () => {
+    const payload = activeOverrides;
+    fetch(`${WS_BASE_URL.replace('/ws', '')}/api/templates?type=${selectedCatalogUnitId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => {
+        if (res.ok) {
+          alert(`Successfully saved persistent configuration for ${selectedCatalogUnitId} to database!`);
+        } else {
+          alert('Failed to save configuration to database.');
+        }
+      })
+      .catch(err => console.log('⚠️ Save error:', err));
   };
 
   const sendAction = (actionParams: any = {}) => {
@@ -719,7 +773,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
               )}
             </div>
 
-            <div className="shrink-0 pt-2 border-t border-slate-800">
+            <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-slate-800">
+              <button
+                onClick={saveConfigurationToDB}
+                className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[9px] uppercase tracking-widest transition-all shadow-md"
+              >
+                💾 Save to Database (All Modes)
+              </button>
               <button
                 onClick={() => {
                   setCustomUnitOverrides(prev => ({ ...prev, [selectedCatalogUnitId]: undefined }));

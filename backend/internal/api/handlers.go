@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
 	"space-tactics-server/internal/db"
 	"space-tactics-server/internal/models"
 )
@@ -291,4 +292,116 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "mapId": mapID})
+}
+
+func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w)
+	if r.Method == "OPTIONS" { return }
+
+	rows, err := db.Conn.Query(`
+		SELECT 
+			unit_class, speed, max_cooldown, shield_base, hull_base, 
+			ai_default_state, weight_class, vision_range, dps,
+			max_thermal_capacity, thermal_dissipation_rate, ammo_capacity,
+			radar_immunity_active, stealth_recovery_delay_seconds
+		FROM unit_templates
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	templatesMap := make(map[string]map[string]interface{})
+	for rows.Next() {
+		var class, aiState string
+		var speed, shieldBase, hullBase, dps, thermalCap, thermalDiss, stealthDelay float64
+		var maxCooldown, weightClass, visionRange, ammoCap int
+		var radarImmune bool
+
+		if err := rows.Scan(
+			&class, &speed, &maxCooldown, &shieldBase, &hullBase, 
+			&aiState, &weightClass, &visionRange, &dps,
+			&thermalCap, &thermalDiss, &ammoCap,
+			&radarImmune, &stealthDelay,
+		); err != nil {
+			continue
+		}
+
+		templatesMap[class] = map[string]interface{}{
+			"unit_class":                   class,
+			"speed":                        speed,
+			"max_cooldown":                 maxCooldown,
+			"shield_base":                  shieldBase,
+			"hull_base":                    hullBase,
+			"ai_default_state":             aiState,
+			"weight_class":                 weightClass,
+			"vision_range":                 visionRange,
+			"dps":                          dps,
+			"max_thermal_capacity":         thermalCap,
+			"thermal_dissipation_rate":     thermalDiss,
+			"ammo_capacity":                ammoCap,
+			"radar_immunity_active":        radarImmune,
+			"stealth_recovery_delay_seconds": stealthDelay,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(templatesMap)
+}
+
+func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w)
+	if r.Method == "OPTIONS" { return }
+
+	if r.Method != "POST" {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	unitType := r.URL.Query().Get("type")
+	if unitType == "" {
+		http.Error(w, "Missing unit type parameter", http.StatusBadRequest)
+		return
+	}
+
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	speed, _ := req["speed"].(float64)
+	dps, _ := req["dps"].(float64)
+	shieldBase, _ := req["shieldBase"].(float64)
+	hullBase, _ := req["hullBase"].(float64)
+	maxCooldown, _ := req["maxCooldown"].(float64)
+
+	_, err := db.Conn.Exec(
+		`UPDATE unit_templates SET speed = $1, dps = $2, shield_base = $3, hull_base = $4, max_cooldown = $5 WHERE unit_class = $6`,
+		speed, dps, shieldBase, hullBase, int(maxCooldown), unitType,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update in-memory cache instantly
+	if unit, exists := db.Templates[unitType]; exists {
+		unit.Speed = speed
+		unit.DPS = dps
+		unit.Shields.Front = shieldBase
+		unit.Shields.Rear = shieldBase
+		unit.Shields.Port = shieldBase
+		unit.Shields.Starboard = shieldBase
+		unit.Hull.Front = hullBase
+		unit.Hull.Rear = hullBase
+		unit.Hull.Port = hullBase
+		unit.Hull.Starboard = hullBase
+		unit.MaxCooldown = int(maxCooldown)
+		db.Templates[unitType] = unit
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

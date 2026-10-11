@@ -62,6 +62,14 @@ func main() {
 	
 	http.HandleFunc("/api/map-detail", api.GetMapDetailHandler)
 
-	log.Println("🚀 Space Tactics Server running on :8080 (Dynamic Map WS enabled)")
+	http.HandleFunc("/api/templates", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			api.SaveTemplateHandler(w, r)
+		} else {
+			api.GetTemplatesHandler(w, r)
+		}
+	})
+
+	log.Println("🚀 Space Tactics Server running on :8080 (Dynamic Map WS & Template Inspector enabled)")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
