@@ -65,7 +65,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
     }
   }, [mapId]);
 
-  // Fetch actual database specs on mount
+  // Fetch actual database specs on mount with safe property mapping
   useEffect(() => {
     fetch(`${WS_BASE_URL.replace('/ws', '')}/api/templates`)
       .then(res => res.json())
@@ -74,23 +74,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const initialOverrides: { [key: string]: any } = {};
           Object.keys(data).forEach(key => {
             const t = data[key];
+            const isUnarmed = key === 'recon_probe';
+
             initialOverrides[key] = {
-              speed: t.speed || 4.0,
+              speed: t.speed ?? 4.0,
               strafingSpeed: t.strafing_speed || 3.0,
               turnRate: t.turn_rate || 0.05,
               angularVelocity: t.angular_velocity || 0.1,
               accelerationCurve: t.acceleration_curve || 1.0,
-              dps: t.dps || 50.0,
-              maxCooldown: t.max_cooldown || 20,
+              dps: isUnarmed ? 0.0 : (t.dps ?? 50.0),
+              maxCooldown: t.max_cooldown ?? 20,
               projectileRange: t.projectile_range || 1500,
               projectileSpeed: t.projectile_speed || 18.0,
-              maxThermalCapacity: t.max_thermal_capacity || 100.0,
-              shieldBase: t.shield_base || 100.0,
-              hullBase: t.hull_base || 100.0,
+              maxThermalCapacity: t.max_thermal_capacity ?? 100.0,
+              shieldBase: t.shield_base ?? 100.0,
+              hullBase: t.hull_base ?? 100.0,
               shieldRegenRate: t.shield_regen_rate || 0.5,
               shieldRechargeDelayTicks: t.shield_recharge_delay_ticks || 180,
               armorMitigation: t.armor_mitigation || 10.0,
-              visionRange: t.vision_range || 2500.0,
+              visionRange: t.vision_range ?? 2500.0,
               aggroRange: t.aggro_range || 1500.0,
               retreatMoraleThreshold: t.retreat_morale_threshold || 0.15,
               squadCohesionLeashRange: t.squad_cohesion_leash_range || 300.0
@@ -103,9 +105,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   }, []);
 
   const selectedTemplate = UNIT_DB.find(u => u.id === selectedCatalogUnitId) || UNIT_DB[0];
+  const isSelectedUnarmed = selectedCatalogUnitId === 'recon_probe';
+
   const activeOverrides = customUnitOverrides[selectedCatalogUnitId] || {
     speed: 4.0, strafingSpeed: 3.0, turnRate: 0.05, angularVelocity: 0.1, accelerationCurve: 1.0,
-    dps: 50.0, maxCooldown: 20, projectileRange: 1500, projectileSpeed: 18.0, maxThermalCapacity: 100.0,
+    dps: isSelectedUnarmed ? 0.0 : 50.0, maxCooldown: 20, projectileRange: 1500, projectileSpeed: 18.0, maxThermalCapacity: 100.0,
     shieldBase: 100.0, hullBase: 100.0, shieldRegenRate: 0.5, shieldRechargeDelayTicks: 180, armorMitigation: 10.0,
     visionRange: 2500.0, aggroRange: 1500.0, retreatMoraleThreshold: 0.15, squadCohesionLeashRange: 300.0
   };
@@ -690,7 +694,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Combat & Ballistics</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">DPS: {activeOverrides.dps}</label>
-                    <input type="range" min="10" max="300" step="10" value={activeOverrides.dps} onChange={e => handleOverrideChange('dps', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="300" step="10" value={activeOverrides.dps} onChange={e => handleOverrideChange('dps', parseFloat(e.target.value))} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Max Cooldown (Ticks): {activeOverrides.maxCooldown}</label>
@@ -716,7 +720,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Vitals & Live State</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Shield Base (Max): {activeOverrides.shieldBase}</label>
-                    <input type="range" min="50" max="1000" step="50" value={activeOverrides.shieldBase} onChange={e => handleOverrideChange('shieldBase', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="1000" step="50" value={activeOverrides.shieldBase} onChange={e => handleOverrideChange('shieldBase', parseFloat(e.target.value))} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Hull Base (Max): {activeOverrides.hullBase}</label>
