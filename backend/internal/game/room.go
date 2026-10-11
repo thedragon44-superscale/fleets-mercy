@@ -20,12 +20,12 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 type SandboxClientInput struct {
 	models.ClientInput
-	SandboxSpawn     string         `json:"sandboxSpawn"`
-	SandboxRemove    string         `json:"sandboxRemove"`
-	SandboxCounts    map[string]int `json:"sandboxCounts"`
-	SpawnX           *float64       `json:"spawnX"`
-	SpawnY           *float64       `json:"spawnY"`
-	ControlledUnitID string         `json:"controlledUnitId"`
+	SandboxSpawn     string                   `json:"sandboxSpawn"`
+	SandboxRemove    string                   `json:"sandboxRemove"`
+	SandboxCounts    map[string]int           `json:"sandboxCounts"`
+	SpawnX           *float64                 `json:"spawnX"`
+	SpawnY           *float64                 `json:"spawnY"`
+	ControlledUnitID string                   `json:"controlledUnitId"`
 }
 
 type GameRoom struct {
