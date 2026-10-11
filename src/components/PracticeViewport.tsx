@@ -38,7 +38,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const isInitialized = useRef(false);
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
-  const [selectedSandboxUnit, setSelectedSandboxUnit] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
@@ -76,17 +75,22 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         controlledUnitId: currentId,
         reset: actionParams.reset || false,
         sandboxSpawn: actionParams.sandboxSpawn || null,
+        sandboxRemove: actionParams.sandboxRemove || null,
         spawnX: actionParams.spawnX || null,
         spawnY: actionParams.spawnY || null
       }));
     }
   };
 
-  const handleSpawnUnit = (unitId: string) => {
-    const spawnX = cameraPos.current.x;
-    const spawnY = cameraPos.current.y;
+  const handleToggleUnit = (unitId: string, isCurrentlySpawned: boolean) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ sandboxSpawn: unitId, spawnX, spawnY }));
+      if (isCurrentlySpawned) {
+        wsRef.current.send(JSON.stringify({ sandboxRemove: unitId }));
+      } else {
+        const spawnX = cameraPos.current.x;
+        const spawnY = cameraPos.current.y;
+        wsRef.current.send(JSON.stringify({ sandboxSpawn: unitId, spawnX, spawnY }));
+      }
     }
   };
 
@@ -434,59 +438,56 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             </div>
 
             <p className="text-[9px] text-slate-400 font-medium leading-tight mb-3 shrink-0">
-              Right-click to toggle panel. Click any active unit below to instantly switch pilot focus.
+              Click any active unit pill to switch pilot focus. Click catalog items to toggle unit presence.
             </p>
 
             <div className="flex flex-col gap-1.5 mb-3 shrink-0">
               <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Active Units (Pilot Switcher)</span>
-              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto pr-1">
+              <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
                 {playerUnits.map(unit => {
                   const isControlled = controlledUnitId === unit.id;
                   return (
                     <button
                       key={unit.id}
                       onClick={() => setControlledUnitId(unit.id)}
-                      className={`text-left px-2.5 py-1.5 rounded-lg border transition-all ${
-                        isControlled ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
+                      className={`px-2.5 py-1 rounded-md border text-[9px] font-bold uppercase transition-all ${
+                        isControlled 
+                          ? 'bg-cyan-400 text-slate-950 border-white shadow-md font-black' 
+                          : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
                       }`}
                     >
-                      <div className="text-[9px] font-bold truncate flex justify-between items-center">
-                        <span>{unit.id}</span>
-                        {isControlled && <span className="text-[8px] text-cyan-400 font-black">ACTIVE</span>}
-                      </div>
+                      {unit.id}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5 shrink-0">Catalog Spawner</div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5 shrink-0">Catalog Toggles</div>
             <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 mb-3">
               {UNIT_DB.map(unit => {
-                const isSelected = selectedSandboxUnit === unit.id;
+                const isSpawned = playerUnits.some(u => u.type === unit.id);
                 return (
                   <button
                     key={unit.id}
-                    onClick={() => setSelectedSandboxUnit(unit.id)}
-                    className={`text-left p-2 rounded-lg border transition-all shrink-0 ${
-                      isSelected ? 'bg-amber-500/15 border-amber-400 text-white shadow-md' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
+                    onClick={() => handleToggleUnit(unit.id, isSpawned)}
+                    className={`text-left p-2 rounded-lg border transition-all shrink-0 flex items-center justify-between ${
+                      isSpawned 
+                        ? 'bg-amber-500/20 border-amber-400 text-white shadow-md' 
+                        : 'bg-[#161922] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
                     }`}
                   >
-                    <div className="text-[10px] font-bold">{unit.name}</div>
-                    <div className="text-[8px] text-slate-400">{unit.role} | Weight: {unit.weight}W</div>
+                    <div>
+                      <div className="text-[10px] font-bold">{unit.name}</div>
+                      <div className="text-[8px] text-slate-400">{unit.role} | Weight: {unit.weight}W</div>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSpawned ? 'bg-amber-400 border-amber-300' : 'border-slate-700 bg-slate-900'}`} />
                   </button>
                 );
               })}
             </div>
 
             <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-slate-800">
-              <button
-                onClick={() => handleSpawnUnit(selectedSandboxUnit)}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-all shadow-lg"
-              >
-                Spawn Selected Unit
-              </button>
-
               <button
                 onClick={() => sendAction({ reset: true })}
                 className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all"

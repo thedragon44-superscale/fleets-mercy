@@ -21,6 +21,7 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 type SandboxClientInput struct {
 	models.ClientInput
 	SandboxSpawn     string   `json:"sandboxSpawn"`
+	SandboxRemove    string   `json:"sandboxRemove"`
 	SpawnX           *float64 `json:"spawnX"`
 	SpawnY           *float64 `json:"spawnY"`
 	ControlledUnitID string   `json:"controlledUnitId"`
@@ -88,7 +89,6 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	
-	// Spawn Flagship for Player (Command ship is standard-game only)
 	r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
 	
 	if !r.isSandbox {
@@ -221,6 +221,13 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					r.spawnUnit(input.SandboxSpawn, "player", offsetX, offsetY, "GUARD")
 				}
 			}
+			if input.SandboxRemove != "" {
+				for id, u := range r.units {
+					if u.OwnerID == "player" && u.Type == input.SandboxRemove && u.Type != "flagship" {
+						delete(r.units, id)
+					}
+				}
+			}
 			r.lastInput = input
 			r.mu.Unlock()
 		}
@@ -315,7 +322,6 @@ func (r *GameRoom) Run() {
 				continue
 			}
 
-			// Shield-Break Cascading Retreat Trigger
 			if unit.IsSquadLeader && !unit.IsDestroyed && unit.AIState != "RETREAT" {
 				totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
 				if totalShields <= 0.0 {
