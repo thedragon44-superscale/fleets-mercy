@@ -20,11 +20,12 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 type SandboxClientInput struct {
 	models.ClientInput
-	SandboxSpawn     string   `json:"sandboxSpawn"`
-	SandboxRemove    string   `json:"sandboxRemove"`
-	SpawnX           *float64 `json:"spawnX"`
-	SpawnY           *float64 `json:"spawnY"`
-	ControlledUnitID string   `json:"controlledUnitId"`
+	SandboxSpawn     string         `json:"sandboxSpawn"`
+	SandboxRemove    string         `json:"sandboxRemove"`
+	SandboxCounts    map[string]int `json:"sandboxCounts"`
+	SpawnX           *float64       `json:"spawnX"`
+	SpawnY           *float64       `json:"spawnY"`
+	ControlledUnitID string         `json:"controlledUnitId"`
 }
 
 type GameRoom struct {
@@ -225,6 +226,39 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				for id, u := range r.units {
 					if u.OwnerID == "player" && u.Type == input.SandboxRemove && u.Type != "flagship" {
 						delete(r.units, id)
+						break
+					}
+				}
+			}
+			if input.SandboxCounts != nil {
+				for unitType, targetCount := range input.SandboxCounts {
+					if unitType == "flagship" { continue }
+					currentCount := 0
+					for _, u := range r.units {
+						if u.OwnerID == "player" && u.Type == unitType && !u.IsDestroyed {
+							currentCount++
+						}
+					}
+					if targetCount > currentCount {
+						diff := targetCount - currentCount
+						for i := 0; i < diff; i++ {
+							spawnX := 6000.0
+							spawnY := 10000.0
+							if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
+								spawnX = flagship.Pos.X + (rand.Float64()-0.5)*200
+								spawnY = flagship.Pos.Y + (rand.Float64()-0.5)*200
+							}
+							r.spawnUnit(unitType, "player", spawnX, spawnY, "GUARD")
+						}
+					} else if targetCount < currentCount {
+						diff := currentCount - targetCount
+						removed := 0
+						for id, u := range r.units {
+							if removed < diff && u.OwnerID == "player" && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
+								delete(r.units, id)
+								removed++
+							}
+						}
 					}
 				}
 			}

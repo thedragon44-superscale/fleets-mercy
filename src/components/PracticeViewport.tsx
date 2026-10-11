@@ -38,6 +38,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const isInitialized = useRef(false);
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
+  const [selectedCatalogUnit, setSelectedCatalogUnit] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
@@ -74,23 +75,20 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         angle, isFiring: isFiring.current && !!controlledUnit, 
         controlledUnitId: currentId,
         reset: actionParams.reset || false,
-        sandboxSpawn: actionParams.sandboxSpawn || null,
-        sandboxRemove: actionParams.sandboxRemove || null,
-        spawnX: actionParams.spawnX || null,
-        spawnY: actionParams.spawnY || null
+        sandboxCounts: actionParams.sandboxCounts || undefined
       }));
     }
   };
 
-  const handleToggleUnit = (unitId: string, isCurrentlySpawned: boolean) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      if (isCurrentlySpawned) {
-        wsRef.current.send(JSON.stringify({ sandboxRemove: unitId }));
-      } else {
-        const spawnX = cameraPos.current.x;
-        const spawnY = cameraPos.current.y;
-        wsRef.current.send(JSON.stringify({ sandboxSpawn: unitId, spawnX, spawnY }));
-      }
+  const updateUnitCount = (unitType: string, delta: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && serverState.current) {
+      const counts: { [key: string]: number } = {};
+      UNIT_DB.forEach(u => {
+        const currentCount = serverState.current?.units?.filter(unit => unit.ownerId === 'player' && unit.type === u.id && !unit.isDestroyed).length || 0;
+        counts[u.id] = currentCount;
+      });
+      counts[unitType] = Math.max(0, (counts[unitType] || 0) + delta);
+      wsRef.current.send(JSON.stringify({ sandboxCounts: counts }));
     }
   };
 
@@ -438,7 +436,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             </div>
 
             <p className="text-[9px] text-slate-400 font-medium leading-tight mb-3 shrink-0">
-              Click any active unit pill to switch pilot focus. Click catalog items to toggle unit presence.
+              Click any active unit pill to switch pilot focus. Use +/- to adjust unit counts.
             </p>
 
             <div className="flex flex-col gap-1.5 mb-3 shrink-0">
@@ -463,26 +461,43 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
               </div>
             </div>
 
-            <div className="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5 shrink-0">Catalog Toggles</div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5 shrink-0">Catalog & Spawner Controls</div>
             <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 mb-3">
               {UNIT_DB.map(unit => {
-                const isSpawned = playerUnits.some(u => u.type === unit.id);
+                const isSelected = selectedCatalogUnit === unit.id;
+                const unitCount = playerUnits.filter(u => u.type === unit.id).length;
+
                 return (
-                  <button
+                  <div
                     key={unit.id}
-                    onClick={() => handleToggleUnit(unit.id, isSpawned)}
-                    className={`text-left p-2 rounded-lg border transition-all shrink-0 flex items-center justify-between ${
-                      isSpawned 
-                        ? 'bg-amber-500/20 border-amber-400 text-white shadow-md' 
-                        : 'bg-[#161922] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                    onClick={() => setSelectedCatalogUnit(unit.id)}
+                    className={`p-2 rounded-lg border transition-all shrink-0 flex items-center justify-between cursor-pointer ${
+                      isSelected 
+                        ? 'bg-amber-500/15 border-amber-400 text-white shadow-md' 
+                        : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
                     }`}
                   >
-                    <div>
+                    <div className="flex flex-col">
                       <div className="text-[10px] font-bold">{unit.name}</div>
-                      <div className="text-[8px] text-slate-400">{unit.role} | Weight: {unit.weight}W</div>
+                      <div className="text-[8px] text-slate-400">{unit.role} | {unit.weight}W</div>
                     </div>
-                    <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSpawned ? 'bg-amber-400 border-amber-300' : 'border-slate-700 bg-slate-900'}`} />
-                  </button>
+
+                    <div className="flex items-center gap-1.5 bg-[#0b0e14] px-1.5 py-1 rounded-md border border-slate-800" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => updateUnitCount(unit.id, -1)}
+                        className="w-5 h-5 bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 rounded flex items-center justify-center font-black text-[10px] transition-all"
+                      >
+                        -
+                      </button>
+                      <span className="w-5 text-center text-[10px] font-black text-amber-400">{unitCount}</span>
+                      <button
+                        onClick={() => updateUnitCount(unit.id, 1)}
+                        className="w-5 h-5 bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-400 rounded flex items-center justify-center font-black text-[10px] transition-all"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
