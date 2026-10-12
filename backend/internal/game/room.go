@@ -18,6 +18,11 @@ import (
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
+type TemplateOverridePayload struct {
+	Type   string                 `json:"type"`
+	Config map[string]interface{} `json:"config"`
+}
+
 type SandboxClientInput struct {
 	models.ClientInput
 	SandboxSpawn     string                   `json:"sandboxSpawn"`
@@ -26,6 +31,7 @@ type SandboxClientInput struct {
 	SpawnX           *float64                 `json:"spawnX"`
 	SpawnY           *float64                 `json:"spawnY"`
 	ControlledUnitID string                   `json:"controlledUnitId"`
+	TemplateOverride *TemplateOverridePayload `json:"templateOverride"`
 }
 
 type GameRoom struct {
@@ -261,6 +267,30 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 						}
 					}
 				}
+			}
+			if input.TemplateOverride != nil {
+				unitType := input.TemplateOverride.Type
+				cfg := input.TemplateOverride.Config
+
+				if tmpl, exists := db.Templates[unitType]; exists {
+					if v, ok := cfg["speed"].(float64); ok { tmpl.Speed = v }
+					if v, ok := cfg["dps"].(float64); ok { tmpl.DPS = v }
+					if v, ok := cfg["maxCooldown"].(float64); ok { tmpl.MaxCooldown = int(v) }
+					if v, ok := cfg["visionRange"].(float64); ok { tmpl.VisionRange = v }
+					if v, ok := cfg["maxThermalCapacity"].(float64); ok { tmpl.MaxThermalCapacity = v }
+					db.Templates[unitType] = tmpl
+				}
+
+				for _, u := range r.units {
+					if u.Type == unitType {
+						if v, ok := cfg["speed"].(float64); ok { u.Speed = v }
+						if v, ok := cfg["dps"].(float64); ok { u.DPS = v }
+						if v, ok := cfg["maxCooldown"].(float64); ok { u.MaxCooldown = int(v) }
+						if v, ok := cfg["visionRange"].(float64); ok { u.VisionRange = v }
+						if v, ok := cfg["maxThermalCapacity"].(float64); ok { u.MaxThermalCapacity = v }
+					}
+				}
+				log.Printf("⚙️ Applied live WebSocket template override for: %s", unitType)
 			}
 			r.lastInput = input
 			r.mu.Unlock()

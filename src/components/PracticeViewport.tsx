@@ -1,7 +1,8 @@
+import { useGameSocket } from '../hooks/useGameSockets';
 import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
 import { UNIT_DB } from './GarageDashboard';
-import { WS_BASE_URL } from '../config';
+import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 
 interface FleetUnit {
@@ -27,7 +28,6 @@ interface PracticeViewportProps {
 export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, onNavigateGarage, onLogout, onNavigateHome }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const serverState = useRef<ServerState | null>(null);
   const cameraPos = useRef({ x: 6000, y: 10000 });
   const keys = useRef<{ [key: string]: boolean }>({});
@@ -67,7 +67,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   // Fetch actual database specs on mount with safe property mapping
   useEffect(() => {
-    fetch(`${WS_BASE_URL.replace('/ws', '')}/api/templates`)
+    fetch(`${API_BASE_URL}/api/templates`)
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -142,7 +142,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const saveConfigurationToDB = () => {
     const payload = activeOverrides;
-    fetch(`${WS_BASE_URL.replace('/ws', '')}/api/templates?type=${selectedCatalogUnitId}`, {
+    fetch(`${API_BASE_URL}/api/templates?type=${selectedCatalogUnitId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -157,8 +157,20 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       .catch(err => console.log('⚠️ Save error:', err));
   };
 
+  const { state: socketState, sendInput, updateUnitCount: sendUnitCount, sendTemplateOverride } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
+
+  // Update ref directly during render; useSyncExternalStore handles the component re-render cleanly
+  if (socketState) {
+    serverState.current = socketState;
+    const controlledUnit = socketState.units?.find((u: FleetUnit) => u.id === controlledUnitIdRef.current);
+    if (controlledUnit && !isInitialized.current) {
+      renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
+      isInitialized.current = true;
+    }
+  }
+
   const sendAction = (actionParams: any = {}) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN && canvasRef.current && serverState.current) {
+    if (canvasRef.current && serverState.current) {
       const currentId = controlledUnitIdRef.current;
       const controlledUnit = serverState.current.units?.find(u => u.id === currentId) || 
                              serverState.current.units?.find(u => u.id === 'player-flagship');
@@ -168,43 +180,31 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         const worldMouseY = mousePos.current.y - canvasRef.current.height / 2 + cameraPos.current.y;
         angle = Math.atan2(worldMouseY - controlledUnit.pos.y, worldMouseX - controlledUnit.pos.x);
       }
-      wsRef.current.send(JSON.stringify({
-        w: !!keys.current['w'], s: !!keys.current['s'], a: !!keys.current['a'], d: !!keys.current['d'],
-        angle, isFiring: isFiring.current && !!controlledUnit, 
-        controlledUnitId: currentId,
+      sendInput({
+        keys: keys.current,
+        angle,
+        isFiring: isFiring.current && !!controlledUnit,
+        currentId,
         reset: actionParams.reset || false,
         sandboxCounts: actionParams.sandboxCounts || undefined
-      }));
+      });
     }
   };
 
   const updateUnitCount = (unitType: string, delta: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN && serverState.current) {
+    if (serverState.current) {
       const counts: { [key: string]: number } = {};
       UNIT_DB.forEach(u => {
         const currentCount = serverState.current?.units?.filter(unit => unit.ownerId === 'player' && unit.type === u.id && !unit.isDestroyed).length || 0;
         counts[u.id] = currentCount;
       });
       counts[unitType] = Math.max(0, (counts[unitType] || 0) + delta);
-      wsRef.current.send(JSON.stringify({ sandboxCounts: counts }));
+      sendUnitCount(counts);
     }
   };
 
   useEffect(() => {
-    wsRef.current = new WebSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
     
-    wsRef.current.onmessage = (e) => { 
-      const state = JSON.parse(e.data);
-      serverState.current = state;
-
-      const controlledUnit = state.units?.find((u: FleetUnit) => u.id === controlledUnitIdRef.current);
-      if (controlledUnit && !isInitialized.current) {
-        renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
-        isInitialized.current = true;
-      }
-      forceRender({});
-    };
-
     const onKeyDown = (e: KeyboardEvent) => {
       keys.current[e.key.toLowerCase()] = true;
       if (!e.repeat) sendAction();
@@ -401,8 +401,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
     render();
     return () => { 
-      cancelAnimationFrame(animId); 
-      if (wsRef.current) wsRef.current.close(); 
+      cancelAnimationFrame(animId);  
       window.removeEventListener('keydown', onKeyDown); 
       window.removeEventListener('keyup', onKeyUp); 
       window.removeEventListener('mousemove', onMouseMove);
@@ -668,23 +667,23 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Movement & Dynamics</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Speed (Base Velocity): {activeOverrides.speed}</label>
-                    <input type="range" min="1" max="15" step="0.5" value={activeOverrides.speed} onChange={e => handleOverrideChange('speed', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="1" max="15" step="0.5" value={activeOverrides.speed} onChange={e => handleOverrideChange('speed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Strafing Speed: {activeOverrides.strafingSpeed}</label>
-                    <input type="range" min="1" max="12" step="0.5" value={activeOverrides.strafingSpeed} onChange={e => handleOverrideChange('strafingSpeed', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="1" max="12" step="0.5" value={activeOverrides.strafingSpeed} onChange={e => handleOverrideChange('strafingSpeed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Turn Rate: {activeOverrides.turnRate}</label>
-                    <input type="range" min="0.01" max="0.2" step="0.01" value={activeOverrides.turnRate} onChange={e => handleOverrideChange('turnRate', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0.01" max="0.2" step="0.01" value={activeOverrides.turnRate} onChange={e => handleOverrideChange('turnRate', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Angular Velocity: {activeOverrides.angularVelocity}</label>
-                    <input type="range" min="0.05" max="0.5" step="0.05" value={activeOverrides.angularVelocity} onChange={e => handleOverrideChange('angularVelocity', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0.05" max="0.5" step="0.05" value={activeOverrides.angularVelocity} onChange={e => handleOverrideChange('angularVelocity', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Acceleration Curve: {activeOverrides.accelerationCurve}</label>
-                    <input type="range" min="0.5" max="3.0" step="0.1" value={activeOverrides.accelerationCurve} onChange={e => handleOverrideChange('accelerationCurve', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0.5" max="3.0" step="0.1" value={activeOverrides.accelerationCurve} onChange={e => handleOverrideChange('accelerationCurve', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                 </div>
               )}
@@ -694,23 +693,23 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Combat & Ballistics</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">DPS: {activeOverrides.dps}</label>
-                    <input type="range" min="0" max="300" step="10" value={activeOverrides.dps} onChange={e => handleOverrideChange('dps', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="300" step="10" value={activeOverrides.dps} onChange={e => handleOverrideChange('dps', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Max Cooldown (Ticks): {activeOverrides.maxCooldown}</label>
-                    <input type="range" min="5" max="60" step="1" value={activeOverrides.maxCooldown} onChange={e => handleOverrideChange('maxCooldown', parseInt(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="5" max="60" step="1" value={activeOverrides.maxCooldown} onChange={e => handleOverrideChange('maxCooldown', parseInt(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Projectile Range: {activeOverrides.projectileRange}</label>
-                    <input type="range" min="500" max="4000" step="100" value={activeOverrides.projectileRange} onChange={e => handleOverrideChange('projectileRange', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="500" max="4000" step="100" value={activeOverrides.projectileRange} onChange={e => handleOverrideChange('projectileRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Projectile Speed: {activeOverrides.projectileSpeed}</label>
-                    <input type="range" min="5" max="40" step="1" value={activeOverrides.projectileSpeed} onChange={e => handleOverrideChange('projectileSpeed', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="5" max="40" step="1" value={activeOverrides.projectileSpeed} onChange={e => handleOverrideChange('projectileSpeed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Max Thermal Capacity: {activeOverrides.maxThermalCapacity}</label>
-                    <input type="range" min="50" max="500" step="25" value={activeOverrides.maxThermalCapacity} onChange={e => handleOverrideChange('maxThermalCapacity', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="50" max="500" step="25" value={activeOverrides.maxThermalCapacity} onChange={e => handleOverrideChange('maxThermalCapacity', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                 </div>
               )}
@@ -720,23 +719,23 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Vitals & Live State</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Shield Base (Max): {activeOverrides.shieldBase}</label>
-                    <input type="range" min="0" max="1000" step="50" value={activeOverrides.shieldBase} onChange={e => handleOverrideChange('shieldBase', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="1000" step="50" value={activeOverrides.shieldBase} onChange={e => handleOverrideChange('shieldBase', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Hull Base (Max): {activeOverrides.hullBase}</label>
-                    <input type="range" min="50" max="1000" step="50" value={activeOverrides.hullBase} onChange={e => handleOverrideChange('hullBase', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="50" max="1000" step="50" value={activeOverrides.hullBase} onChange={e => handleOverrideChange('hullBase', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Shield Regen Rate: {activeOverrides.shieldRegenRate}</label>
-                    <input type="range" min="0" max="5.0" step="0.1" value={activeOverrides.shieldRegenRate} onChange={e => handleOverrideChange('shieldRegenRate', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="5.0" step="0.1" value={activeOverrides.shieldRegenRate} onChange={e => handleOverrideChange('shieldRegenRate', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Recharge Delay Ticks: {activeOverrides.shieldRechargeDelayTicks}</label>
-                    <input type="range" min="30" max="300" step="10" value={activeOverrides.shieldRechargeDelayTicks} onChange={e => handleOverrideChange('shieldRechargeDelayTicks', parseInt(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="30" max="300" step="10" value={activeOverrides.shieldRechargeDelayTicks} onChange={e => handleOverrideChange('shieldRechargeDelayTicks', parseInt(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Armor Mitigation: {activeOverrides.armorMitigation}</label>
-                    <input type="range" min="0" max="50" step="5" value={activeOverrides.armorMitigation} onChange={e => handleOverrideChange('armorMitigation', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0" max="50" step="5" value={activeOverrides.armorMitigation} onChange={e => handleOverrideChange('armorMitigation', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
 
                   {/* Runtime Health & Shield Sliders */}
@@ -759,19 +758,19 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">AI & Tactics</div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Vision Range: {activeOverrides.visionRange}</label>
-                    <input type="range" min="1000" max="6000" step="200" value={activeOverrides.visionRange} onChange={e => handleOverrideChange('visionRange', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="1000" max="6000" step="200" value={activeOverrides.visionRange} onChange={e => handleOverrideChange('visionRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Aggro Range: {activeOverrides.aggroRange}</label>
-                    <input type="range" min="500" max="3000" step="100" value={activeOverrides.aggroRange} onChange={e => handleOverrideChange('aggroRange', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="500" max="3000" step="100" value={activeOverrides.aggroRange} onChange={e => handleOverrideChange('aggroRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Retreat Morale Threshold: {activeOverrides.retreatMoraleThreshold}</label>
-                    <input type="range" min="0.0" max="0.5" step="0.05" value={activeOverrides.retreatMoraleThreshold} onChange={e => handleOverrideChange('retreatMoraleThreshold', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="0.0" max="0.5" step="0.05" value={activeOverrides.retreatMoraleThreshold} onChange={e => handleOverrideChange('retreatMoraleThreshold', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <label className="text-[8px] font-bold text-slate-400 uppercase">Squad Cohesion Leash: {activeOverrides.squadCohesionLeashRange}</label>
-                    <input type="range" min="100" max="1000" step="50" value={activeOverrides.squadCohesionLeashRange} onChange={e => handleOverrideChange('squadCohesionLeashRange', parseFloat(e.target.value))} className="accent-cyan-400" />
+                    <input type="range" min="100" max="1000" step="50" value={activeOverrides.squadCohesionLeashRange} onChange={e => handleOverrideChange('squadCohesionLeashRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                 </div>
               )}
