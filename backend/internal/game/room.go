@@ -18,9 +18,17 @@ import (
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
+type UnitConfigUpdate struct {
+	Speed              *float64 `json:"speed"`
+	DPS                *float64 `json:"dps"`
+	MaxCooldown        *int     `json:"maxCooldown"`
+	VisionRange        *float64 `json:"visionRange"`
+	MaxThermalCapacity *float64 `json:"maxThermalCapacity"`
+}
+
 type TemplateOverridePayload struct {
-	Type   string                 `json:"type"`
-	Config map[string]interface{} `json:"config"`
+	Type   string           `json:"type"`
+	Config UnitConfigUpdate `json:"config"`
 }
 
 type SandboxClientInput struct {
@@ -273,21 +281,21 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				cfg := input.TemplateOverride.Config
 
 				if tmpl, exists := db.Templates[unitType]; exists {
-					if v, ok := cfg["speed"].(float64); ok { tmpl.Speed = v }
-					if v, ok := cfg["dps"].(float64); ok { tmpl.DPS = v }
-					if v, ok := cfg["maxCooldown"].(float64); ok { tmpl.MaxCooldown = int(v) }
-					if v, ok := cfg["visionRange"].(float64); ok { tmpl.VisionRange = v }
-					if v, ok := cfg["maxThermalCapacity"].(float64); ok { tmpl.MaxThermalCapacity = v }
+					if cfg.Speed != nil { tmpl.Speed = *cfg.Speed }
+					if cfg.DPS != nil { tmpl.DPS = *cfg.DPS }
+					if cfg.MaxCooldown != nil { tmpl.MaxCooldown = *cfg.MaxCooldown }
+					if cfg.VisionRange != nil { tmpl.VisionRange = *cfg.VisionRange }
+					if cfg.MaxThermalCapacity != nil { tmpl.MaxThermalCapacity = *cfg.MaxThermalCapacity }
 					db.Templates[unitType] = tmpl
 				}
 
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if v, ok := cfg["speed"].(float64); ok { u.Speed = v }
-						if v, ok := cfg["dps"].(float64); ok { u.DPS = v }
-						if v, ok := cfg["maxCooldown"].(float64); ok { u.MaxCooldown = int(v) }
-						if v, ok := cfg["visionRange"].(float64); ok { u.VisionRange = v }
-						if v, ok := cfg["maxThermalCapacity"].(float64); ok { u.MaxThermalCapacity = v }
+						if cfg.Speed != nil { u.Speed = *cfg.Speed }
+						if cfg.DPS != nil { u.DPS = *cfg.DPS }
+						if cfg.MaxCooldown != nil { u.MaxCooldown = *cfg.MaxCooldown }
+						if cfg.VisionRange != nil { tmpl.VisionRange = *cfg.VisionRange }
+						if cfg.MaxThermalCapacity != nil { tmpl.MaxThermalCapacity = *cfg.MaxThermalCapacity }
 					}
 				}
 				log.Printf("⚙️ Applied live WebSocket template override for: %s", unitType)
