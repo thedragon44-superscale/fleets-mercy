@@ -22,7 +22,7 @@ type UnitConfigUpdate struct {
 	Speed              *float64 `json:"speed"`
 	DPS                *float64 `json:"dps"`
 	MaxCooldown        *int     `json:"maxCooldown"`
-	VisionRange        *float64 `json:"visionRange"`
+	VisionRange        *int     `json:"visionRange"`
 	MaxThermalCapacity *float64 `json:"maxThermalCapacity"`
 }
 
@@ -294,8 +294,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 						if cfg.Speed != nil { u.Speed = *cfg.Speed }
 						if cfg.DPS != nil { u.DPS = *cfg.DPS }
 						if cfg.MaxCooldown != nil { u.MaxCooldown = *cfg.MaxCooldown }
-						if cfg.VisionRange != nil { tmpl.VisionRange = *cfg.VisionRange }
-						if cfg.MaxThermalCapacity != nil { tmpl.MaxThermalCapacity = *cfg.MaxThermalCapacity }
+						if cfg.VisionRange != nil { u.VisionRange = *cfg.VisionRange }
+						if cfg.MaxThermalCapacity != nil { u.MaxThermalCapacity = *cfg.MaxThermalCapacity }
 					}
 				}
 				log.Printf("⚙️ Applied live WebSocket template override for: %s", unitType)
