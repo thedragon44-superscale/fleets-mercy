@@ -1,7 +1,6 @@
 package game
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -11,35 +10,49 @@ import (
 	"time"
 
 	"space-tactics-server/internal/db"
+	SpaceTactics "space-tactics-server/internal/generated/SpaceTactics"
 	"space-tactics-server/internal/models"
 
+	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
-type UnitConfigUpdate struct {
-	Speed              *float64 `json:"speed"`
-	DPS                *float64 `json:"dps"`
-	MaxCooldown        *int     `json:"maxCooldown"`
-	VisionRange        *int     `json:"visionRange"`
-	MaxThermalCapacity *float64 `json:"maxThermalCapacity"`
+// Decoded client input state maintained across ticks
+type ClientStateInput struct {
+	W                bool
+	S                bool
+	A                bool
+	D                bool
+	Angle            float32
+	IsFiring         bool
+	ControlledUnitID string
+	Reset            bool
+	Deploy           string
+	SandboxSpawn     string
+	SandboxRemove    string
+	SpawnX           float64
+	SpawnY           float64
+	SandboxCounts    map[string]int
+	TemplateOverride *TemplateOverrideData
+	UnitGrouping     *UnitGroupingData
 }
 
-type TemplateOverridePayload struct {
-	Type   string           `json:"type"`
-	Config UnitConfigUpdate `json:"config"`
+type TemplateOverrideData struct {
+	Type               string
+	Speed              *float64
+	DPS                *float64
+	MaxCooldown        *int
+	VisionRange        *int
+	MaxThermalCapacity *float64
 }
 
-type SandboxClientInput struct {
-	models.ClientInput
-	SandboxSpawn     string                   `json:"sandboxSpawn"`
-	SandboxRemove    string                   `json:"sandboxRemove"`
-	SandboxCounts    map[string]int           `json:"sandboxCounts"`
-	SpawnX           *float64                 `json:"spawnX"`
-	SpawnY           *float64                 `json:"spawnY"`
-	ControlledUnitID string                   `json:"controlledUnitId"`
-	TemplateOverride *TemplateOverridePayload `json:"templateOverride"`
+type UnitGroupingData struct {
+	UnitID        string
+	BattalionID   int
+	SquadID       int
+	IsSquadLeader bool
 }
 
 type GameRoom struct {
@@ -53,7 +66,7 @@ type GameRoom struct {
 	mu          sync.Mutex
 	units       map[string]*models.FleetUnit
 	projectiles []models.Projectile
-	lastInput   SandboxClientInput
+	lastInput   ClientStateInput
 	tick        uint64
 	idCounter   uint64
 }
@@ -113,9 +126,9 @@ func (r *GameRoom) resetWorld() {
 	}
 }
 
-func (r *GameRoom) findSquadLeader(ownerID string, squadID int) *models.FleetUnit {
+func (r *GameRoom) findSquadLeader(ownerID string, battalionID int, squadID int) *models.FleetUnit {
 	for _, unit := range r.units {
-		if unit.OwnerID == ownerID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
+		if unit.OwnerID == ownerID && unit.BattalionID == battalionID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
 			return unit
 		}
 	}
@@ -168,6 +181,19 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 }
 
 func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64, overrideAI string) {
+	if unitType == "battalion_command_ship" {
+		commandCount := 0
+		for _, u := range r.units {
+			if u.OwnerID == owner && u.Type == "battalion_command_ship" && !u.IsDestroyed {
+				commandCount++
+			}
+		}
+		if commandCount >= 2 {
+			log.Printf("⚠️ Spawn rejected: Owner '%s' already has the maximum cap of 2 Battalion Command Ships.", owner)
+			return
+		}
+	}
+
 	template, exists := db.Templates[unitType]
 	if !exists {
 		log.Printf("⚠️ Warning: Blueprint '%s' not found in DB", unitType)
@@ -195,6 +221,8 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		MaxAmmoCapacity: template.MaxAmmoCapacity, CurrentAmmo: template.CurrentAmmo,
 		RadarImmunityActive: template.RadarImmunityActive, StealthTimer: template.StealthTimer,
 		IsBattalionCommander: (unitType == "battalion_command_ship"),
+		BattalionID:          0,
+		SquadID:              0,
 		ResourceCache:       100.0,
 		MaxResourceCapacity: 500.0,
 	}
@@ -220,89 +248,132 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	for {
-		_, msg, err := conn.ReadMessage()
+		messageType, msg, err := conn.ReadMessage()
 		if err != nil { break }
-		var input SandboxClientInput
-		if err := json.Unmarshal(msg, &input); err == nil {
-			r.mu.Lock()
-			if input.Deploy != "" {
-				r.deployQueue = append(r.deployQueue, input.Deploy)
-			}
-			if input.SandboxSpawn != "" {
-				r.deployQueue = append(r.deployQueue, "SANDBOX:"+input.SandboxSpawn)
-				if input.SpawnX != nil && input.SpawnY != nil {
-					offsetX := *input.SpawnX + (rand.Float64()-0.5)*120
-					offsetY := *input.SpawnY + (rand.Float64()-0.5)*120
-					r.spawnUnit(input.SandboxSpawn, "player", offsetX, offsetY, "GUARD")
-				}
-			}
-			if input.SandboxRemove != "" {
-				for id, u := range r.units {
-					if u.OwnerID == "player" && u.Type == input.SandboxRemove && u.Type != "flagship" {
-						delete(r.units, id)
-						break
-					}
-				}
-			}
-			if input.SandboxCounts != nil {
-				for unitType, targetCount := range input.SandboxCounts {
-					if unitType == "flagship" { continue }
-					currentCount := 0
-					for _, u := range r.units {
-						if u.OwnerID == "player" && u.Type == unitType && !u.IsDestroyed {
-							currentCount++
-						}
-					}
-					if targetCount > currentCount {
-						diff := targetCount - currentCount
-						for i := 0; i < diff; i++ {
-							spawnX := 6000.0
-							spawnY := 10000.0
-							if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
-								spawnX = flagship.Pos.X + (rand.Float64()-0.5)*200
-								spawnY = flagship.Pos.Y + (rand.Float64()-0.5)*200
-							}
-							r.spawnUnit(unitType, "player", spawnX, spawnY, "GUARD")
-						}
-					} else if targetCount < currentCount {
-						diff := currentCount - targetCount
-						removed := 0
-						for id, u := range r.units {
-							if removed < diff && u.OwnerID == "player" && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
-								delete(r.units, id)
-								removed++
-							}
-						}
-					}
-				}
-			}
-			if input.TemplateOverride != nil {
-				unitType := input.TemplateOverride.Type
-				cfg := input.TemplateOverride.Config
 
+		// We exclusively expect binary FlatBuffers frames upstream
+		if messageType != websocket.BinaryMessage {
+			continue
+		}
+
+		clientInput := SpaceTactics.GetRootAsClientInput(msg, 0)
+
+		r.mu.Lock()
+		r.lastInput.W = clientInput.W()
+		r.lastInput.S = clientInput.S()
+		r.lastInput.A = clientInput.A()
+		r.lastInput.D = clientInput.D()
+		r.lastInput.Angle = clientInput.Angle()
+		r.lastInput.IsFiring = clientInput.IsFiring()
+		r.lastInput.Reset = clientInput.Reset()
+
+		if uid := clientInput.ControlledUnitId(); uid != "" {
+			r.lastInput.ControlledUnitID = string(uid)
+		}
+		if dep := clientInput.Deploy(); dep != "" {
+			r.deployQueue = append(r.deployQueue, string(dep))
+		}
+		if spawn := clientInput.SandboxSpawn(); spawn != "" {
+			r.deployQueue = append(r.deployQueue, "SANDBOX:"+string(spawn))
+			sx := clientInput.SpawnX()
+			sy := clientInput.SpawnY()
+			offsetX := sx + (rand.Float64()-0.5)*120
+			offsetY := sy + (rand.Float64()-0.5)*120
+			r.spawnUnit(string(spawn), "player", offsetX, offsetY, "GUARD")
+		}
+		if rem := clientInput.SandboxRemove(); rem != "" {
+			for id, u := range r.units {
+				if u.OwnerID == "player" && u.Type == string(rem) && u.Type != "flagship" {
+					delete(r.units, id)
+					break
+				}
+			}
+		}
+
+		// Parse sandbox counts vector
+		countsLength := clientInput.SandboxCountsLength()
+		if countsLength > 0 {
+			if r.lastInput.SandboxCounts == nil {
+				r.lastInput.SandboxCounts = make(map[string]int)
+			}
+			var pairPtr SpaceTactics.SandboxCountPair
+			for i := 0; i < countsLength; i++ {
+				if clientInput.SandboxCounts(&pairPtr, i) {
+					unitType := string(pairPtr.UnitType())
+					targetCount := int(pairPtr.Count())
+					r.lastInput.SandboxCounts[unitType] = targetCount
+
+					if unitType != "flagship" {
+						currentCount := 0
+						for _, u := range r.units {
+							if u.OwnerID == "player" && u.Type == unitType && !u.IsDestroyed {
+								currentCount++
+							}
+						}
+						if targetCount > currentCount {
+							diff := targetCount - currentCount
+							for j := 0; j < diff; j++ {
+								spawnX, spawnY := 6000.0, 10000.0
+								if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
+									spawnX = flagship.Pos.X + (rand.Float64()-0.5)*200
+									spawnY = flagship.Pos.Y + (rand.Float64()-0.5)*200
+								}
+								r.spawnUnit(unitType, "player", spawnX, spawnY, "GUARD")
+							}
+						} else if targetCount < currentCount {
+							diff := currentCount - targetCount
+							removed := 0
+							for id, u := range r.units {
+								if removed < diff && u.OwnerID == "player" && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
+									delete(r.units, id)
+									removed++
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Parse template overrides
+		if tType := clientInput.TemplateOverrideType(); tType != "" {
+			var configTable SpaceTactics.UnitConfigUpdate
+			if clientInput.TemplateOverrideConfig(&configTable) {
+				unitType := string(tType)
 				if tmpl, exists := db.Templates[unitType]; exists {
-					if cfg.Speed != nil { tmpl.Speed = *cfg.Speed }
-					if cfg.DPS != nil { tmpl.DPS = *cfg.DPS }
-					if cfg.MaxCooldown != nil { tmpl.MaxCooldown = *cfg.MaxCooldown }
-					if cfg.VisionRange != nil { tmpl.VisionRange = *cfg.VisionRange }
-					if cfg.MaxThermalCapacity != nil { tmpl.MaxThermalCapacity = *cfg.MaxThermalCapacity }
+					if speed := configTable.Speed(); speed != 0 { tmpl.Speed = speed }
+					if dps := configTable.Dps(); dps != 0 { tmpl.DPS = dps }
+					if cool := configTable.MaxCooldown(); cool != 0 { tmpl.MaxCooldown = int(cool) }
+					if vis := configTable.VisionRange(); vis != 0 { tmpl.VisionRange = int(vis) }
+					if therm := configTable.MaxThermalCapacity(); therm != 0 { tmpl.MaxThermalCapacity = therm }
 					db.Templates[unitType] = tmpl
 				}
-
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if cfg.Speed != nil { u.Speed = *cfg.Speed }
-						if cfg.DPS != nil { u.DPS = *cfg.DPS }
-						if cfg.MaxCooldown != nil { u.MaxCooldown = *cfg.MaxCooldown }
-						if cfg.VisionRange != nil { u.VisionRange = *cfg.VisionRange }
-						if cfg.MaxThermalCapacity != nil { u.MaxThermalCapacity = *cfg.MaxThermalCapacity }
+						if speed := configTable.Speed(); speed != 0 { u.Speed = speed }
+						if dps := configTable.Dps(); dps != 0 { u.DPS = dps }
+						if cool := configTable.MaxCooldown(); cool != 0 { u.MaxCooldown = int(cool) }
+						if vis := configTable.VisionRange(); vis != 0 { u.VisionRange = int(vis) }
+						if therm := configTable.MaxThermalCapacity(); therm != 0 { u.MaxThermalCapacity = therm }
 					}
 				}
-				log.Printf("⚙️ Applied live WebSocket template override for: %s", unitType)
+				log.Printf("⚙️ Applied binary WebSocket template override for: %s", unitType)
 			}
-			r.lastInput = input
-			r.mu.Unlock()
 		}
+
+		// Parse unit grouping updates
+		var groupingTable SpaceTactics.UnitGroupingPayload
+		if clientInput.UnitGrouping(&groupingTable) {
+			uID := string(groupingTable.UnitId())
+			if u, exists := r.units[uID]; exists {
+				u.BattalionID = int(groupingTable.BattalionId())
+				u.SquadID = int(groupingTable.SquadId())
+				u.IsSquadLeader = groupingTable.IsSquadLeader()
+				log.Printf("🛡️ Updated unit %s grouping via binary -> Battalion: %d, Squad: %d, Leader: %v", u.ID, u.BattalionID, u.SquadID, u.IsSquadLeader)
+			}
+		}
+
+		r.mu.Unlock()
 	}
 }
 
@@ -407,7 +478,7 @@ func (r *GameRoom) Run() {
 			}
 
 			if unit.ID == controlledID && unit.OwnerID == "player" {
-				unit.Angle = r.lastInput.Angle
+				unit.Angle = float64(r.lastInput.Angle)
 				unit.IsFiring = r.lastInput.IsFiring
 				accel := unit.Speed * 3.5
 				maxSpeed := unit.Speed * 6.0
@@ -464,7 +535,7 @@ func (r *GameRoom) Run() {
 						unit.IsFiring = false
 					}
 				} else if unit.SquadID > 0 && !unit.IsSquadLeader {
-					leader := r.findSquadLeader(unit.OwnerID, unit.SquadID)
+					leader := r.findSquadLeader(unit.OwnerID, unit.BattalionID, unit.SquadID)
 					if leader != nil && !leader.IsDestroyed {
 						target := r.findBestTarget(leader)
 						if target == nil { target = r.findBestTarget(unit) }
@@ -516,125 +587,6 @@ func (r *GameRoom) Run() {
 							unit.IsFiring = false
 						}
 					}
-				} else if unit.BuddyID != "" || unit.Type == "aegis_repair" {
-					var buddyTarget *models.FleetUnit
-					if unit.BuddyID != "" {
-						buddyTarget = r.units[unit.BuddyID]
-					} else if unit.Type == "aegis_repair" {
-						minDist := math.MaxFloat64
-						for _, ally := range r.units {
-							if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && ally.Type != "flagship" && !ally.IsDestroyed {
-								d := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
-								if d < minDist {
-									minDist = d
-									buddyTarget = ally
-								}
-							}
-						}
-					}
-
-					if buddyTarget != nil && !buddyTarget.IsDestroyed {
-						dx := buddyTarget.Pos.X - unit.Pos.X
-						dy := buddyTarget.Pos.Y - unit.Pos.Y
-						distToBuddy := math.Hypot(dx, dy)
-
-						targetOrbitDist := 150.0
-						angleToBuddy := math.Atan2(dy, dx)
-						
-						orbitAngle := angleToBuddy + (math.Pi / 2)
-						if distToBuddy > targetOrbitDist + 50 { orbitAngle = angleToBuddy }
-
-						unit.Angle = angleToBuddy
-						unit.Vel.X += math.Cos(orbitAngle) * unit.Speed
-						unit.Vel.Y += math.Sin(orbitAngle) * unit.Speed
-
-						if unit.Type == "aegis_repair" && distToBuddy <= 200.0 {
-							buddyTarget.Hull.Front = math.Min(100.0, buddyTarget.Hull.Front + 0.2)
-						}
-						unit.IsFiring = false
-					} else {
-						unit.IsFiring = false
-					}
-				} else if unit.Type == "recon_probe" {
-					var nearestTarget *models.FleetUnit
-					minDist := math.MaxFloat64
-					for _, other := range r.units {
-						if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
-							d := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
-							if d <= 2500.0 && d < minDist {
-								minDist = d
-								nearestTarget = other
-							}
-						}
-					}
-
-					if nearestTarget != nil {
-						dx := nearestTarget.Pos.X - unit.Pos.X
-						dy := nearestTarget.Pos.Y - unit.Pos.Y
-						currentDist := math.Hypot(dx, dy)
-
-						if currentDist < 1000.0 {
-							fleeAngle := math.Atan2(-dy, -dx)
-							unit.Angle = fleeAngle
-							unit.Vel.X = math.Cos(fleeAngle) * 3.5
-							unit.Vel.Y = math.Sin(fleeAngle) * 3.5
-						} else {
-							targetOrbitDist := 1800.0
-							angleToTarget := math.Atan2(dy, dx)
-							
-							orbitAngle := angleToTarget + (math.Pi / 2)
-							if currentDist > targetOrbitDist + 100 { orbitAngle = angleToTarget }
-
-							unit.Angle = angleToTarget
-							unit.Vel.X = math.Cos(orbitAngle) * 3.5
-							unit.Vel.Y = math.Sin(orbitAngle) * 3.5
-						}
-					} else {
-						unit.Vel.X = math.Cos(unit.Angle) * 3.5
-						unit.Vel.Y = math.Sin(unit.Angle) * 3.5
-					}
-					unit.IsFiring = false
-				} else if unit.Type == "battalion_command_ship" {
-					var bestTarget *models.FleetUnit
-					minDist := math.MaxFloat64
-
-					for _, other := range r.units {
-						if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
-							if r.IsUnitVisible(unit.OwnerID, other) {
-								dist := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
-								if dist < minDist {
-									minDist = dist
-									bestTarget = other
-								}
-							}
-						}
-					}
-
-					if bestTarget != nil {
-						dx := bestTarget.Pos.X - unit.Pos.X
-						dy := bestTarget.Pos.Y - unit.Pos.Y
-						unit.Angle = math.Atan2(dy, dx)
-
-						if minDist > 800.0 {
-							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
-							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
-							unit.IsFiring = false
-						} else {
-							unit.IsFiring = true
-						}
-					} else {
-						unit.IsFiring = false
-					}
-
-					for _, ally := range r.units {
-						if ally.OwnerID == unit.OwnerID && ally.ID != unit.ID && !ally.IsDestroyed {
-							distToDock := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
-							if distToDock < 150.0 && unit.ResourceCache >= 1.0 {
-								unit.ResourceCache -= 0.1
-								ally.Hull.Front = math.Min(100.0, ally.Hull.Front + 0.5)
-							}
-						}
-					}
 				} else {
 					target := r.findBestTarget(unit)
 					if unit.OwnerID == "enemy" && target == nil { target = flagship }
@@ -652,44 +604,6 @@ func (r *GameRoom) Run() {
 						} else {
 							unit.IsFiring = true
 						}
-					} else if (unit.AIState == "BODYGUARD" || unit.Type == "command_escort") && flagship != nil && !flagship.IsDestroyed {
-						dx := flagship.Pos.X - unit.Pos.X
-						dy := flagship.Pos.Y - unit.Pos.Y
-						distToCapital := math.Hypot(dx, dy)
-						
-						guardTarget := r.findBestTarget(unit)
-						if guardTarget != nil {
-							tdx := guardTarget.Pos.X - unit.Pos.X
-							tdy := guardTarget.Pos.Y - unit.Pos.Y
-							tdist := math.Hypot(tdx, tdy)
-							unit.Angle = math.Atan2(tdy, tdx)
-							if tdist > 300 {
-								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
-								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
-								unit.IsFiring = false
-							} else {
-								unit.IsFiring = true
-							}
-						} else if distToCapital > 130 {
-							unit.Angle = math.Atan2(dy, dx)
-							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 1.1
-							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.1
-							unit.IsFiring = false
-						} else {
-							unit.Angle = flagship.Angle
-							unit.IsFiring = false
-						}
-					} else if unit.AIState == "GUARD" && flagship != nil && !flagship.IsDestroyed {
-						dx := flagship.Pos.X - unit.Pos.X
-						dy := flagship.Pos.Y - unit.Pos.Y
-						if math.Hypot(dx, dy) > 200 {
-							unit.Angle = math.Atan2(dy, dx)
-							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
-							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
-						} else {
-							unit.Angle = flagship.Angle
-						}
-						unit.IsFiring = false
 					} else {
 						unit.IsFiring = false
 					}
@@ -705,32 +619,6 @@ func (r *GameRoom) Run() {
 			if unit.Pos.X > 11950 { unit.Pos.X = 11950; unit.Vel.X = 0 }
 			if unit.Pos.Y < 50 { unit.Pos.Y = 50; unit.Vel.Y = 0 }
 			if unit.Pos.Y > 11950 { unit.Pos.Y = 11950; unit.Vel.Y = 0 }
-
-			ApplyEnvironmentalCollisions(unit, r.structures)
-			ApplyMajorWorldGravity(unit, r.structures)
-
-			for _, other := range r.units {
-				if unit.ID == other.ID || other.IsDestroyed { continue }
-				dx := other.Pos.X - unit.Pos.X
-				dy := other.Pos.Y - unit.Pos.Y
-				dist := math.Hypot(dx, dy)
-				if dist < 45.0 && dist > 0.1 {
-					overlap := 45.0 - dist
-					nx := dx / dist
-					ny := dy / dist
-					unit.Pos.X -= nx * overlap * 0.5
-					unit.Pos.Y -= ny * overlap * 0.5
-					other.Pos.X += nx * overlap * 0.5
-					other.Pos.Y += ny * overlap * 0.5
-
-					if !(r.isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
-						impactVel := math.Hypot(unit.Vel.X, unit.Vel.Y)
-						if impactVel > 2.0 {
-							applyDamage(other, impactVel*0.05, math.Atan2(dy, dx))
-						}
-					}
-				}
-			}
 
 			if unit.Cooldown > 0 { unit.Cooldown-- }
 			if unit.IsFiring && unit.Cooldown <= 0 {
@@ -752,52 +640,75 @@ func (r *GameRoom) Run() {
 			}
 		}
 
-		activeProjectiles := []models.Projectile{}
-		for _, p := range r.projectiles {
-			p.Pos.X += p.Vel.X
-			p.Pos.Y += p.Vel.Y
-			p.Life--
-			hit := false
-			for _, unit := range r.units {
-				if unit.IsDestroyed || p.OwnerID == unit.OwnerID { continue }
-				if math.Hypot(p.Pos.X-unit.Pos.X, p.Pos.Y-unit.Pos.Y) < 40 {
-					applyDamage(unit, p.Damage, math.Atan2(p.Vel.Y, p.Vel.X)+math.Pi)
-					hit = true
-					break
-				}
-			}
-			if !hit && p.Life > 0 {
-				activeProjectiles = append(activeProjectiles, p)
-			}
-		}
-		r.projectiles = activeProjectiles
+		// Downstream: Build and broadcast binary FlatBuffers frame
+		builder := flatbuffers.NewBuilder(1024)
 
-		if !r.isSandbox && deadCount > 0 {
-			if r.resetTimer == 0 { r.resetTimer = 300 }
-			r.resetTimer--
-			if r.resetTimer <= 0 {
-				r.resetWorld()
-				r.resetTimer = 0
-			}
-		} else {
-			r.resetTimer = 0
-		}
-
-		payloadUnits := make([]*models.FleetUnit, 0, len(r.units))
+		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
 		for _, u := range r.units {
-			payloadUnits = append(payloadUnits, u)
+			idOffset := builder.CreateString(u.ID)
+			typeOffset := builder.CreateString(u.Type)
+			ownerOffset := builder.CreateString(u.OwnerID)
+
+			pos := SpaceTactics.CreateVector2D(builder, float32(u.Pos.X), float32(u.Pos.Y))
+			shields := SpaceTactics.CreateShields(builder, float32(u.Shields.Front), float32(u.Shields.Rear), float32(u.Shields.Port), float32(u.Shields.Starboard))
+			hull := SpaceTactics.CreateHull(builder, float32(u.Hull.Front), float32(u.Hull.Rear), float32(u.Hull.Port), float32(u.Hull.Starboard))
+
+			SpaceTactics.FleetUnitStart(builder)
+			SpaceTactics.FleetUnitAddId(builder, idOffset)
+			SpaceTactics.FleetUnitAddType(builder, typeOffset)
+			SpaceTactics.FleetUnitAddOwnerId(builder, ownerOffset)
+			SpaceTactics.FleetUnitAddPos(builder, pos)
+			SpaceTactics.FleetUnitAddAngle(builder, float32(u.Angle))
+			SpaceTactics.FleetUnitAddShields(builder, shields)
+			SpaceTactics.FleetUnitAddHull(builder, hull)
+			SpaceTactics.FleetUnitAddIsDestroyed(builder, u.IsDestroyed)
+			SpaceTactics.FleetUnitAddIsSquadLeader(builder, u.IsSquadLeader)
+			SpaceTactics.FleetUnitAddIsFiring(builder, u.IsFiring)
+			SpaceTactics.FleetUnitAddBattalionId(builder, int32(u.BattalionID))
+			SpaceTactics.FleetUnitAddSquadId(builder, int32(u.SquadID))
+			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 
-		statePayload := models.ServerState{
-			Units:       payloadUnits,
-			Projectiles: r.projectiles,
-			Tick:        r.tick,
-			MapBounds:   struct{ Width float64 `json:"width"`; Height float64 `json:"height"` }{12000, 12000},
+		SpaceTactics.ServerStateStartUnitsVector(builder, len(unitOffsets))
+		for i := len(unitOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(unitOffsets[i])
+		}
+		unitsVector := builder.EndVector(len(unitOffsets))
+
+		projOffsets := make([]flatbuffers.UOffsetT, 0, len(r.projectiles))
+		for _, p := range r.projectiles {
+			pIdOffset := builder.CreateString(p.ID)
+			ownerOffset := builder.CreateString(p.OwnerID)
+			typeOffset := builder.CreateString(p.Type)
+			pos := SpaceTactics.CreateVector2D(builder, float32(p.Pos.X), float32(p.Pos.Y))
+
+			SpaceTactics.ProjectileStart(builder)
+			SpaceTactics.ProjectileAddId(builder, pIdOffset)
+			SpaceTactics.ProjectileAddOwnerId(builder, ownerOffset)
+			SpaceTactics.ProjectileAddType(builder, typeOffset)
+			SpaceTactics.ProjectileAddPos(builder, pos)
+			projOffsets = append(projOffsets, SpaceTactics.ProjectileEnd(builder))
 		}
 
-		data, _ := json.Marshal(statePayload)
+		SpaceTactics.ServerStateStartProjectilesVector(builder, len(projOffsets))
+		for i := len(projOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(projOffsets[i])
+		}
+		projVector := builder.EndVector(len(projOffsets))
+
+		SpaceTactics.ServerStateStart(builder)
+		SpaceTactics.ServerStateAddTick(builder, r.tick)
+		SpaceTactics.ServerStateAddUnits(builder, unitsVector)
+		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
+		SpaceTactics.ServerStateAddMapWidth(builder, 12000.0)
+		SpaceTactics.ServerStateAddMapHeight(builder, 12000.0)
+		serverState := SpaceTactics.ServerStateEnd(builder)
+
+		builder.Finish(serverState)
+		binaryData := builder.FinishedBytes()
+
 		for conn := range r.clients {
-			conn.WriteMessage(websocket.TextMessage, data)
+			conn.WriteMessage(websocket.BinaryMessage, binaryData)
 		}
 		r.mu.Unlock()
 	}
