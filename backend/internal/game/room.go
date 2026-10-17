@@ -55,6 +55,8 @@ type UnitGroupingData struct {
 	IsSquadLeader bool
 }
 
+type SandboxClientInput = ClientStateInput
+
 type GameRoom struct {
 	resetTimer  int
 	deployQueue []string
@@ -126,10 +128,19 @@ func (r *GameRoom) resetWorld() {
 	}
 }
 
-func (r *GameRoom) findSquadLeader(ownerID string, battalionID int, squadID int) *models.FleetUnit {
+func (r *GameRoom) findSquadLeader(ownerID string, args ...int) *models.FleetUnit {
+	var battalionID, squadID int
+	if len(args) == 1 {
+		squadID = args[0]
+	} else if len(args) >= 2 {
+		battalionID = args[0]
+		squadID = args[1]
+	}
 	for _, unit := range r.units {
-		if unit.OwnerID == ownerID && unit.BattalionID == battalionID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
-			return unit
+		if unit.OwnerID == ownerID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
+			if battalionID == 0 || unit.BattalionID == battalionID {
+				return unit
+			}
 		}
 	}
 	return nil
@@ -267,23 +278,25 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.lastInput.IsFiring = clientInput.IsFiring()
 		r.lastInput.Reset = clientInput.Reset()
 
-		if uid := clientInput.ControlledUnitId(); uid != "" {
+		if uid := clientInput.ControlledUnitId(); len(uid) > 0 {
 			r.lastInput.ControlledUnitID = string(uid)
 		}
-		if dep := clientInput.Deploy(); dep != "" {
+		if dep := clientInput.Deploy(); len(dep) > 0 {
 			r.deployQueue = append(r.deployQueue, string(dep))
 		}
-		if spawn := clientInput.SandboxSpawn(); spawn != "" {
-			r.deployQueue = append(r.deployQueue, "SANDBOX:"+string(spawn))
+		if spawn := clientInput.SandboxSpawn(); len(spawn) > 0 {
+			spawnStr := string(spawn)
+			r.deployQueue = append(r.deployQueue, "SANDBOX:"+spawnStr)
 			sx := clientInput.SpawnX()
 			sy := clientInput.SpawnY()
 			offsetX := sx + (rand.Float64()-0.5)*120
 			offsetY := sy + (rand.Float64()-0.5)*120
-			r.spawnUnit(string(spawn), "player", offsetX, offsetY, "GUARD")
+			r.spawnUnit(spawnStr, "player", offsetX, offsetY, "GUARD")
 		}
-		if rem := clientInput.SandboxRemove(); rem != "" {
+		if rem := clientInput.SandboxRemove(); len(rem) > 0 {
+			remStr := string(rem)
 			for id, u := range r.units {
-				if u.OwnerID == "player" && u.Type == string(rem) && u.Type != "flagship" {
+				if u.OwnerID == "player" && u.Type == remStr && u.Type != "flagship" {
 					delete(r.units, id)
 					break
 				}
@@ -336,10 +349,11 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// Parse template overrides
-		if tType := clientInput.TemplateOverrideType(); tType != "" {
+		if tTypeBytes := clientInput.TemplateOverrideType(); len(tTypeBytes) > 0 {
+			tType := string(tTypeBytes)
 			var configTable SpaceTactics.UnitConfigUpdate
 			if clientInput.TemplateOverrideConfig(&configTable) {
-				unitType := string(tType)
+				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
 					if speed := configTable.Speed(); speed != 0 { tmpl.Speed = speed }
 					if dps := configTable.Dps(); dps != 0 { tmpl.DPS = dps }

@@ -149,7 +149,8 @@ type FleetUnit struct {
 	VisionRange int           `json:"visionRange"`
 	DPS         float64       `json:"dps"`
 
-	// --- Tactical & Hierarchical Extensions[cite: 3] ---
+	// --- Tactical & Hierarchical Extensions ---
+	BattalionID          int    `json:"battalionId"`
 	SquadID              int    `json:"squadId"`
 	IsSquadLeader        bool   `json:"isSquadLeader"`
 	IsBattalionCommander bool   `json:"isBattalionCommander"`
