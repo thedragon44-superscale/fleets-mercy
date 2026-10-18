@@ -52,33 +52,34 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
-			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances
+			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances[cite: 15]
 			for i := 0; i < 12; i++ {
 				angle := float64(i) / 12.0 * 2 * math.Pi
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
 				nodeX := s.PosX + math.Cos(angle)*nodeDist
 				nodeY := s.PosY + math.Sin(angle)*nodeDist
 				
-				// Tighter collision radius to allow gap navigation between nodes
-				nodeRadius := (15.0 + float64(i%3)*8.0) + 5.0
+				// Solid collision boundary per node with a clean response buffer
+				nodeRadius := 28.0
 
 				dx := unit.Pos.X - nodeX
 				dy := unit.Pos.Y - nodeY
 				dist := math.Hypot(dx, dy)
 
-				if dist < nodeRadius {
-					if dist > 0.1 {
-						nx := dx / dist
-						ny := dy / dist
-						overlap := nodeRadius - dist
-						unit.Pos.X += nx * overlap
-						unit.Pos.Y += ny * overlap
+				if dist < nodeRadius && dist > 0.1 {
+					nx := dx / dist
+					ny := dy / dist
+					overlap := nodeRadius - dist
+					
+					// Positional push-out
+					unit.Pos.X += nx * overlap
+					unit.Pos.Y += ny * overlap
 
-						dot := unit.Vel.X*nx + unit.Vel.Y*ny
-						if dot < 0 {
-							unit.Vel.X -= dot * nx
-							unit.Vel.Y -= dot * ny
-						}
+					// Velocity component cancellation along the collision normal
+					dot := unit.Vel.X*nx + unit.Vel.Y*ny
+					if dot < 0 {
+						unit.Vel.X -= dot * nx
+						unit.Vel.Y -= dot * ny
 					}
 				}
 			}
@@ -89,17 +90,14 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 		dy := unit.Pos.Y - s.PosY
 		dist := math.Hypot(dx, dy)
 
-		collisionRadius := s.Radius + 30.0
+		collisionRadius := s.Radius + 35.0
 
 		if dist < collisionRadius {
 			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
-				// Core Death Zone: Instant destruction
-				targetDestroyed := true
-				if targetDestroyed {
-					unit.IsDestroyed = true
-					unit.Shields = models.QuadrantStats{}
-					return
-				}
+				// Core Death Zone: Instant destruction[cite: 15]
+				unit.IsDestroyed = true
+				unit.Shields = models.QuadrantStats{}
+				return
 			}
 
 			if dist > 0.1 {
@@ -141,3 +139,4 @@ func ApplyMajorWorldGravity(unit *models.FleetUnit, structures []models.MapStruc
 		}
 	}
 }
+```[cite: 15]
