@@ -663,18 +663,21 @@ func (r *GameRoom) Run() {
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)
 
-			pos := SpaceTactics.CreateVector2D(builder, float32(u.Pos.X), float32(u.Pos.Y))
-			shields := SpaceTactics.CreateShields(builder, float32(u.Shields.Front), float32(u.Shields.Rear), float32(u.Shields.Port), float32(u.Shields.Starboard))
-			hull := SpaceTactics.CreateHull(builder, float32(u.Hull.Front), float32(u.Hull.Rear), float32(u.Hull.Port), float32(u.Hull.Starboard))
-
 			SpaceTactics.FleetUnitStart(builder)
 			SpaceTactics.FleetUnitAddId(builder, idOffset)
 			SpaceTactics.FleetUnitAddType(builder, typeOffset)
 			SpaceTactics.FleetUnitAddOwnerId(builder, ownerOffset)
+
+			pos := SpaceTactics.CreateVector2D(builder, float32(u.Pos.X), float32(u.Pos.Y))
 			SpaceTactics.FleetUnitAddPos(builder, pos)
-			SpaceTactics.FleetUnitAddAngle(builder, float32(u.Angle))
+
+			shields := SpaceTactics.CreateShields(builder, float32(u.Shields.Front), float32(u.Shields.Rear), float32(u.Shields.Port), float32(u.Shields.Starboard))
 			SpaceTactics.FleetUnitAddShields(builder, shields)
+
+			hull := SpaceTactics.CreateHull(builder, float32(u.Hull.Front), float32(u.Hull.Rear), float32(u.Hull.Port), float32(u.Hull.Starboard))
 			SpaceTactics.FleetUnitAddHull(builder, hull)
+
+			SpaceTactics.FleetUnitAddAngle(builder, float32(u.Angle))
 			SpaceTactics.FleetUnitAddIsDestroyed(builder, u.IsDestroyed)
 			SpaceTactics.FleetUnitAddIsSquadLeader(builder, u.IsSquadLeader)
 			SpaceTactics.FleetUnitAddIsFiring(builder, u.IsFiring)
@@ -694,13 +697,15 @@ func (r *GameRoom) Run() {
 			pIdOffset := builder.CreateString(p.ID)
 			ownerOffset := builder.CreateString(p.OwnerID)
 			typeOffset := builder.CreateString(p.Type)
-			pos := SpaceTactics.CreateVector2D(builder, float32(p.Pos.X), float32(p.Pos.Y))
 
 			SpaceTactics.ProjectileStart(builder)
 			SpaceTactics.ProjectileAddId(builder, pIdOffset)
 			SpaceTactics.ProjectileAddOwnerId(builder, ownerOffset)
 			SpaceTactics.ProjectileAddType(builder, typeOffset)
+
+			pos := SpaceTactics.CreateVector2D(builder, float32(p.Pos.X), float32(p.Pos.Y))
 			SpaceTactics.ProjectileAddPos(builder, pos)
+
 			projOffsets = append(projOffsets, SpaceTactics.ProjectileEnd(builder))
 		}
 
