@@ -161,7 +161,7 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 
 		dx := target.Pos.X - unit.Pos.X
 		dy := target.Pos.Y - unit.Pos.Y
-		dist := math.Sqrt(dx*dx + dy*dy)
+		dist := math.Hypot(dx, dy)
 
 		if dist > 1500.0 { continue }
 
@@ -262,7 +262,6 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		messageType, msg, err := conn.ReadMessage()
 		if err != nil { break }
 
-		// We exclusively expect binary FlatBuffers frames upstream
 		if messageType != websocket.BinaryMessage {
 			continue
 		}
@@ -406,7 +405,7 @@ func (r *GameRoom) runAI() {
 
 	dx := player.Pos.X - ai.Pos.X
 	dy := player.Pos.Y - ai.Pos.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
+	dist := math.Hypot(dx, dy)
 
 	ai.Angle = math.Atan2(dy, dx)
 	ai.IsFiring = dist < 1200
@@ -442,6 +441,7 @@ func (r *GameRoom) Run() {
 		}
 
 		r.runAI()
+		ProcessLogisticsLoops(r)
 
 		if deployDebounce > 0 { deployDebounce-- }
 		
@@ -465,21 +465,21 @@ func (r *GameRoom) Run() {
 			}
 		}
 
-		deadCount := 0
 		controlledID := r.lastInput.ControlledUnitID
 		if controlledID == "" { controlledID = "player-flagship" }
 
 		for id, unit := range r.units {
 			if unit.IsDestroyed {
 				if (unit.Type == "flagship" || unit.Type == "battalion_command_ship") && !r.isSandbox {
-					deadCount++
+					// Capital ship down tracking
 				} else {
 					delete(r.units, id)
 				}
 				continue
 			}
 
-			if unit.IsSquadLeader && !unit.IsDestroyed && unit.AIState != "RETREAT" {
+			// Shield-Break Retreat Trigger for Squad Leaders
+			if unit.IsSquadLeader && unit.AIState != "RETREAT" {
 				totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
 				if totalShields <= 0.0 {
 					unit.AIState = "RETREAT"
@@ -491,174 +491,32 @@ func (r *GameRoom) Run() {
 				}
 			}
 
+			// Player Movement or Autonomous AI State Machine
 			if unit.ID == controlledID && unit.OwnerID == "player" {
-				unit.Angle = float64(r.lastInput.Angle)
-				unit.IsFiring = r.lastInput.IsFiring
-				accel := unit.Speed * 3.5
-				maxSpeed := unit.Speed * 6.0
-
-				if r.lastInput.W { 
-					unit.Vel.X += math.Cos(unit.Angle) * accel 
-					unit.Vel.Y += math.Sin(unit.Angle) * accel 
-				}
-				if r.lastInput.S { 
-					unit.Vel.X -= math.Cos(unit.Angle) * (accel * 0.5) 
-					unit.Vel.Y -= math.Sin(unit.Angle) * (accel * 0.5) 
-				}
-				if r.lastInput.A { 
-					strafeAngle := unit.Angle - (math.Pi / 2) 
-					unit.Vel.X += math.Cos(strafeAngle) * (accel * 0.75) 
-					unit.Vel.Y += math.Sin(strafeAngle) * (accel * 0.75) 
-				}
-				if r.lastInput.D { 
-					strafeAngle := unit.Angle + (math.Pi / 2) 
-					unit.Vel.X += math.Cos(strafeAngle) * (accel * 0.75) 
-					unit.Vel.Y += math.Sin(strafeAngle) * (accel * 0.75) 
-				}
-
-				currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-				if currentSpeed > maxSpeed {
-					unit.Vel.X = (unit.Vel.X / currentSpeed) * maxSpeed
-					unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
-				}
+				HandlePlayerMovement(unit, r.lastInput)
 			} else {
-				if unit.AIState == "RETREAT" {
-					var portTarget *models.FleetUnit
-					minDistToPort := math.MaxFloat64
-
-					for _, ally := range r.units {
-						if ally.OwnerID == unit.OwnerID && (ally.Type == "flagship" || ally.Type == "battalion_command_ship") && !ally.IsDestroyed {
-							d := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
-							if d < minDistToPort {
-								minDistToPort = d
-								portTarget = ally
-							}
-						}
-					}
-
-					if portTarget != nil {
-						dx := portTarget.Pos.X - unit.Pos.X
-						dy := portTarget.Pos.Y - unit.Pos.Y
-						unit.Angle = math.Atan2(dy, dx)
-						unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 1.2
-						unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.2
-						unit.IsFiring = false
-
-						if minDistToPort < 150.0 { unit.AIState = "GUARD" }
-					} else {
-						unit.IsFiring = false
-					}
-				} else if unit.SquadID > 0 && !unit.IsSquadLeader {
-					leader := r.findSquadLeader(unit.OwnerID, unit.BattalionID, unit.SquadID)
-					if leader != nil && !leader.IsDestroyed {
-						target := r.findBestTarget(leader)
-						if target == nil { target = r.findBestTarget(unit) }
-
-						if target != nil && !target.IsDestroyed {
-							dx := target.Pos.X - unit.Pos.X
-							dy := target.Pos.Y - unit.Pos.Y
-							dist := math.Hypot(dx, dy)
-							unit.Angle = math.Atan2(dy, dx)
-
-							if dist > 300 {
-								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
-								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
-								unit.IsFiring = false
-							} else {
-								unit.IsFiring = true
-							}
-						} else {
-							targetX := leader.Pos.X + 100.0
-							targetY := leader.Pos.Y + 100.0
-							dx := targetX - unit.Pos.X
-							dy := targetY - unit.Pos.Y
-							distToAnchor := math.Hypot(dx, dy)
-
-							if distToAnchor > 40.0 {
-								unit.Angle = math.Atan2(dy, dx)
-								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.9
-								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.9
-							} else {
-								unit.Angle = leader.Angle
-							}
-							unit.IsFiring = false
-						}
-					} else {
-						target := r.findBestTarget(unit)
-						if target != nil && !target.IsDestroyed {
-							dx := target.Pos.X - unit.Pos.X
-							dy := target.Pos.Y - unit.Pos.Y
-							dist := math.Hypot(dx, dy)
-							unit.Angle = math.Atan2(dy, dx)
-							if dist > 250 {
-								unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
-								unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
-								unit.IsFiring = false
-							} else {
-								unit.IsFiring = true
-							}
-						} else {
-							unit.IsFiring = false
-						}
-					}
-				} else {
-					target := r.findBestTarget(unit)
-					if unit.OwnerID == "enemy" && target == nil { target = flagship }
-
-					if target != nil && !target.IsDestroyed {
-						dx := target.Pos.X - unit.Pos.X
-						dy := target.Pos.Y - unit.Pos.Y
-						dist := math.Hypot(dx, dy)
-						unit.Angle = math.Atan2(dy, dx)
-
-						if dist > 250 {
-							unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
-							unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
-							unit.IsFiring = false
-						} else {
-							unit.IsFiring = true
-						}
-					} else {
-						unit.IsFiring = false
-					}
-				}
+				RunUnitAI(unit, r, flagship)
 			}
 
-			unit.Pos.X += unit.Vel.X
-			unit.Pos.Y += unit.Vel.Y
-			unit.Vel.X *= 0.95
-			unit.Vel.Y *= 0.95
+			// Physics, Damping, Environment Collisions & World Gravity
+			ApplyUnitPhysics(unit)
+			ApplyEnvironmentalCollisions(unit, r.structures)
+			ApplyMajorWorldGravity(unit, r.structures)
 
-			if unit.Pos.X < 50 { unit.Pos.X = 50; unit.Vel.X = 0 }
-			if unit.Pos.X > 11950 { unit.Pos.X = 11950; unit.Vel.X = 0 }
-			if unit.Pos.Y < 50 { unit.Pos.Y = 50; unit.Vel.Y = 0 }
-			if unit.Pos.Y > 11950 { unit.Pos.Y = 11950; unit.Vel.Y = 0 }
-
-			if unit.Cooldown > 0 { unit.Cooldown-- }
-			if unit.IsFiring && unit.Cooldown <= 0 {
-				r.idCounter++
-				projSpeed, projDmg, projColor := 18.0, 50.0, "laser"
-				if unit.Type == "lancer_corvette" || unit.Type == "flagship" || unit.Type == "battalion_command_ship" {
-					projSpeed = 25.0
-					projDmg = 120.0
-					projColor = "railgun"
-				}
-
-				r.projectiles = append(r.projectiles, models.Projectile{
-					ID: fmt.Sprintf("proj-%d", r.idCounter), OwnerID: unit.OwnerID, Type: projColor,
-					Pos: models.Vector2D{X: unit.Pos.X + math.Cos(unit.Angle)*30, Y: unit.Pos.Y + math.Sin(unit.Angle)*30},
-					Vel: models.Vector2D{X: unit.Vel.X + math.Cos(unit.Angle)*projSpeed, Y: unit.Vel.Y + math.Sin(unit.Angle)*projSpeed},
-					Life: 100, Damage: projDmg,
-				})
-				unit.Cooldown = unit.MaxCooldown
-			}
+			// Weapon Firing & Cooldowns
+			HandleWeaponFiring(unit, r)
 		}
+
+		// Unit-to-Unit Collisions and Projectile Updates
+		ResolveUnitCollisions(r.units, r.isSandbox)
+		UpdateProjectiles(r)
 
 		// Downstream: Build and broadcast binary FlatBuffers frame
 		builder := flatbuffers.NewBuilder(1024)
 
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
 		for _, u := range r.units {
+			if u.IsDestroyed { continue }
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)
