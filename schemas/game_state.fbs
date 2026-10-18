@@ -104,6 +104,85 @@ table ClientInput {
   spawn_y: double;
   sandbox_counts: [SandboxCountPair];
 
+table UnitConfigUpdate {
+  // 1. Core Identification & General Stats
+  weight_class: int;
+  vision_range: int;
+  aggro_range: double;
+  aggro_threat_weight: double;
+  retreat_morale_threshold: double;
+  squad_cohesion_leash_range: double;
+
+  // 2. Vitals, Health & Shield Systems
+  shield_base: double;
+  hull_base: double;
+  quadrant_shielding_enabled: bool;
+  quadrant_shield_pools_enabled: bool;
+  quadrant_hull_pools_enabled: bool;
+  shield_regen_rate: double;
+  shield_recharge_delay_ticks: int;
+  directional_shield_arc: double;
+  armor_mitigation: double;
+  armor_hardness_rating: double;
+  ablative_plating_durability: double;
+
+  // 3. Movement, Speed & Physics Dynamics
+  speed: double;
+  strafing_speed: double;
+  turn_rate: double;
+  angular_velocity: double;
+  lateral_thrust_power: double;
+  reverse_thrust_power: double;
+  drift_coefficient: double;
+  acceleration_curve: double;
+
+  // 4. Combat Output & Ballistics
+  dps: double;
+  max_cooldown: int;
+  projectile_range: double;
+  projectile_speed: double;
+  optimal_range: double;
+  max_range: double;
+  engagement_range_cap: double;
+  ammo_capacity: int;
+  initial_ordnance_capacity: int;
+  turret_traverse_speed: double;
+  weapon_dispersion_bloom: double;
+  projectile_tracking_capability: double;
+  shield_penetration_factor: double;
+  sustained_fire_limit_seconds: double;
+  barrel_cooling_duration_seconds: double;
+  burst_salvo_cooldown: double;
+  beam_raycast_duration: double;
+  max_thermal_capacity: double;
+  thermal_dissipation_rate: double;
+  power_grid_allocation_weight: double;
+
+  // 5. Radar, Sensor & Stealth Systems
+  radar_cross_section: double;
+  sensor_resolution_tier: int;
+  jamming_susceptibility: double;
+  target_lock_time: double;
+  radar_immunity_active: bool;
+  shield_gated_stealth_threshold: double;
+  decloak_on_action_flag: bool;
+  stealth_recovery_delay_seconds: double;
+
+  // 6. Logistics, Harvesting & Special Systems
+  resource_harvesting_type: int;
+  requires_recon_telemetry: bool;
+  requires_anchor_drone: bool;
+  requires_recon_anchor: bool;
+  port_docking_bay_status: bool;
+  starboard_deployment_bay_status: bool;
+  salvageable_upon_destruction: bool;
+  cryo_gas_radius: double;
+  cryo_effect_duration: double;
+  graviton_vortex_duration: double;
+  warp_canister_capacity: int;
+  emergency_warp_evacuation_target: bool;
+}
+
   // 3. Inspector Tab: Live Stat Tuning Overrides
   template_override_type: string;
   template_override_config: UnitConfigUpdate;
@@ -117,3 +196,5 @@ table ClientInput {
 }
 
 root_type ServerState;
+
+

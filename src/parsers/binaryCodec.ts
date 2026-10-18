@@ -71,11 +71,13 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
       if (!p) continue;
 
       const pos = p.pos();
+      const vel = p.vel();
       projectiles[i] = {
         id: p.id() || '',
         ownerId: p.ownerId() || '',
         type: p.type() || 'player',
         pos: { x: pos?.x() || 0, y: pos?.y() || 0 },
+        vel: { x: vel?.x() || 0, y: vel?.y() || 0 },
       };
     }
 
@@ -180,7 +182,7 @@ export function serializeClientInput(actionParams: {
 
     ClientInput.startSandboxCountsVector(builder, pairOffsets.length);
     for (let i = pairOffsets.length - 1; i >= 0; i--) {
-      builder.prepedOffset(pairOffsets[i]); // or direct vector prepend depending on TS generator
+      builder.addOffset(pairOffsets[i]); 
     }
     countsVectorOffset = builder.endVector();
   }
@@ -214,3 +216,92 @@ export function serializeClientInput(actionParams: {
 
   return builder.asUint8Array();
 }
+
+// Build Template Override Table (if provided)
+  let templateTypeOffset = 0;
+  let templateConfigOffset = 0;
+  if (actionParams.templateOverride) {
+    templateTypeOffset = builder.createString(actionParams.templateOverride.type);
+    const cfg = actionParams.templateOverride.config;
+
+    UnitConfigUpdate.startUnitConfigUpdate(builder);
+    
+    // Core & General
+    if (cfg.weightClass !== undefined) UnitConfigUpdate.addWeightClass(builder, cfg.weightClass);
+    if (cfg.visionRange !== undefined) UnitConfigUpdate.addVisionRange(builder, cfg.visionRange);
+    if (cfg.aggroRange !== undefined) UnitConfigUpdate.addAggroRange(builder, cfg.aggroRange);
+    if (cfg.aggroThreatWeight !== undefined) UnitConfigUpdate.addAggroThreatWeight(builder, cfg.aggroThreatWeight);
+    if (cfg.retreatMoraleThreshold !== undefined) UnitConfigUpdate.addRetreatMoraleThreshold(builder, cfg.retreatMoraleThreshold);
+    if (cfg.squadCohesionLeashRange !== undefined) UnitConfigUpdate.addSquadCohesionLeashRange(builder, cfg.squadCohesionLeashRange);
+
+    // Vitals & Shields
+    if (cfg.shieldBase !== undefined) UnitConfigUpdate.addShieldBase(builder, cfg.shieldBase);
+    if (cfg.hullBase !== undefined) UnitConfigUpdate.addHullBase(builder, cfg.hullBase);
+    if (cfg.quadrantShieldingEnabled !== undefined) UnitConfigUpdate.addQuadrantShieldingEnabled(builder, cfg.quadrantShieldingEnabled);
+    if (cfg.quadrantShieldPoolsEnabled !== undefined) UnitConfigUpdate.addQuadrantShieldPoolsEnabled(builder, cfg.quadrantShieldPoolsEnabled);
+    if (cfg.quadrantHullPoolsEnabled !== undefined) UnitConfigUpdate.addQuadrantHullPoolsEnabled(builder, cfg.quadrantHullPoolsEnabled);
+    if (cfg.shieldRegenRate !== undefined) UnitConfigUpdate.addShieldRegenRate(builder, cfg.shieldRegenRate);
+    if (cfg.shieldRechargeDelayTicks !== undefined) UnitConfigUpdate.addShieldRechargeDelayTicks(builder, cfg.shieldRechargeDelayTicks);
+    if (cfg.directionalShieldArc !== undefined) UnitConfigUpdate.addDirectionalShieldArc(builder, cfg.directionalShieldArc);
+    if (cfg.armorMitigation !== undefined) UnitConfigUpdate.addArmorMitigation(builder, cfg.armorMitigation);
+    if (cfg.armorHardnessRating !== undefined) UnitConfigUpdate.addArmorHardnessRating(builder, cfg.armorHardnessRating);
+    if (cfg.ablativePlatingDurability !== undefined) UnitConfigUpdate.addAblativePlatingDurability(builder, cfg.ablativePlatingDurability);
+
+    // Movement & Physics
+    if (cfg.speed !== undefined) UnitConfigUpdate.addSpeed(builder, cfg.speed);
+    if (cfg.strafingSpeed !== undefined) UnitConfigUpdate.addStrafingSpeed(builder, cfg.strafingSpeed);
+    if (cfg.turnRate !== undefined) UnitConfigUpdate.addTurnRate(builder, cfg.turnRate);
+    if (cfg.angularVelocity !== undefined) UnitConfigUpdate.addAngularVelocity(builder, cfg.angularVelocity);
+    if (cfg.lateralThrustPower !== undefined) UnitConfigUpdate.addLateralThrustPower(builder, cfg.lateralThrustPower);
+    if (cfg.reverseThrustPower !== undefined) UnitConfigUpdate.addReverseThrustPower(builder, cfg.reverseThrustPower);
+    if (cfg.driftCoefficient !== undefined) UnitConfigUpdate.addDriftCoefficient(builder, cfg.driftCoefficient);
+    if (cfg.accelerationCurve !== undefined) UnitConfigUpdate.addAccelerationCurve(builder, cfg.accelerationCurve);
+
+    // Combat & Ballistics
+    if (cfg.dps !== undefined) UnitConfigUpdate.addDps(builder, cfg.dps);
+    if (cfg.maxCooldown !== undefined) UnitConfigUpdate.addMaxCooldown(builder, cfg.maxCooldown);
+    if (cfg.projectileRange !== undefined) UnitConfigUpdate.addProjectileRange(builder, cfg.projectileRange);
+    if (cfg.projectileSpeed !== undefined) UnitConfigUpdate.addProjectileSpeed(builder, cfg.projectileSpeed);
+    if (cfg.optimalRange !== undefined) UnitConfigUpdate.addOptimalRange(builder, cfg.optimalRange);
+    if (cfg.maxRange !== undefined) UnitConfigUpdate.addMaxRange(builder, cfg.maxRange);
+    if (cfg.engagementRangeCap !== undefined) UnitConfigUpdate.addEngagementRangeCap(builder, cfg.engagementRangeCap);
+    if (cfg.ammoCapacity !== undefined) UnitConfigUpdate.addAmmoCapacity(builder, cfg.ammoCapacity);
+    if (cfg.initialOrdnanceCapacity !== undefined) UnitConfigUpdate.addInitialOrdnanceCapacity(builder, cfg.initialOrdnanceCapacity);
+    if (cfg.turretTraverseSpeed !== undefined) UnitConfigUpdate.addTurretTraverseSpeed(builder, cfg.turretTraverseSpeed);
+    if (cfg.weaponDispersionBloom !== undefined) UnitConfigUpdate.addWeaponDispersionBloom(builder, cfg.weaponDispersionBloom);
+    if (cfg.projectileTrackingCapability !== undefined) UnitConfigUpdate.addProjectileTrackingCapability(builder, cfg.projectileTrackingCapability);
+    if (cfg.shieldPenetrationFactor !== undefined) UnitConfigUpdate.addShieldPenetrationFactor(builder, cfg.shieldPenetrationFactor);
+    if (cfg.sustainedFireLimitSeconds !== undefined) UnitConfigUpdate.addSustainedFireLimitSeconds(builder, cfg.sustainedFireLimitSeconds);
+    if (cfg.barrelCoolingDurationSeconds !== undefined) UnitConfigUpdate.addBarrelCoolingDurationSeconds(builder, cfg.barrelCoolingDurationSeconds);
+    if (cfg.burstSalvoCooldown !== undefined) UnitConfigUpdate.addBurstSalvoCooldown(builder, cfg.burstSalvoCooldown);
+    if (cfg.beamRaycastDuration !== undefined) UnitConfigUpdate.addBeamRaycastDuration(builder, cfg.beamRaycastDuration);
+    if (cfg.maxThermalCapacity !== undefined) UnitConfigUpdate.addMaxThermalCapacity(builder, cfg.maxThermalCapacity);
+    if (cfg.thermalDissipationRate !== undefined) UnitConfigUpdate.addThermalDissipationRate(builder, cfg.thermalDissipationRate);
+    if (cfg.powerGridAllocationWeight !== undefined) UnitConfigUpdate.addPowerGridAllocationWeight(builder, cfg.powerGridAllocationWeight);
+
+    // Radar & Stealth
+    if (cfg.radarCrossSection !== undefined) UnitConfigUpdate.addRadarCrossSection(builder, cfg.radarCrossSection);
+    if (cfg.sensorResolutionTier !== undefined) UnitConfigUpdate.addSensorResolutionTier(builder, cfg.sensorResolutionTier);
+    if (cfg.jammingSusceptibility !== undefined) UnitConfigUpdate.addJammingSusceptibility(builder, cfg.jammingSusceptibility);
+    if (cfg.targetLockTime !== undefined) UnitConfigUpdate.addTargetLockTime(builder, cfg.targetLockTime);
+    if (cfg.radarImmunityActive !== undefined) UnitConfigUpdate.addRadarImmunityActive(builder, cfg.radarImmunityActive);
+    if (cfg.shieldGatedStealthThreshold !== undefined) UnitConfigUpdate.addShieldGatedStealthThreshold(builder, cfg.shieldGatedStealthThreshold);
+    if (cfg.decloakOnActionFlag !== undefined) UnitConfigUpdate.addDecloakOnActionFlag(builder, cfg.decloakOnActionFlag);
+    if (cfg.stealthRecoveryDelaySeconds !== undefined) UnitConfigUpdate.addStealthRecoveryDelaySeconds(builder, cfg.stealthRecoveryDelaySeconds);
+
+    // Logistics & Special Systems
+    if (cfg.resourceHarvestingType !== undefined) UnitConfigUpdate.addResourceHarvestingType(builder, cfg.resourceHarvestingType);
+    if (cfg.requiresReconTelemetry !== undefined) UnitConfigUpdate.addRequiresReconTelemetry(builder, cfg.requiresReconTelemetry);
+    if (cfg.requiresAnchorDrone !== undefined) UnitConfigUpdate.addRequiresAnchorDrone(builder, cfg.requiresAnchorDrone);
+    if (cfg.requiresReconAnchor !== undefined) UnitConfigUpdate.addRequiresReconAnchor(builder, cfg.requiresReconAnchor);
+    if (cfg.portDockingBayStatus !== undefined) UnitConfigUpdate.addPortDockingBayStatus(builder, cfg.portDockingBayStatus);
+    if (cfg.starboardDeploymentBayStatus !== undefined) UnitConfigUpdate.addStarboardDeploymentBayStatus(builder, cfg.starboardDeploymentBayStatus);
+    if (cfg.salvageableUponDestruction !== undefined) UnitConfigUpdate.addSalvageableUponDestruction(builder, cfg.salvageableUponDestruction);
+    if (cfg.cryoGasRadius !== undefined) UnitConfigUpdate.addCryoGasRadius(builder, cfg.cryoGasRadius);
+    if (cfg.cryoEffectDuration !== undefined) UnitConfigUpdate.addCryoEffectDuration(builder, cfg.cryoEffectDuration);
+    if (cfg.gravitonVortexDuration !== undefined) UnitConfigUpdate.addGravitonVortexDuration(builder, cfg.gravitonVortexDuration);
+    if (cfg.warpCanisterCapacity !== undefined) UnitConfigUpdate.addWarpCanisterCapacity(builder, cfg.warpCanisterCapacity);
+    if (cfg.emergencyWarpEvacuationTarget !== undefined) UnitConfigUpdate.addEmergencyWarpEvacuationTarget(builder, cfg.emergencyWarpEvacuationTarget);
+
+    templateConfigOffset = UnitConfigUpdate.endUnitConfigUpdate(builder);
+  }
