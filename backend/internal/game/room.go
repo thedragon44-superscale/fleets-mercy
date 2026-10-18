@@ -352,7 +352,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		if tTypeBytes := clientInput.TemplateOverrideType(); len(tTypeBytes) > 0 {
 			tType := string(tTypeBytes)
 			var configTable SpaceTactics.UnitConfigUpdate
-			if clientInput.TemplateOverrideConfig(&configTable) {
+			if configOffset := clientInput.TemplateOverrideConfig(&configTable); configOffset.Table().NonZero() {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
 					if speed := configTable.Speed(); speed != 0 { tmpl.Speed = speed }
@@ -367,7 +367,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 						if speed := configTable.Speed(); speed != 0 { u.Speed = speed }
 						if dps := configTable.Dps(); dps != 0 { u.DPS = dps }
 						if cool := configTable.MaxCooldown(); cool != 0 { u.MaxCooldown = int(cool) }
-						if vis := configTable.VisionRange(); vis != 0 { u.VisionRange = int(vis) }
+						if vis := configTable.VisionRange(); vis != 0 { tmpl.VisionRange = int(vis) }
 						if therm := configTable.MaxThermalCapacity(); therm != 0 { u.MaxThermalCapacity = therm }
 					}
 				}
@@ -377,7 +377,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 		// Parse unit grouping updates
 		var groupingTable SpaceTactics.UnitGroupingPayload
-		if clientInput.UnitGrouping(&groupingTable) {
+		if groupingOffset := clientInput.UnitGrouping(&groupingTable); groupingOffset.Table().NonZero() {
 			uID := string(groupingTable.UnitId())
 			if u, exists := r.units[uID]; exists {
 				u.BattalionID = int(groupingTable.BattalionId())

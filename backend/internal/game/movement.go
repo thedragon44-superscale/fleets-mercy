@@ -7,7 +7,7 @@ import (
 
 // HandlePlayerMovement processes user throttle, strafing, and velocity vector clamping for the controlled unit
 func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput) {
-	unit.Angle = input.Angle
+	unit.Angle = float64(input.Angle)
 	unit.IsFiring = input.IsFiring
 	accel := unit.Speed * 3.5
 	maxSpeed := unit.Speed * 6.0
