@@ -706,6 +706,9 @@ func (r *GameRoom) Run() {
 			pos := SpaceTactics.CreateVector2D(builder, float32(p.Pos.X), float32(p.Pos.Y))
 			SpaceTactics.ProjectileAddPos(builder, pos)
 
+			vel := SpaceTactics.CreateVector2D(builder, float32(p.Vel.X), float32(p.Vel.Y))
+			SpaceTactics.ProjectileAddVel(builder, vel)
+
 			projOffsets = append(projOffsets, SpaceTactics.ProjectileEnd(builder))
 		}
 

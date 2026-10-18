@@ -43,6 +43,7 @@ table Projectile {
   owner_id: string;
   type: string;
   pos: Vector2D;
+  vel: Vector2D; // <--- Added velocity vector
 }
 
 table ServerState {

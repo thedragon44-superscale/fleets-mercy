@@ -80,12 +80,14 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
     }
 
     return {
-      tick,
-      units,
-      projectiles,
-      mapWidth,
-      mapHeight,
-    };
+  tick: serverState.tick(),
+  units,
+  projectiles,
+  mapBounds: {
+    width: serverState.mapWidth(),
+    height: serverState.mapHeight()
+  }
+};
   } catch (error) {
     console.error('[BINARY CODEC] Failed to unpack FlatBuffers message:', error);
     return null;

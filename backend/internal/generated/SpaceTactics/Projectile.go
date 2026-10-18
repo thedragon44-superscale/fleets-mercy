@@ -70,8 +70,21 @@ func (rcv *Projectile) Pos(obj *Vector2D) *Vector2D {
 	return nil
 }
 
+func (rcv *Projectile) Vel(obj *Vector2D) *Vector2D {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
+	if o != 0 {
+		x := o + rcv._tab.Pos
+		if obj == nil {
+			obj = new(Vector2D)
+		}
+		obj.Init(rcv._tab.Bytes, x)
+		return obj
+	}
+	return nil
+}
+
 func ProjectileStart(builder *flatbuffers.Builder) {
-	builder.StartObject(4)
+	builder.StartObject(5)
 }
 func ProjectileAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -84,6 +97,9 @@ func ProjectileAddType(builder *flatbuffers.Builder, type_ flatbuffers.UOffsetT)
 }
 func ProjectileAddPos(builder *flatbuffers.Builder, pos flatbuffers.UOffsetT) {
 	builder.PrependStructSlot(3, flatbuffers.UOffsetT(pos), 0)
+}
+func ProjectileAddVel(builder *flatbuffers.Builder, vel flatbuffers.UOffsetT) {
+	builder.PrependStructSlot(4, flatbuffers.UOffsetT(vel), 0)
 }
 func ProjectileEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
