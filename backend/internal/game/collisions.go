@@ -73,4 +73,3 @@ func ResolveUnitCollisions(units map[string]*models.FleetUnit, isSandbox bool) {
 		}
 	}
 }
-```[cite: 13]
