@@ -139,4 +139,3 @@ func ApplyMajorWorldGravity(unit *models.FleetUnit, structures []models.MapStruc
 		}
 	}
 }
-```[cite: 15]
