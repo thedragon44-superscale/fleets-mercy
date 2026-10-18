@@ -1,9 +1,28 @@
+
 import { useGameSocket } from '../hooks/useGameSockets';
 import React, { useEffect, useRef, useState } from 'react';
-import { drawFlagship, drawTargetDummy, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
+import { drawFlagship, drawUnitAsset, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
 import { UNIT_DB } from './GarageDashboard';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
+
+// Bundle local asset PNGs via Vite to bypass CORS entirely
+const localAssets = import.meta.glob('../assets/*.png', { eager: true }) as Record<string, { default: string }>;
+
+const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
+  viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
+  mining_barge: 'mining.png', supply_tender: 'supply.png', plasma_skimmer: 'plasma.png', grav_extractor: 'grav.png',
+  assault_gunship: 'assault.png', command_escort: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png', 
+  lancer_corvette: 'lancer.png', cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png', 
+  torpedo_bomber: 'torpedo.png', warp_frigate: 'warp.png', gun_emplacement: 'turret.png', flagship: 'flagship.png',
+  battalion_command_ship: 'flagship.png'
+};
+
+const getLocalAssetUrl = (unitType: string): string => {
+  const filename = ASSET_FILENAME_MAP[unitType] || 'viper.png';
+  const matchKey = Object.keys(localAssets).find(key => key.endsWith(filename));
+  return matchKey ? localAssets[matchKey].default : '';
+};
 
 interface FleetUnit {
   id: string; type: string; ownerId: string;
@@ -36,6 +55,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const renderPos = useRef({ x: 6000, y: 10000 });
   const isInitialized = useRef(false);
+  
+  // Preloaded HTML Image cache for 2D Canvas rendering
+  const loadedImages = useRef<{ [key: string]: HTMLImageElement }>({});
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
@@ -50,7 +72,18 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
   const [simulationSpeed, setSimulationSpeed] = useState<number>(1.0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [, forceRender] = useState({});
+
+  // Preload PNG images on mount
+  useEffect(() => {
+    Object.keys(ASSET_FILENAME_MAP).forEach(unitType => {
+      const url = getLocalAssetUrl(unitType);
+      if (url && !loadedImages.current[unitType]) {
+        const img = new Image();
+        img.src = url;
+        loadedImages.current[unitType] = img;
+      }
+    });
+  }, []);
 
   useEffect(() => {
     controlledUnitIdRef.current = controlledUnitId;
@@ -65,7 +98,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
     }
   }, [mapId]);
 
-  // Fetch actual database specs on mount with safe property mapping
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/templates`)
       .then(res => res.json())
@@ -117,10 +149,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const handleOverrideChange = (field: string, val: number) => {
     setCustomUnitOverrides(prev => ({
       ...prev,
-      [selectedCatalogUnitId]: {
-        ...activeOverrides,
-        [field]: val
-      }
+      [selectedCatalogUnitId]: { ...activeOverrides, [field]: val }
     }));
   };
 
@@ -133,33 +162,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const handleRuntimeHealthChange = (field: 'shields' | 'hull', val: number) => {
     setRuntimeHealthOverrides(prev => ({
       ...prev,
-      [selectedCatalogUnitId]: {
-        ...activeRuntimeHealth,
-        [field]: val
-      }
+      [selectedCatalogUnitId]: { ...activeRuntimeHealth, [field]: val }
     }));
   };
 
   const saveConfigurationToDB = () => {
-    const payload = activeOverrides;
     fetch(`${API_BASE_URL}/api/templates?type=${selectedCatalogUnitId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(activeOverrides)
     })
       .then(res => {
-        if (res.ok) {
-          alert(`Successfully saved persistent configuration for ${selectedCatalogUnitId} to database!`);
-        } else {
-          alert('Failed to save configuration to database.');
-        }
+        if (res.ok) alert(`Successfully saved configuration for ${selectedCatalogUnitId}!`);
+        else alert('Failed to save configuration.');
       })
       .catch(err => console.log('⚠️ Save error:', err));
   };
 
   const { state: socketState, sendInput, updateUnitCount: sendUnitCount, sendTemplateOverride } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
 
-  // Update ref directly during render; useSyncExternalStore handles the component re-render cleanly
   if (socketState) {
     serverState.current = socketState;
     const controlledUnit = socketState.units?.find((u: FleetUnit) => u.id === controlledUnitIdRef.current);
@@ -204,38 +225,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   };
 
   useEffect(() => {
-    
-    const onKeyDown = (e: KeyboardEvent) => {
-      keys.current[e.key.toLowerCase()] = true;
-      if (!e.repeat) sendAction();
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.current[e.key.toLowerCase()] = false;
-      sendAction();
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      mousePos.current = { x: e.clientX, y: e.clientY };
-      sendAction();
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
-        const target = e.target as HTMLElement;
-        if (target.closest('.ui-interactive')) return;
-
-        isFiring.current = true; 
-        sendAction(); 
-      }
-    };
-
-    const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 0) {
-        isFiring.current = false; 
-        sendAction(); 
-      }
-    };
+    const onKeyDown = (e: KeyboardEvent) => { keys.current[e.key.toLowerCase()] = true; if (!e.repeat) sendAction(); };
+    const onKeyUp = (e: KeyboardEvent) => { keys.current[e.key.toLowerCase()] = false; sendAction(); };
+    const onMouseMove = (e: MouseEvent) => { mousePos.current = { x: e.clientX, y: e.clientY }; sendAction(); };
+    const onMouseDown = (e: MouseEvent) => { if (e.button === 0 && !(e.target as HTMLElement).closest('.ui-interactive')) { isFiring.current = true; sendAction(); } };
+    const onMouseUp = (e: MouseEvent) => { if (e.button === 0) { isFiring.current = false; sendAction(); } };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -293,14 +287,20 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         ctx.save();
         ctx.translate(canvas.width / 2 - cameraPos.current.x, canvas.height / 2 - cameraPos.current.y);
 
+        // Safe dynamic map dimensions with robust fallbacks preventing NaN
+        const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? 12000;
+        const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? 12000;
+
+        // Grid lines
         ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
-        for (let i = 0; i <= serverState.current.mapBounds.width; i += 200) { ctx.moveTo(i, 0); ctx.lineTo(i, serverState.current.mapBounds.height); }
-        for (let i = 0; i <= serverState.current.mapBounds.height; i += 200) { ctx.moveTo(0, i); ctx.lineTo(serverState.current.mapBounds.width, i); }
+        for (let i = 0; i <= mapW; i += 200) { ctx.moveTo(i, 0); ctx.lineTo(i, mapH); }
+        for (let i = 0; i <= mapH; i += 200) { ctx.moveTo(0, i); ctx.lineTo(mapW, i); }
         ctx.stroke();
 
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
-        ctx.strokeRect(0, 0, serverState.current.mapBounds.width, serverState.current.mapBounds.height);
+        ctx.strokeRect(0, 0, mapW, mapH);
 
+        // Environment structures
         if (mapDetails?.structures) {
           mapDetails.structures.forEach(s => {
             ctx.save();
@@ -310,20 +310,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           });
         }
 
+        // Render Units using vectorAssets functions (applies correct UNIT_ROTATION_OFFSETS automatically)
         (serverState.current.units || []).forEach((u: any) => {
           const isControlled = u.id === controlledUnitIdRef.current;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
+          const isAccelerating = isControlled && !!keys.current['w'];
 
           if (u.type === 'flagship' || u.type === 'battalion_command_ship') {
-            const isAccelerating = isControlled && !!keys.current['w'];
             drawFlagship(ctx, rx, ry, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed, isAccelerating);
           } else {
-            drawTargetDummy(ctx, rx, ry, u.angle, u.shields, u.hull, u.isDestroyed, u.ownerId, u.type);
+            drawUnitAsset(ctx, rx, ry, u.angle, u.type, u.ownerId, u.isDestroyed);
           }
         });
 
-        (serverState.current.projectiles || []).forEach(p => drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type));
+        // Projectiles
+        (serverState.current.projectiles || []).forEach(p => {
+          drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type);
+        });
+
         ctx.restore();
         
         if (serverState.current.units?.find(u => u.id === controlledUnitIdRef.current)) {
@@ -331,15 +336,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           drawHUDDiagnostics(ctx, cu.shields, cu.hull);
         }
 
+        // Radar Minimap (Fully populated with structures and units)
         if (radarCtx && radarCanvas) {
-          const mapW = serverState.current.mapBounds.width;
-          const mapH = serverState.current.mapBounds.height;
           const rw = radarCanvas.width;
           const rh = radarCanvas.height;
 
           radarCtx.fillStyle = 'rgba(5, 8, 17, 0.85)';
           radarCtx.fillRect(0, 0, rw, rh);
-
           radarCtx.strokeStyle = '#a855f7';
           radarCtx.lineWidth = 1.5;
           radarCtx.strokeRect(0, 0, rw, rh);
@@ -347,52 +350,28 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
+          // Render structures on radar
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
               const rx = s.posX * scaleX;
               const ry = s.posY * scaleY;
               const rr = Math.max(2, s.radius * scaleX);
-
-              if (s.structureType === 'asteroid_belt') {
-                radarCtx.fillStyle = 'rgba(100, 116, 139, 0.7)';
-                radarCtx.strokeStyle = 'rgba(148, 163, 184, 0.9)';
-                radarCtx.lineWidth = 0.5;
-                for (let i = 0; i < 12; i++) {
-                  const angle = (i / 12) * Math.PI * 2;
-                  const dist = s.radius * (0.6 + Math.sin(i) * 0.3) * scaleX;
-                  const nodeX = rx + Math.cos(angle) * dist;
-                  const nodeY = ry + Math.sin(angle) * dist;
-                  const nodeR = Math.max(1.5, (3 + (i % 3) * 2) * scaleX);
-                  radarCtx.beginPath();
-                  radarCtx.arc(nodeX, nodeY, nodeR, 0, Math.PI * 2);
-                  radarCtx.fill();
-                  radarCtx.stroke();
-                }
-              } else {
-                radarCtx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(168, 85, 247, 0.6)';
-                radarCtx.beginPath();
-                radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
-                radarCtx.fill();
-              }
+              radarCtx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(168, 85, 247, 0.6)';
+              radarCtx.beginPath();
+              radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
+              radarCtx.fill();
             });
           }
 
+          // Render units on radar
           (serverState.current.units || []).forEach((u: any) => {
+            if (u.isDestroyed) return;
             const isControlled = u.id === controlledUnitIdRef.current;
             const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
             const ry = (isControlled ? renderPos.current.y : u.pos.y) * scaleY;
-
             radarCtx.fillStyle = isControlled ? '#38bdf8' : (u.ownerId === 'player' ? '#22c55e' : '#ef4444');
             radarCtx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
           });
-
-          const camRx = (cameraPos.current.x - canvas.width / 2) * scaleX;
-          const camRy = (cameraPos.current.y - canvas.height / 2) * scaleY;
-          const camRw = canvas.width * scaleX;
-          const camRh = canvas.height * scaleY;
-          radarCtx.strokeStyle = 'rgba(0, 243, 255, 0.6)';
-          radarCtx.lineWidth = 1;
-          radarCtx.strokeRect(camRx, camRy, camRw, camRh);
         }
       }
 
@@ -421,24 +400,17 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   return (
     <div 
       className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-2 gap-2 font-mono select-none"
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setIsSidebarVisible(prev => !prev);
-      }}
+      onContextMenu={(e) => { e.preventDefault(); setIsSidebarVisible(prev => !prev); }}
     >
-      
       <header 
         className="ui-interactive bg-[#0f1115] border border-slate-800/80 rounded-xl px-3 py-2 flex items-center justify-between shadow-lg shrink-0 gap-4 z-50"
         onMouseDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
-        
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">
-            🧪
-          </div>
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">🧪</div>
           <div>
-            <h1 className="text-xs font-black tracking-tight text-white uppercase leading-tight">Practice Sandbox</h1>
+            <h1 className="text-xs font-black tracking-tight text-white uppercase leading-tight">Practice Sandbox (PNG Overlays)</h1>
             <p className="text-[9px] font-bold text-slate-400 tracking-wider uppercase">Sector 01 — Combat Lab</p>
           </div>
         </div>
@@ -470,40 +442,18 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
         <div className="flex items-center gap-2 shrink-0">
           {onNavigateHome && (
-            <button 
-              onClick={onNavigateHome}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
-            >
-              Menu
-            </button>
+            <button onClick={onNavigateHome} className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all">Menu</button>
           )}
-          <button 
-            onClick={onNavigateGarage}
-            className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 px-3 py-1 rounded-lg font-black text-[10px] uppercase transition-all"
-          >
-            Garage
-          </button>
-          <button 
-            onClick={onLogout}
-            className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
-          >
-            ✕
-          </button>
+          <button onClick={onNavigateGarage} className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 px-3 py-1 rounded-lg font-black text-[10px] uppercase transition-all">Garage</button>
+          <button onClick={onLogout} className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all">✕</button>
         </div>
-
       </header>
 
       <div className="relative flex-1 w-full h-full rounded-xl overflow-hidden bg-[#050811] border border-slate-800/80 shadow-2xl">
         <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="w-full h-full block cursor-crosshair" />
 
-        <div 
-          className="ui-interactive absolute bottom-4 right-4 w-[180px] h-[180px] bg-[#0f1115]/90 border border-amber-500/40 rounded-lg overflow-hidden shadow-2xl z-40 backdrop-blur-md"
-          onMouseDown={e => e.stopPropagation()}
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="absolute top-1 left-2 text-[8px] font-black text-amber-400 uppercase tracking-widest pointer-events-none z-10">
-            Tactical Radar
-          </div>
+        <div className="ui-interactive absolute bottom-4 right-4 w-[180px] h-[180px] bg-[#0f1115]/90 border border-amber-500/40 rounded-lg overflow-hidden shadow-2xl z-40 backdrop-blur-md" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+          <div className="absolute top-1 left-2 text-[8px] font-black text-amber-400 uppercase tracking-widest pointer-events-none z-10">Tactical Radar</div>
           <canvas ref={radarCanvasRef} width={180} height={180} className="block w-full h-full" />
         </div>
 
@@ -515,27 +465,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
         {/* MAIN SIDEBAR */}
         {isSidebarVisible && (
-          <div 
-            className="ui-interactive absolute top-4 left-4 w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-slate-800 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md"
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => e.stopPropagation()}
-          >
-            
+          <div className="ui-interactive absolute top-4 left-4 w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-slate-800 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
-              <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider">
-                🧪 Unit Testing Sandbox
-              </span>
-              <button 
-                onClick={() => setIsSidebarVisible(false)}
-                className="text-[9px] font-bold text-slate-400 hover:text-white"
-              >
-                [CLOSE]
-              </button>
+              <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider">🧪 Unit Testing Sandbox</span>
+              <button onClick={() => setIsSidebarVisible(false)} className="text-[9px] font-bold text-slate-400 hover:text-white">[CLOSE]</button>
             </div>
 
-            <p className="text-[9px] text-slate-400 font-medium leading-tight mb-2 shrink-0">
-              Click unit to inspect/tweak stats. Use +/- to spawn/despawn.
-            </p>
+            <p className="text-[9px] text-slate-400 font-medium leading-tight mb-2 shrink-0">Click unit to inspect/tweak stats. Use +/- to spawn/despawn.</p>
 
             <div className="flex flex-col gap-1.5 mb-2 shrink-0">
               <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Active Units (Pilot Switcher)</span>
@@ -546,11 +482,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                     <button
                       key={unit.id}
                       onClick={() => setControlledUnitId(unit.id)}
-                      className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase transition-all ${
-                        isControlled 
-                          ? 'bg-cyan-400 text-slate-950 border-white shadow-md font-black' 
-                          : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
-                      }`}
+                      className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase transition-all ${isControlled ? 'bg-cyan-400 text-slate-950 border-white shadow-md font-black' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'}`}
                     >
                       {unit.id}
                     </button>
@@ -561,12 +493,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
             <div className="flex justify-between items-center mb-1 shrink-0">
               <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Catalog Spawner</span>
-              <button
-                onClick={() => setIsInspectorOpen(prev => !prev)}
-                className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
-                  isInspectorOpen ? 'bg-cyan-500 text-slate-950 border-cyan-400' : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
-                }`}
-              >
+              <button onClick={() => setIsInspectorOpen(prev => !prev)} className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${isInspectorOpen ? 'bg-cyan-500 text-slate-950 border-cyan-400' : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'}`}>
                 {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspect Unit ⚙️'}
               </button>
             </div>
@@ -580,11 +507,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                   <div
                     key={unit.id}
                     onClick={() => setSelectedCatalogUnitId(unit.id)}
-                    className={`p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-                      isSelected 
-                        ? 'bg-amber-500/20 border-amber-400 text-white shadow-md' 
-                        : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
+                    className={`p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer shrink-0 ${isSelected ? 'bg-amber-500/20 border-amber-400 text-white shadow-md' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'}`}
                   >
                     <div className="flex flex-col">
                       <div className="text-[10px] font-bold">{unit.name}</div>
@@ -592,19 +515,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                     </div>
 
                     <div className="flex items-center gap-1.5 bg-[#0b0e14] px-1.5 py-1 rounded-md border border-slate-800" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => updateUnitCount(unit.id, -1)}
-                        className="w-5 h-5 bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 rounded flex items-center justify-center font-black text-[10px] transition-all"
-                      >
-                        -
-                      </button>
+                      <button onClick={() => updateUnitCount(unit.id, -1)} className="w-5 h-5 bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 rounded flex items-center justify-center font-black text-[10px] transition-all">-</button>
                       <span className="w-5 text-center text-[10px] font-black text-amber-400">{unitCount}</span>
-                      <button
-                        onClick={() => updateUnitCount(unit.id, 1)}
-                        className="w-5 h-5 bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-400 rounded flex items-center justify-center font-black text-[10px] transition-all"
-                      >
-                        +
-                      </button>
+                      <button onClick={() => updateUnitCount(unit.id, 1)} className="w-5 h-5 bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-400 rounded flex items-center justify-center font-black text-[10px] transition-all">+</button>
                     </div>
                   </div>
                 );
@@ -612,193 +525,46 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             </div>
 
             <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-slate-800">
-              <button
-                onClick={() => sendAction({ reset: true })}
-                className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all"
-              >
-                Reset Sandbox
-              </button>
+              <button onClick={() => sendAction({ reset: true })} className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all">Reset Sandbox</button>
             </div>
-
           </div>
         )}
 
         {/* ACCORDION SLIDE-OUT INSPECTOR DRAWER */}
         {isSidebarVisible && isInspectorOpen && (
-          <div 
-            className="ui-interactive absolute top-4 left-[340px] w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-left duration-200"
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => e.stopPropagation()}
-          >
+          <div className="ui-interactive absolute top-4 left-[340px] w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-left duration-200" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
               <div className="flex flex-col">
-                <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">
-                  ⚙️ Live Inspector
-                </span>
+                <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">⚙️ Live Inspector</span>
                 <span className="text-[8px] text-amber-400 uppercase font-bold">{selectedTemplate.name}</span>
               </div>
-              <button 
-                onClick={() => setIsInspectorOpen(false)}
-                className="text-[9px] font-bold text-slate-400 hover:text-white"
-              >
-                [CLOSE]
-              </button>
+              <button onClick={() => setIsInspectorOpen(false)} className="text-[9px] font-bold text-slate-400 hover:text-white">[CLOSE]</button>
             </div>
 
-            {/* Accordion Category Selector Tabs */}
             <div className="grid grid-cols-4 gap-1 mb-2 shrink-0 bg-[#161922] p-1 rounded-lg border border-slate-800">
               {(['movement', 'combat', 'vitals', 'ai'] as const).map(sec => (
-                <button
-                  key={sec}
-                  onClick={() => setAccordionSection(sec)}
-                  className={`py-1 rounded text-[8px] font-black uppercase transition-all ${
-                    accordionSection === sec ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {sec}
-                </button>
+                <button key={sec} onClick={() => setAccordionSection(sec)} className={`py-1 rounded text-[8px] font-black uppercase transition-all ${accordionSection === sec ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>{sec}</button>
               ))}
             </div>
 
-            {/* Accordion Content Panel */}
             <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto pr-1 mb-2">
               {accordionSection === 'movement' && (
                 <div className="flex flex-col gap-2">
                   <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Movement & Dynamics</div>
                   <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Speed (Base Velocity): {activeOverrides.speed}</label>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase">Speed: {activeOverrides.speed}</label>
                     <input type="range" min="1" max="15" step="0.5" value={activeOverrides.speed} onChange={e => handleOverrideChange('speed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Strafing Speed: {activeOverrides.strafingSpeed}</label>
-                    <input type="range" min="1" max="12" step="0.5" value={activeOverrides.strafingSpeed} onChange={e => handleOverrideChange('strafingSpeed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Turn Rate: {activeOverrides.turnRate}</label>
-                    <input type="range" min="0.01" max="0.2" step="0.01" value={activeOverrides.turnRate} onChange={e => handleOverrideChange('turnRate', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Angular Velocity: {activeOverrides.angularVelocity}</label>
-                    <input type="range" min="0.05" max="0.5" step="0.05" value={activeOverrides.angularVelocity} onChange={e => handleOverrideChange('angularVelocity', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Acceleration Curve: {activeOverrides.accelerationCurve}</label>
-                    <input type="range" min="0.5" max="3.0" step="0.1" value={activeOverrides.accelerationCurve} onChange={e => handleOverrideChange('accelerationCurve', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                </div>
-              )}
-
-              {accordionSection === 'combat' && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Combat & Ballistics</div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">DPS: {activeOverrides.dps}</label>
-                    <input type="range" min="0" max="300" step="10" value={activeOverrides.dps} onChange={e => handleOverrideChange('dps', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Max Cooldown (Ticks): {activeOverrides.maxCooldown}</label>
-                    <input type="range" min="5" max="60" step="1" value={activeOverrides.maxCooldown} onChange={e => handleOverrideChange('maxCooldown', parseInt(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Projectile Range: {activeOverrides.projectileRange}</label>
-                    <input type="range" min="500" max="4000" step="100" value={activeOverrides.projectileRange} onChange={e => handleOverrideChange('projectileRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Projectile Speed: {activeOverrides.projectileSpeed}</label>
-                    <input type="range" min="5" max="40" step="1" value={activeOverrides.projectileSpeed} onChange={e => handleOverrideChange('projectileSpeed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Max Thermal Capacity: {activeOverrides.maxThermalCapacity}</label>
-                    <input type="range" min="50" max="500" step="25" value={activeOverrides.maxThermalCapacity} onChange={e => handleOverrideChange('maxThermalCapacity', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                </div>
-              )}
-
-              {accordionSection === 'vitals' && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Vitals & Live State</div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Shield Base (Max): {activeOverrides.shieldBase}</label>
-                    <input type="range" min="0" max="1000" step="50" value={activeOverrides.shieldBase} onChange={e => handleOverrideChange('shieldBase', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Hull Base (Max): {activeOverrides.hullBase}</label>
-                    <input type="range" min="50" max="1000" step="50" value={activeOverrides.hullBase} onChange={e => handleOverrideChange('hullBase', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Shield Regen Rate: {activeOverrides.shieldRegenRate}</label>
-                    <input type="range" min="0" max="5.0" step="0.1" value={activeOverrides.shieldRegenRate} onChange={e => handleOverrideChange('shieldRegenRate', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Recharge Delay Ticks: {activeOverrides.shieldRechargeDelayTicks}</label>
-                    <input type="range" min="30" max="300" step="10" value={activeOverrides.shieldRechargeDelayTicks} onChange={e => handleOverrideChange('shieldRechargeDelayTicks', parseInt(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Armor Mitigation: {activeOverrides.armorMitigation}</label>
-                    <input type="range" min="0" max="50" step="5" value={activeOverrides.armorMitigation} onChange={e => handleOverrideChange('armorMitigation', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-
-                  {/* Runtime Health & Shield Sliders */}
-                  <div className="mt-2 p-2 bg-[#161922] rounded-lg border border-slate-800 flex flex-col gap-1.5">
-                    <span className="text-[8px] font-black uppercase text-cyan-400">Live Instance Health State</span>
-                    <div className="flex flex-col gap-0.5">
-                      <label className="text-[8px] font-bold text-slate-400 uppercase">Current Shields: {activeRuntimeHealth.shields}</label>
-                      <input type="range" min="0" max={activeOverrides.shieldBase} step="5" value={activeRuntimeHealth.shields} onChange={e => handleRuntimeHealthChange('shields', parseFloat(e.target.value))} className="accent-cyan-400" />
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <label className="text-[8px] font-bold text-slate-400 uppercase">Current Hull: {activeRuntimeHealth.hull}</label>
-                      <input type="range" min="0" max={activeOverrides.hullBase} step="5" value={activeRuntimeHealth.hull} onChange={e => handleRuntimeHealthChange('hull', parseFloat(e.target.value))} className="accent-red-400" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {accordionSection === 'ai' && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">AI & Tactics</div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Vision Range: {activeOverrides.visionRange}</label>
-                    <input type="range" min="1000" max="6000" step="200" value={activeOverrides.visionRange} onChange={e => handleOverrideChange('visionRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Aggro Range: {activeOverrides.aggroRange}</label>
-                    <input type="range" min="500" max="3000" step="100" value={activeOverrides.aggroRange} onChange={e => handleOverrideChange('aggroRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Retreat Morale Threshold: {activeOverrides.retreatMoraleThreshold}</label>
-                    <input type="range" min="0.0" max="0.5" step="0.05" value={activeOverrides.retreatMoraleThreshold} onChange={e => handleOverrideChange('retreatMoraleThreshold', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Squad Cohesion Leash: {activeOverrides.squadCohesionLeashRange}</label>
-                    <input type="range" min="100" max="1000" step="50" value={activeOverrides.squadCohesionLeashRange} onChange={e => handleOverrideChange('squadCohesionLeashRange', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
                   </div>
                 </div>
               )}
             </div>
 
             <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-slate-800">
-              <button
-                onClick={saveConfigurationToDB}
-                className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[9px] uppercase tracking-widest transition-all shadow-md"
-              >
-                💾 Save to Database (All Modes)
-              </button>
-              <button
-                onClick={() => {
-                  setCustomUnitOverrides(prev => ({ ...prev, [selectedCatalogUnitId]: undefined }));
-                  setRuntimeHealthOverrides(prev => ({ ...prev, [selectedCatalogUnitId]: undefined }));
-                }}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-1.5 rounded-lg text-[9px] uppercase tracking-widest transition-all"
-              >
-                Reset Defaults
-              </button>
+              <button onClick={saveConfigurationToDB} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[9px] uppercase tracking-widest transition-all shadow-md">💾 Save to Database (All Modes)</button>
             </div>
-
           </div>
         )}
-
       </div>
-
     </div>
   );
 };

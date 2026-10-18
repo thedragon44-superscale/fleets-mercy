@@ -67,15 +67,34 @@ const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
 };
 
 const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
-  flagship: Math.PI, battalion_command_ship: Math.PI, command_escort: Math.PI, 
-  aegis_repair: Math.PI, assault_gunship: Math.PI, 
-  grav_extractor: Math.PI, mining_barge: Math.PI, plasma_skimmer: Math.PI, 
-  specter_jammer: Math.PI, supply_tender: Math.PI, torpedo_bomber: Math.PI, 
+  // 1. Facing RIGHT in PNG file (0 offset)
+  viper_interceptor: 0,
+  lancer_corvette: 0,
+
+  // 2. Facing LEFT in PNG file (Math.PI offset)
+  flagship: Math.PI,
+  battalion_command_ship: Math.PI,
+  command_escort: Math.PI,
+  assault_gunship: Math.PI,
+  aegis_repair: Math.PI,
+  cryo_flak: Math.PI,
+  grav_extractor: Math.PI,
+  mining_barge: Math.PI,
+  plasma_skimmer: Math.PI,
+  specter_jammer: Math.PI,
+  supply_tender: Math.PI,
+  torpedo_bomber: Math.PI,
   vortex_minelayer: Math.PI,
-  lancer_corvette: 0, viper_interceptor: 0,
-  cryo_flak: Math.PI / 2, ion_interceptor: Math.PI / 2, phantom_transport: Math.PI / 2, 
-  recon_probe: Math.PI / 2, gun_emplacement: Math.PI / 2, aegis_wall: Math.PI / 2, 
-  warp_frigate: Math.PI / 2
+
+  // 3. Facing UP in PNG file (Math.PI / 2 offset)
+  phantom_transport: Math.PI / 2,  // Moved from Left to Up
+  gun_emplacement: Math.PI / 2,     // Turret
+  aegis_wall: Math.PI / 2,          // Wall
+  ion_interceptor: Math.PI / 2,
+  recon_probe: Math.PI / 2,
+  warp_frigate: Math.PI / 2,
+
+  default: 0
 };
 
 export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, shields?: QuadrantStats, hull?: QuadrantStats, isFiring = false, isDestroyed = false, isAccelerating = false) {
@@ -84,13 +103,13 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.save();
   ctx.translate(x, y);
   
-  const offset = UNIT_ROTATION_OFFSETS['flagship'] ?? Math.PI;
+  const offset = UNIT_ROTATION_OFFSETS['flagship'] ?? Math.PI / 2;
   ctx.rotate(angle + offset);
 
   const img = spriteCache['flagship'];
   if (img && img.complete && img.naturalWidth !== 0) {
-    const srcWidth = img.naturalWidth * 0.78;
-    ctx.drawImage(img, 0, 0, srcWidth, img.naturalHeight, -45, -45, 90, 90);
+    // Render the complete flagship sprite without cropping
+    ctx.drawImage(img, -45, -45, 90, 90);
   } else {
     ctx.strokeStyle = '#00f3ff';
     ctx.lineWidth = 2;
@@ -99,6 +118,7 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
     ctx.stroke();
   }
 
+  // Exhaust animation correctly positioned at the rear engines (right side of local sprite space)
   if (isAccelerating) {
     ctx.fillStyle = '#38bdf8';
     ctx.shadowColor = '#00f3ff';
@@ -106,18 +126,19 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
     
     const flameLen = 22 + Math.random() * 16;
     ctx.beginPath();
-    ctx.moveTo(42, -22); ctx.lineTo(42 + flameLen, -18); ctx.lineTo(42, -14); ctx.closePath(); ctx.fill();
+    ctx.moveTo(42, -18); ctx.lineTo(42 + flameLen, -14); ctx.lineTo(42, -10); ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(42, 14); ctx.lineTo(42 + flameLen, 18); ctx.lineTo(42, 22); ctx.closePath(); ctx.fill();
+    ctx.moveTo(42, 10); ctx.lineTo(42 + flameLen, 14); ctx.lineTo(42, 18); ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
   }
 
+  // Muzzle flashes positioned at the nose (left side of local sprite space)
   if (isFiring) {
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(35, -10); ctx.lineTo(55, -10);
-    ctx.moveTo(35, 10); ctx.lineTo(55, 10);
+    ctx.moveTo(-42, -12); ctx.lineTo(-62, -12);
+    ctx.moveTo(-42, 12); ctx.lineTo(-62, 12);
     ctx.stroke();
   }
 
