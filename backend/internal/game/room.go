@@ -352,7 +352,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		if tTypeBytes := clientInput.TemplateOverrideType(); len(tTypeBytes) > 0 {
 			tType := string(tTypeBytes)
 			var configTable SpaceTactics.UnitConfigUpdate
-			if clientInput.TemplateOverrideConfig(&configTable) {
+			if clientInput.TemplateOverrideConfig(&configTable) != nil {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
 					if speed := configTable.Speed(); speed != 0 { tmpl.Speed = speed }
@@ -377,7 +377,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 		// Parse unit grouping updates
 		var groupingTable SpaceTactics.UnitGroupingPayload
-		if clientInput.UnitGrouping(&groupingTable) {
+		if clientInput.UnitGrouping(&groupingTable) != nil {
 			uID := string(groupingTable.UnitId())
 			if u, exists := r.units[uID]; exists {
 				u.BattalionID = int(groupingTable.BattalionId())
