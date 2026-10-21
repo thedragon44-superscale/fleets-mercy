@@ -6,6 +6,7 @@ export interface QuadrantStats {
 }
 
 const spriteCache: { [key: string]: HTMLImageElement } = {};
+const loadedSprites = new Set<string>();
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   flagship: 'flagship.png',
@@ -35,6 +36,11 @@ Object.entries(ASSET_FILENAME_MAP).forEach(([unitId, filename]) => {
   const img = new Image();
   try {
     img.src = new URL(`../assets/${filename}`, import.meta.url).href;
+    img.onload = () => {
+      if (img.naturalWidth !== 0) {
+        loadedSprites.add(unitId);
+      }
+    };
     spriteCache[unitId] = img;
   } catch (e) {
     console.warn(`Failed to load asset: ${filename}`);
@@ -107,10 +113,10 @@ export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.rotate(angle + offset);
 
   const img = spriteCache['flagship'];
-  if (img && img.complete && img.naturalWidth !== 0) {
-    // Render the complete flagship sprite without cropping
-    ctx.drawImage(img, -45, -45, 90, 90);
-  } else {
+if (img && loadedSprites.has('flagship')) {
+  // Render the complete flagship sprite without cropping
+  ctx.drawImage(img, -45, -45, 90, 90);
+} else {
     ctx.strokeStyle = '#00f3ff';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -175,9 +181,9 @@ export function drawUnitAsset(ctx: CanvasRenderingContext2D, x: number, y: numbe
   const img = spriteCache[unitType];
   const scale = UNIT_SCALES[unitType] || UNIT_SCALES.default;
 
-  if (img && img.complete && img.naturalWidth !== 0) {
-    ctx.drawImage(img, -scale.w / 2, -scale.h / 2, scale.w, scale.h);
-  } else {
+  if (img && loadedSprites.has(unitType)) {
+  ctx.drawImage(img, -scale.w / 2, -scale.h / 2, scale.w, scale.h);
+} else {
     ctx.strokeStyle = ownerId === 'player' ? '#00f3ff' : '#ff2a6d';
     ctx.beginPath(); ctx.arc(0, 0, scale.w / 3, 0, Math.PI * 2); ctx.stroke();
   }

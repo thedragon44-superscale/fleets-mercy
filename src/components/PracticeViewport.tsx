@@ -1,7 +1,7 @@
-
 import { useGameSocket } from '../hooks/useGameSockets';
 import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawUnitAsset, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
+import { getInterpolatedUnits } from '../renderer/interpolation';
 import { UNIT_DB } from './GarageDashboard';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
@@ -48,6 +48,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const serverState = useRef<ServerState | null>(null);
+  const serverHistoryRef = useRef<{ timestamp: number; units: FleetUnit[] }[]>([]);
   const cameraPos = useRef({ x: 6000, y: 10000 });
   const keys = useRef<{ [key: string]: boolean }>({});
   const mousePos = useRef({ x: 0, y: 0 });
@@ -183,7 +184,26 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   if (socketState) {
     serverState.current = socketState;
-    const controlledUnit = socketState.units?.find((u: FleetUnit) => u.id === controlledUnitIdRef.current);
+
+    if (socketState.units) {
+      const now = performance.now();
+      serverHistoryRef.current.push({ timestamp: now, units: socketState.units });
+      if (serverHistoryRef.current.length > 20) {
+        serverHistoryRef.current.shift();
+      }
+
+      const playerUnits = socketState.units.filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed);
+      const exists = playerUnits.some((u: FleetUnit) => u.id === controlledUnitIdRef.current);
+      if (!exists && playerUnits.length > 0) {
+        const newId = playerUnits[0].id;
+        setControlledUnitId(newId);
+        controlledUnitIdRef.current = newId;
+        isInitialized.current = false;
+      }
+    }
+
+    const activeId = controlledUnitIdRef.current;
+    const controlledUnit = socketState.units?.find((u: FleetUnit) => u.id === activeId);
     if (controlledUnit && !isInitialized.current) {
       renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
       isInitialized.current = true;
@@ -192,9 +212,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const sendAction = (actionParams: any = {}) => {
     if (canvasRef.current && serverState.current) {
-      const currentId = controlledUnitIdRef.current;
-      const controlledUnit = serverState.current.units?.find(u => u.id === currentId) || 
-                             serverState.current.units?.find(u => u.id === 'player-flagship');
+      const playerUnits = serverState.current.units?.filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed) || [];
+      const currentId = playerUnits.some(u => u.id === controlledUnitIdRef.current)
+        ? controlledUnitIdRef.current
+        : (playerUnits[0]?.id || controlledUnitIdRef.current);
+
+      const controlledUnit = serverState.current.units?.find(u => u.id === currentId);
       let angle = 0;
       if (controlledUnit) {
         const worldMouseX = mousePos.current.x - canvasRef.current.width / 2 + cameraPos.current.x;
@@ -239,7 +262,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
     window.addEventListener('mouseup', onMouseUp);
 
     let animId: number;
-    const render = () => {
+    let lastTime = performance.now();
+
+    const render = (currentTime: number) => {
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
+
       const ctx = canvasRef.current?.getContext('2d');
       const canvas = canvasRef.current;
       const radarCtx = radarCanvasRef.current?.getContext('2d');
@@ -250,14 +278,19 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       ctx.fillStyle = '#050811'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (serverState.current) {
-        const controlledUnit = serverState.current.units?.find(u => u.id === controlledUnitIdRef.current);
+        const playerUnits = serverState.current.units?.filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed) || [];
+        const activeId = playerUnits.some(u => u.id === controlledUnitIdRef.current)
+          ? controlledUnitIdRef.current
+          : (playerUnits[0]?.id || controlledUnitIdRef.current);
+
+        const controlledUnit = serverState.current.units?.find(u => u.id === activeId);
         if (controlledUnit) {
           if (!isInitialized.current) {
             renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
             isInitialized.current = true;
           }
 
-          const lerpRate = 0.35;
+          const lerpRate = 1.0 - Math.pow(0.0001, dt);
           renderPos.current.x += (controlledUnit.pos.x - renderPos.current.x) * lerpRate;
           renderPos.current.y += (controlledUnit.pos.y - renderPos.current.y) * lerpRate;
 
@@ -279,7 +312,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             targetCamY += (mousePos.current.y - canvas.height / 2) * 0.2;
           }
 
-          const camLerpFactor = keys.current['w'] ? 0.45 : 0.15;
+          const camBaseFactor = keys.current['w'] ? 18.0 : 8.0;
+          const camLerpFactor = 1.0 - Math.exp(-camBaseFactor * dt);
           cameraPos.current.x += (targetCamX - cameraPos.current.x) * camLerpFactor;
           cameraPos.current.y += (targetCamY - cameraPos.current.y) * camLerpFactor;
         }
@@ -287,11 +321,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         ctx.save();
         ctx.translate(canvas.width / 2 - cameraPos.current.x, canvas.height / 2 - cameraPos.current.y);
 
-        // Safe dynamic map dimensions with robust fallbacks preventing NaN
         const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? 12000;
         const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? 12000;
 
-        // Grid lines
         ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
         for (let i = 0; i <= mapW; i += 200) { ctx.moveTo(i, 0); ctx.lineTo(i, mapH); }
         for (let i = 0; i <= mapH; i += 200) { ctx.moveTo(0, i); ctx.lineTo(mapW, i); }
@@ -300,7 +332,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
         ctx.strokeRect(0, 0, mapW, mapH);
 
-        // Environment structures
         if (mapDetails?.structures) {
           mapDetails.structures.forEach(s => {
             ctx.save();
@@ -310,9 +341,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           });
         }
 
-        // Render Units using vectorAssets functions (applies correct UNIT_ROTATION_OFFSETS automatically)
-        (serverState.current.units || []).forEach((u: any) => {
-          const isControlled = u.id === controlledUnitIdRef.current;
+        const renderTime = performance.now();
+        const interpolatedUnits = getInterpolatedUnits(serverHistoryRef.current, renderTime);
+
+        (interpolatedUnits || []).forEach((u: any) => {
+          const isControlled = u.id === activeId;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
           const isAccelerating = isControlled && !!keys.current['w'];
@@ -324,19 +357,17 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           }
         });
 
-        // Projectiles
         (serverState.current.projectiles || []).forEach(p => {
           drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type);
         });
 
         ctx.restore();
         
-        if (serverState.current.units?.find(u => u.id === controlledUnitIdRef.current)) {
-          const cu = serverState.current.units.find(u => u.id === controlledUnitIdRef.current)!;
+        const cu = serverState.current.units.find(u => u.id === activeId);
+        if (cu) {
           drawHUDDiagnostics(ctx, cu.shields, cu.hull);
         }
 
-        // Radar Minimap (Fully populated with structures and units)
         if (radarCtx && radarCanvas) {
           const rw = radarCanvas.width;
           const rh = radarCanvas.height;
@@ -350,7 +381,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
-          // Render structures on radar
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
               const rx = s.posX * scaleX;
@@ -363,10 +393,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             });
           }
 
-          // Render units on radar
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed) return;
-            const isControlled = u.id === controlledUnitIdRef.current;
+            const isControlled = u.id === activeId;
             const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
             const ry = (isControlled ? renderPos.current.y : u.pos.y) * scaleY;
             radarCtx.fillStyle = isControlled ? '#38bdf8' : (u.ownerId === 'player' ? '#22c55e' : '#ef4444');
@@ -378,7 +407,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       animId = requestAnimationFrame(render);
     };
 
-    render();
+    animId = requestAnimationFrame(render);
     return () => { 
       cancelAnimationFrame(animId);  
       window.removeEventListener('keydown', onKeyDown); 
@@ -463,7 +492,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           </div>
         )}
 
-        {/* MAIN SIDEBAR */}
         {isSidebarVisible && (
           <div className="ui-interactive absolute top-4 left-4 w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-slate-800 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
@@ -530,7 +558,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           </div>
         )}
 
-        {/* ACCORDION SLIDE-OUT INSPECTOR DRAWER */}
         {isSidebarVisible && isInspectorOpen && (
           <div className="ui-interactive absolute top-4 left-[340px] w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-left duration-200" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
