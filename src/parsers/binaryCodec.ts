@@ -1,10 +1,12 @@
 // src/parsers/binaryCodec.ts
-import * as flatbuffersNS from 'flatbuffers';
-import { ServerState } from '../generated/space-tactics/server-state';
-import { ClientInput } from '../generated/space-tactics/client-input';
-import { UnitConfigUpdate } from '../generated/space-tactics/unit-config-update';
-import { UnitGroupingPayload } from '../generated/space-tactics/unit-grouping-payload';
-import { SandboxCountPair } from '../generated/space-tactics/sandbox-count-pair';
+import * as flatbuffersNS from "flatbuffers";
+import { ServerState } from "../generated/space-tactics/server-state";
+import { ClientInput } from "../generated/space-tactics/client-input";
+import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
+import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
+import { FleetUnit } from "../generated/space-tactics/fleet-unit";
+import { Projectile } from "../generated/space-tactics/projectile";
+import { SandboxCountPair } from "../generated/space-tactics/sandbox-count-pair";
 
 // Safe interop fallback for Vite / CJS package bundling of flatbuffers
 const FB = (flatbuffersNS as any).Flatbuffers || flatbuffersNS;
