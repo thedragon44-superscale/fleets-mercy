@@ -1,3 +1,4 @@
+// src/components/GarageDashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
@@ -17,28 +18,39 @@ export interface UnitBlueprint {
   doctrine: string;
 }
 
-export const UNIT_DB: UnitBlueprint[] = [
-  { id: 'viper_interceptor', name: 'Viper Interceptor', shortName: 'Viper', weight: 1, classType: 'LIGHT', role: 'Air Superiority', speed: 'FAST (0.40)', shields: '0.50', hull: '1.00', cooldown: '8 Ticks', aggroRange: '600px', aiState: 'SEEK', doctrine: 'SEEK AI: Auto-detects hostiles within 600px. Closes distance at 0.40 speed to deliver kinetic auto-cannon bursts.' },
-  { id: 'recon_probe', name: 'Recon Probe', shortName: 'Recon', weight: 1, classType: 'LIGHT', role: 'Radar Expansion', speed: 'VERY FAST (0.45)', shields: '0.20', hull: '0.20', cooldown: '10 Ticks', aggroRange: '1200px', aiState: 'SEEK', doctrine: 'SEEK AI: Unarmed scout. Maintains maximum sensor range (1200px) from hostiles to paint targets through Fog of War.' },
-  { id: 'phantom_transport', name: 'Phantom Transport', shortName: 'Phantom', weight: 1, classType: 'LIGHT', role: 'Covert Drop', speed: 'FAST (0.40)', shields: '0.00', hull: '0.40', cooldown: '60 Ticks', aggroRange: '200px', aiState: 'GUARD', doctrine: 'GUARD AI: Heavy sensor cloaking. Stays within 100px of Flagship until ordered to execute boarding actions.' },
-  { id: 'ion_interceptor', name: 'Ion Disabler', shortName: 'Ion Dis', weight: 1, classType: 'LIGHT', role: 'EMP Striker', speed: 'VERY FAST (0.45)', shields: '0.50', hull: '0.30', cooldown: '20 Ticks', aggroRange: '700px', aiState: 'SEEK', doctrine: 'SEEK AI: Fires ion pulses that strip enemy shields and lock down target RCS thrusters.' },
-  { id: 'mining_barge', name: 'Mining Barge', shortName: 'Miner', weight: 2, classType: 'INDUSTRIAL', role: 'Resource Drill', speed: 'SLOW (0.10)', shields: '0.00', hull: '3.00', cooldown: '40 Ticks', aggroRange: '300px', aiState: 'GUARD', doctrine: 'GUARD AI: Holds formation off stern. Deploys mining lasers when near celestial bodies.' },
-  { id: 'supply_tender', name: 'Supply Tender', shortName: 'Tender', weight: 2, classType: 'INDUSTRIAL', role: 'Ammo Logistics', speed: 'MEDIUM (0.20)', shields: '0.80', hull: '1.50', cooldown: '60 Ticks', aggroRange: '300px', aiState: 'GUARD', doctrine: 'GUARD AI: Resupplies torpedoes and ballistic rounds to friendly units in radius.' },
-  { id: 'plasma_skimmer', name: 'Plasma Skimmer', shortName: 'Skimmer', weight: 2, classType: 'INDUSTRIAL', role: 'Energy Harvest', speed: 'FAST (0.35)', shields: '2.00', hull: '0.50', cooldown: '30 Ticks', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Skims volatile nebula clouds to synthesize energy cells.' },
-  { id: 'grav_extractor', name: 'Grav-Extractor', shortName: 'Grav Ext', weight: 2, classType: 'INDUSTRIAL', role: 'Gravity Harvest', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '1.50', cooldown: '45 Ticks', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Attracts loose asteroid mineral nodes toward active Mining Barges.' },
-  { id: 'assault_gunship', name: 'Assault Gunship', shortName: 'Gunship', weight: 3, classType: 'MEDIUM', role: 'Strafing Runs', speed: 'MEDIUM (0.30)', shields: '1.00', hull: '2.00', cooldown: '5 Ticks', aggroRange: '500px', aiState: 'SEEK', doctrine: 'SEEK AI: Heavy frontline brawler executing strafing passes.' },
-  { id: 'command_escort', name: 'Command Escort', shortName: 'Cmd Esc', weight: 3, classType: 'MEDIUM', role: 'Capital Bodyguard', speed: 'FAST (1.8)', shields: '2000.00', hull: '1500.00', cooldown: '5 Ticks', aggroRange: '600px', aiState: 'BODYGUARD', doctrine: 'BODYGUARD AI: Dedicated bodyguard that tethers to and shields flagship units.' },
-  { id: 'aegis_repair', name: 'Aegis Repair', shortName: 'Aegis Rep', weight: 3, classType: 'MEDIUM', role: 'Field Maintenance', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '0.50', cooldown: '20 Ticks', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Locks onto damaged friendly hulls, restoring hull quadrant plating.' },
-  { id: 'vortex_minelayer', name: 'Vortex Minelayer', shortName: 'Minelayer', weight: 3, classType: 'MEDIUM', role: 'Spatial Traps', speed: 'FAST (0.35)', shields: '0.80', hull: '0.80', cooldown: '100 Ticks', aggroRange: '300px', aiState: 'GUARD', doctrine: 'GUARD AI: Patrols flagship perimeter and drops explosive vortex mines.' },
-  { id: 'lancer_corvette', name: 'Lancer Corvette', shortName: 'Lancer', weight: 4, classType: 'HEAVY', role: 'Anti-Armor Sniper', speed: 'SLOW (0.15)', shields: '0.50', hull: '1.50', cooldown: '60 Ticks', aggroRange: '1000px', aiState: 'SEEK', doctrine: 'SEEK AI: Stand-off sniper that maintains range to fire railgun rounds.' },
-  { id: 'cryo_flak', name: 'Cryo-Flak Frigate', shortName: 'Cryo-Flak', weight: 4, classType: 'HEAVY', role: 'Swarm Disruption', speed: 'MEDIUM (0.20)', shields: '1.50', hull: '1.50', cooldown: '15 Ticks', aggroRange: '500px', aiState: 'GUARD', doctrine: 'GUARD AI: Fires AOE cryo-flak shells that freeze enemy thrusters.' },
-  { id: 'specter_jammer', name: 'Specter Jammer', shortName: 'Jammer', weight: 4, classType: 'HEAVY', role: 'Electronic Warfare', speed: 'FAST (0.35)', shields: '1.00', hull: '0.80', cooldown: '45 Ticks', aggroRange: '800px', aiState: 'SEEK', doctrine: 'SEEK AI: EW Specialist that breaks enemy auto-targeting lock-ons.' },
-  { id: 'battalion_command_ship', name: 'Battalion Command Ship', shortName: 'Batt Cmd', weight: 5, classType: 'CAPITAL', role: 'Fleet Command Hub', speed: 'SLOW (0.9)', shields: '2500.00', hull: '1875.00', cooldown: '30 Ticks', aggroRange: '1200px', aiState: 'COMMAND_RELAY', doctrine: 'COMMAND_RELAY AI: Flagship command node with 4-quadrant shielding.' },
-  { id: 'aegis_wall', name: 'Aegis Wall', shortName: 'Aegis Wall', weight: 5, classType: 'CAPITAL', role: 'Directional Shield', speed: 'SLOW (0.15)', shields: '4.00', hull: '1.00', cooldown: 'Instant', aggroRange: '400px', aiState: 'GUARD', doctrine: 'GUARD AI: Matches flagship orientation to project front shield barrier.' },
-  { id: 'torpedo_bomber', name: 'Torpedo Bomber', shortName: 'T. Bomber', weight: 5, classType: 'CAPITAL', role: 'Capital Siege', speed: 'SLOW (0.10)', shields: '2.00', hull: '2.50', cooldown: '90 Ticks', aggroRange: '700px', aiState: 'SEEK', doctrine: 'SEEK AI: Anti-flagship platform firing heavy plasma torpedoes.' },
-  { id: 'warp_frigate', name: 'Warp Frigate', shortName: 'Warp Frig', weight: 5, classType: 'CAPITAL', role: 'Teleport Anchor', speed: 'VERY SLOW (0.05)', shields: '3.00', hull: '1.50', cooldown: '120 Ticks', aggroRange: '0px', aiState: 'GUARD', doctrine: 'GUARD AI: Spatial relay anchor that opens micro-wormholes for reserves.' },
-  { id: 'gun_emplacement', name: 'Gun Emplacement', shortName: 'Turret', weight: 5, classType: 'CAPITAL', role: 'Static Defense', speed: 'STATIC (0.00)', shields: '2.00', hull: '4.00', cooldown: '30 Ticks', aggroRange: '800px', aiState: 'GUARD', doctrine: 'GUARD AI: Stationary defense platform locking down deposits.' }
+// Static UI-only visual metadata (no stats hardcoded)
+const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'shields' | 'hull' | 'cooldown' | 'aggroRange'>[] = [
+  { id: 'flagship', name: 'Player Flagship', shortName: 'Flagship', weight: 10, classType: 'CAPITAL', role: 'Fleet Command', aiState: 'MANUAL', doctrine: 'FLAGSHIP AI: Command mothership of the fleet. Houses deployment bays, repair drones, and strategic warhead launchers.' },
+  { id: 'viper_interceptor', name: 'Viper Interceptor', shortName: 'Viper', weight: 1, classType: 'LIGHT', role: 'Air Superiority', aiState: 'SEEK', doctrine: 'SEEK AI: Auto-detects hostiles. Closes distance to deliver kinetic auto-cannon bursts.' },
+  { id: 'recon_probe', name: 'Recon Probe', shortName: 'Recon', weight: 1, classType: 'LIGHT', role: 'Radar Expansion', aiState: 'SEEK', doctrine: 'SEEK AI: Unarmed scout. Maintains maximum sensor range from hostiles to paint targets through Fog of War.' },
+  { id: 'phantom_transport', name: 'Phantom Transport', shortName: 'Phantom', weight: 1, classType: 'LIGHT', role: 'Covert Drop', aiState: 'GUARD', doctrine: 'GUARD AI: Heavy sensor cloaking. Stays near Flagship until ordered to execute boarding actions.' },
+  { id: 'ion_interceptor', name: 'Ion Disabler', shortName: 'Ion Dis', weight: 1, classType: 'LIGHT', role: 'EMP Striker', aiState: 'SEEK', doctrine: 'SEEK AI: Fires ion pulses that strip enemy shields and lock down target RCS thrusters.' },
+  { id: 'mining_barge', name: 'Mining Barge', shortName: 'Miner', weight: 2, classType: 'INDUSTRIAL', role: 'Resource Drill', aiState: 'GUARD', doctrine: 'GUARD AI: Holds formation off stern. Deploys mining lasers when near celestial bodies.' },
+  { id: 'supply_tender', name: 'Supply Tender', shortName: 'Tender', weight: 2, classType: 'INDUSTRIAL', role: 'Ammo Logistics', aiState: 'GUARD', doctrine: 'GUARD AI: Resupplies torpedoes and ballistic rounds to friendly units in radius.' },
+  { id: 'plasma_skimmer', name: 'Plasma Skimmer', shortName: 'Skimmer', weight: 2, classType: 'INDUSTRIAL', role: 'Energy Harvest', aiState: 'GUARD', doctrine: 'GUARD AI: Skims volatile nebula clouds to synthesize energy cells.' },
+  { id: 'grav_extractor', name: 'Grav-Extractor', shortName: 'Grav Ext', weight: 2, classType: 'INDUSTRIAL', role: 'Gravity Harvest', aiState: 'GUARD', doctrine: 'GUARD AI: Attracts loose asteroid mineral nodes toward active Mining Barges.' },
+  { id: 'assault_gunship', name: 'Assault Gunship', shortName: 'Gunship', weight: 3, classType: 'MEDIUM', role: 'Strafing Runs', aiState: 'SEEK', doctrine: 'SEEK AI: Heavy frontline brawler executing strafing passes.' },
+  { id: 'command_escort', name: 'Command Escort', shortName: 'Cmd Esc', weight: 3, classType: 'MEDIUM', role: 'Capital Bodyguard', aiState: 'BODYGUARD', doctrine: 'BODYGUARD AI: Dedicated bodyguard that tethers to and shields flagship units.' },
+  { id: 'aegis_repair', name: 'Aegis Repair', shortName: 'Aegis Rep', weight: 3, classType: 'MEDIUM', role: 'Field Maintenance', aiState: 'GUARD', doctrine: 'GUARD AI: Locks onto damaged friendly hulls, restoring hull quadrant plating.' },
+  { id: 'vortex_minelayer', name: 'Vortex Minelayer', shortName: 'Minelayer', weight: 3, classType: 'MEDIUM', role: 'Spatial Traps', aiState: 'GUARD', doctrine: 'GUARD AI: Patrols flagship perimeter and drops explosive vortex mines.' },
+  { id: 'lancer_corvette', name: 'Lancer Corvette', shortName: 'Lancer', weight: 4, classType: 'HEAVY', role: 'Anti-Armor Sniper', aiState: 'SEEK', doctrine: 'SEEK AI: Stand-off sniper that maintains range to fire railgun rounds.' },
+  { id: 'cryo_flak', name: 'Cryo-Flak Frigate', shortName: 'Cryo-Flak', weight: 4, classType: 'HEAVY', role: 'Swarm Disruption', aiState: 'GUARD', doctrine: 'GUARD AI: Fires AOE cryo-flak shells that freeze enemy thrusters.' },
+  { id: 'specter_jammer', name: 'Specter Jammer', shortName: 'Jammer', weight: 4, classType: 'HEAVY', role: 'Electronic Warfare', aiState: 'SEEK', doctrine: 'SEEK AI: EW Specialist that breaks enemy auto-targeting lock-ons.' },
+  { id: 'battalion_command_ship', name: 'Battalion Command Ship', shortName: 'Batt Cmd', weight: 5, classType: 'CAPITAL', role: 'Fleet Command Hub', aiState: 'COMMAND_RELAY', doctrine: 'COMMAND_RELAY AI: Flagship command node with 4-quadrant shielding.' },
+  { id: 'aegis_wall', name: 'Aegis Wall', shortName: 'Aegis Wall', weight: 5, classType: 'CAPITAL', role: 'Directional Shield', aiState: 'GUARD', doctrine: 'GUARD AI: Matches flagship orientation to project front shield barrier.' },
+  { id: 'torpedo_bomber', name: 'Torpedo Bomber', shortName: 'T. Bomber', weight: 5, classType: 'CAPITAL', role: 'Capital Siege', aiState: 'SEEK', doctrine: 'SEEK AI: Anti-flagship platform firing heavy plasma torpedoes.' },
+  { id: 'warp_frigate', name: 'Warp Frigate', shortName: 'Warp Frig', weight: 5, classType: 'CAPITAL', role: 'Teleport Anchor', aiState: 'GUARD', doctrine: 'GUARD AI: Spatial relay anchor that opens micro-wormholes for reserves.' },
+  { id: 'gun_emplacement', name: 'Gun Emplacement', shortName: 'Turret', weight: 5, classType: 'CAPITAL', role: 'Static Defense', aiState: 'GUARD', doctrine: 'GUARD AI: Stationary defense platform locking down deposits.' }
 ];
+
+export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map(m => ({
+  ...m,
+  speed: 'LOADING...',
+  shields: 'LOADING...',
+  hull: 'LOADING...',
+  cooldown: 'LOADING...',
+  aggroRange: 'LOADING...'
+}));
 
 export interface LoadoutData {
   id: number;
@@ -50,7 +62,7 @@ export interface LoadoutData {
   squad2: string[];
   squad3: string[];
   squad4: string[];
-  squadLeaders?: { [squadKey: string]: number }; // Stores index of squad leader per squad
+  squadLeaders?: { [squadKey: string]: number };
 }
 
 interface GarageProps {
@@ -63,7 +75,7 @@ interface GarageProps {
 export type FleetTier = 'FLAGSHIP' | 'BATTALION_1' | 'BATTALION_2';
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
-  viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
+  flagship: 'flagship.png', viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
   mining_barge: 'mining.png', supply_tender: 'supply.png', plasma_skimmer: 'plasma.png', grav_extractor: 'grav.png',
   assault_gunship: 'assault.png', command_escort: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png', 
   lancer_corvette: 'lancer.png', cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png', 
@@ -82,17 +94,42 @@ const PREVIEW_ROTATION_CSS: { [unitId: string]: string } = {
 };
 
 export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractice, onLogout, onNavigateHome }) => {
+  const [unitDbState, setUnitDbState] = useState<UnitBlueprint[]>(INITIAL_UNIT_DB);
   const [loadouts, setLoadouts] = useState<LoadoutData[]>([]);
   const [activeSlot, setActiveSlot] = useState<number>(1);
   const [activeTier, setActiveTier] = useState<FleetTier>('FLAGSHIP');
   const [activeLoadout, setActiveLoadout] = useState<LoadoutData | null>(null);
-  const [inspectedUnit, setInspectedUnit] = useState<UnitBlueprint>(UNIT_DB[0]);
+  const [inspectedUnit, setInspectedUnit] = useState<UnitBlueprint>(INITIAL_UNIT_DB[0]);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
   const [pickerState, setPickerState] = useState<{ squadKey: 'squad1' | 'squad2' | 'squad3' | 'squad4'; slotIdx: number } | null>(null);
 
   useEffect(() => {
+    // Fetch DB template specs dynamically
+    fetch(`${API_BASE_URL}/api/templates`)
+      .then((res) => res.json())
+      .then((dbTemplates) => {
+        if (dbTemplates) {
+          const dynamicallyBuiltCatalog: UnitBlueprint[] = BASE_CATALOG_METADATA.map((meta) => {
+            const t = dbTemplates[meta.id] || {};
+            return {
+              ...meta,
+              speed: t.speed !== undefined ? `${t.speed.toFixed(2)}` : 'N/A',
+              shields: t.shield_base !== undefined ? `${t.shield_base.toFixed(2)}` : 'N/A',
+              hull: t.hull_base !== undefined ? `${t.hull_base.toFixed(2)}` : 'N/A',
+              cooldown: t.max_cooldown !== undefined ? `${t.max_cooldown} Ticks` : 'N/A',
+              aggroRange: t.aggro_range !== undefined ? `${t.aggro_range}px` : 'N/A',
+            };
+          });
+
+          setUnitDbState(dynamicallyBuiltCatalog);
+          UNIT_DB = dynamicallyBuiltCatalog;
+          setInspectedUnit(dynamicallyBuiltCatalog[0]);
+        }
+      })
+      .catch((err) => console.error('⚠️ Failed to load DB templates:', err));
+
     fetchLoadouts();
   }, [player.id]);
 
@@ -167,7 +204,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
   const calculateTotalWeight = () => {
     if (!activeLoadout) return 0;
     return Object.entries(activeLoadout.fleetComposition).reduce((sum, [uId, count]) => {
-      const u = UNIT_DB.find(x => x.id === uId);
+      const u = unitDbState.find(x => x.id === uId);
       return sum + (u ? u.weight * count : 0);
     }, 0);
   };
@@ -191,7 +228,6 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     const arr = [...activeLoadout[squadKey]];
     arr.splice(slotIdx, 1);
     
-    // Reset Leader designation if the leader slot was removed
     const leaders = { ...(activeLoadout.squadLeaders || {}) };
     if (leaders[squadKey] === slotIdx) {
       delete leaders[squadKey];
@@ -205,9 +241,9 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     const currentLeaders = { ...(activeLoadout.squadLeaders || {}) };
     
     if (currentLeaders[squadKey] === slotIdx) {
-      delete currentLeaders[squadKey]; // Toggle off
+      delete currentLeaders[squadKey];
     } else {
-      currentLeaders[squadKey] = slotIdx; // Set as leader
+      currentLeaders[squadKey] = slotIdx;
     }
 
     setActiveLoadout({ ...activeLoadout, squadLeaders: currentLeaders });
@@ -364,7 +400,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-            {UNIT_DB.map(unit => {
+            {unitDbState.map(unit => {
               const count = activeLoadout.fleetComposition[unit.id] || 0;
               const assigned = getAssignedCount(unit.id);
               const isSelected = inspectedUnit.id === unit.id;
@@ -416,14 +452,14 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                   <div className="grid grid-cols-5 gap-1.5 flex-1 min-h-0">
                     {[0, 1, 2, 3, 4].map(slotIdx => {
                       const unitId = sqList[slotIdx];
-                      const unitObj = unitId ? UNIT_DB.find(u => u.id === unitId) : null;
+                      const unitObj = unitId ? unitDbState.find(u => u.id === unitId) : null;
                       const isLeader = leaderIdx === slotIdx;
 
                       if (unitObj) {
                         return (
                           <div 
                             key={slotIdx}
-                            onClick={() => setPickerState({ squadKey: sqKey, slotIdx })} // Swap unit by clicking box
+                            onClick={() => setPickerState({ squadKey: sqKey, slotIdx })}
                             className={`border rounded-md p-1.5 flex flex-col justify-between shadow-sm cursor-pointer transition-all ${
                               isLeader ? 'bg-amber-500/10 border-amber-400' : 'bg-cyan-500/10 border-cyan-400/80'
                             }`}
@@ -483,7 +519,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </button>
         </div>
 
-        {/* COLUMN 3: TELEMETRY INSPECTOR (Scrollable with Squared Preview) */}
+        {/* COLUMN 3: TELEMETRY INSPECTOR */}
         <div className="md:col-span-3 bg-[#0f1115] border border-slate-800/80 rounded-xl p-2.5 flex flex-col min-h-0 shadow-xl">
           <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 shrink-0">
             <h2 className="text-[10px] font-black uppercase tracking-widest text-white">Telemetry</h2>
@@ -535,7 +571,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
       </div>
 
-      {/* UNIT SELECTOR MODAL (Swap / Assign) */}
+      {/* UNIT SELECTOR MODAL */}
       {pickerState && (
         <div 
           onClick={() => setPickerState(null)}
@@ -557,11 +593,10 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                 const assigned = getAssignedCount(uId);
                 const unassignedStock = reqCount - assigned;
                 
-                // Allow selecting unit if stock is available OR if it's already assigned here (swap logic)
                 const isCurrentlyAssignedHere = activeLoadout[pickerState.squadKey][pickerState.slotIdx] === uId;
                 if (unassignedStock <= 0 && !isCurrentlyAssignedHere) return null;
 
-                const u = UNIT_DB.find(x => x.id === uId)!;
+                const u = unitDbState.find(x => x.id === uId)!;
                 return (
                   <button
                     key={uId}

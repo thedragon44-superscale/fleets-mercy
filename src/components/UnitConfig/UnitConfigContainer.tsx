@@ -20,22 +20,20 @@ interface UnitConfigContainerProps {
 
 export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
   isOpen,
-  initialUnitId = 'viper_interceptor',
+  initialUnitId = 'flagship',
   onClose,
   sendTemplateOverride,
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<string>(initialUnitId);
   const [activeTab, setActiveTab] = useState<ConfigTabType>('movement');
+  const [unitConfigs, setUnitConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
+  const [groupings, setGroupings] = useState<{ [unitId: string]: UnitGroupingPayload }>({});
 
-  // Keep internal selection synchronized with whatever unit is clicked/highlighted in the spawner
   useEffect(() => {
     if (initialUnitId) {
       setSelectedUnitId(initialUnitId);
     }
   }, [initialUnitId]);
-
-  const [unitConfigs, setUnitConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
-  const [groupings, setGroupings] = useState<{ [unitId: string]: UnitGroupingPayload }>({});
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/templates`)
@@ -46,27 +44,27 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
           Object.keys(data).forEach((key) => {
             const t = data[key];
             loadedConfigs[key] = {
-              speed: t.speed ?? 4.0,
-              strafingSpeed: t.strafing_speed ?? 3.0,
-              turnRate: t.turn_rate ?? 0.05,
-              angularVelocity: t.angular_velocity ?? 0.1,
-              accelerationCurve: t.acceleration_curve ?? 1.0,
-              dps: t.dps ?? 50.0,
-              maxCooldown: t.max_cooldown ?? 20,
-              projectileRange: t.projectile_range ?? 1500,
-              projectileSpeed: t.projectile_speed ?? 18.0,
-              maxThermalCapacity: t.max_thermal_capacity ?? 100.0,
-              shieldBase: t.shield_base ?? 100.0,
-              hullBase: t.hull_base ?? 100.0,
-              shieldRegenRate: t.shield_regen_rate ?? 0.5,
-              shieldRechargeDelayTicks: t.shield_recharge_delay_ticks ?? 180,
-              armorMitigation: t.armor_mitigation ?? 10.0,
-              visionRange: t.vision_range ?? 2500.0,
-              aggroRange: t.aggro_range ?? 1500.0,
-              retreatMoraleThreshold: t.retreat_morale_threshold ?? 0.15,
-              squadCohesionLeashRange: t.squad_cohesion_leash_range ?? 300.0,
-              resourceHarvestingType: t.resource_harvesting_type ?? 0,
-              warpCanisterCapacity: t.warp_canister_capacity ?? 0,
+              speed: t.speed,
+              strafingSpeed: t.strafing_speed,
+              turnRate: t.turn_rate,
+              angularVelocity: t.angular_velocity,
+              accelerationCurve: t.acceleration_curve,
+              dps: t.dps,
+              maxCooldown: t.max_cooldown,
+              projectileRange: t.projectile_range,
+              projectileSpeed: t.projectile_speed,
+              maxThermalCapacity: t.max_thermal_capacity,
+              shieldBase: t.shield_base,
+              hullBase: t.hull_base,
+              shieldRegenRate: t.shield_regen_rate,
+              shieldRechargeDelayTicks: t.shield_recharge_delay_ticks,
+              armorMitigation: t.armor_mitigation,
+              visionRange: t.vision_range,
+              aggroRange: t.aggro_range,
+              retreatMoraleThreshold: t.retreat_morale_threshold,
+              squadCohesionLeashRange: t.squad_cohesion_leash_range,
+              resourceHarvestingType: t.resource_harvesting_type,
+              warpCanisterCapacity: t.warp_canister_capacity,
             };
           });
           setUnitConfigs(loadedConfigs);
@@ -77,27 +75,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
 
   if (!isOpen) return null;
 
-  const currentConfig: UnitConfigConfigPayload = unitConfigs[selectedUnitId] || {
-    speed: 4.0,
-    strafingSpeed: 3.0,
-    turnRate: 0.05,
-    angularVelocity: 0.1,
-    accelerationCurve: 1.0,
-    dps: 50.0,
-    maxCooldown: 20,
-    projectileRange: 1500,
-    projectileSpeed: 18.0,
-    maxThermalCapacity: 100.0,
-    shieldBase: 100.0,
-    hullBase: 100.0,
-    shieldRegenRate: 0.5,
-    shieldRechargeDelayTicks: 180,
-    armorMitigation: 10.0,
-    visionRange: 2500.0,
-    aggroRange: 1500.0,
-    retreatMoraleThreshold: 0.15,
-    squadCohesionLeashRange: 300.0,
-  };
+  const currentConfig: UnitConfigConfigPayload = unitConfigs[selectedUnitId] || {};
 
   const currentGrouping: UnitGroupingPayload = groupings[selectedUnitId] || {
     unitId: selectedUnitId,
@@ -130,7 +108,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       body: JSON.stringify(currentConfig),
     })
       .then((res) => {
-        if (res.ok) alert(`Successfully saved configuration for ${selectedUnitId}!`);
+        if (res.ok) alert(`Successfully saved configuration for ${selectedUnitId} to DB!`);
         else alert('Failed to save configuration.');
       })
       .catch((err) => console.log('⚠️ Save error:', err));
@@ -144,6 +122,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     >
       <UnitConfigHeader
         selectedUnitId={selectedUnitId}
+        onSelectUnit={setSelectedUnitId}
         onClose={onClose}
       />
 
