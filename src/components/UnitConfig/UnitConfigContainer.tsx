@@ -26,8 +26,11 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<string>(initialUnitId);
   const [activeTab, setActiveTab] = useState<ConfigTabType>('movement');
+  
   const [unitConfigs, setUnitConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
+  const [originalConfigs, setOriginalConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
   const [groupings, setGroupings] = useState<{ [unitId: string]: UnitGroupingPayload }>({});
+  const [statusMsg, setStatusMsg] = useState<string>('');
 
   useEffect(() => {
     if (initialUnitId) {
@@ -35,6 +38,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }
   }, [initialUnitId]);
 
+  // Fetch templates from PostgreSQL on mount and establish DB baseline
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/templates`)
       .then((res) => res.json())
@@ -67,7 +71,8 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
               warpCanisterCapacity: t.warp_canister_capacity,
             };
           });
-          setUnitConfigs(loadedConfigs);
+          setUnitConfigs(JSON.parse(JSON.stringify(loadedConfigs)));
+          setOriginalConfigs(JSON.parse(JSON.stringify(loadedConfigs))); // Pristine DB Baseline
         }
       })
       .catch((err) => console.log('⚠️ Failed to fetch DB templates:', err));
@@ -89,6 +94,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     const updatedConfig = { ...currentConfig, [field]: value };
     setUnitConfigs((prev) => ({ ...prev, [selectedUnitId]: updatedConfig }));
 
+    // Stream live adjustments via WebSocket
     if (sendTemplateOverride) {
       sendTemplateOverride(selectedUnitId, updatedConfig);
     }
@@ -101,6 +107,23 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }));
   };
 
+  // Revert current unit back to its last database / saved configuration state
+  const handleResetToDatabase = () => {
+    const baseline = originalConfigs[selectedUnitId];
+    if (!baseline) return;
+
+    const resetConfig = { ...baseline };
+    setUnitConfigs((prev) => ({ ...prev, [selectedUnitId]: resetConfig }));
+
+    // Sync active WebSocket simulation room back to baseline values
+    if (sendTemplateOverride) {
+      sendTemplateOverride(selectedUnitId, resetConfig);
+    }
+
+    setStatusMsg(`Reverted ${selectedUnitId} to DB baseline.`);
+    setTimeout(() => setStatusMsg(''), 3000);
+  };
+
   const saveConfigurationToDB = () => {
     fetch(`${API_BASE_URL}/api/templates?type=${selectedUnitId}`, {
       method: 'POST',
@@ -108,10 +131,22 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       body: JSON.stringify(currentConfig),
     })
       .then((res) => {
-        if (res.ok) alert(`Successfully saved configuration for ${selectedUnitId} to DB!`);
-        else alert('Failed to save configuration.');
+        if (res.ok) {
+          // Update the DB baseline so subsequent resets target this new saved state during the session
+          setOriginalConfigs((prev) => ({
+            ...prev,
+            [selectedUnitId]: JSON.parse(JSON.stringify(currentConfig)),
+          }));
+          setStatusMsg(`Successfully saved ${selectedUnitId} configuration!`);
+          setTimeout(() => setStatusMsg(''), 3000);
+        } else {
+          setStatusMsg('Failed to save configuration.');
+        }
       })
-      .catch((err) => console.log('⚠️ Save error:', err));
+      .catch((err) => {
+        console.log('⚠️ Save error:', err);
+        setStatusMsg('Server error during save.');
+      });
   };
 
   return (
@@ -128,7 +163,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
 
       <UnitConfigTabs activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      <div className="flex-1 overflow-y-auto pr-1 mb-3">
+      <div className="flex-1 overflow-y-auto pr-1 mb-2">
         {activeTab === 'movement' && (
           <MovementTab config={currentConfig} onChange={handleConfigChange} />
         )}
@@ -149,13 +184,28 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5 shrink-0 pt-3 border-t border-slate-800">
-        <button
-          onClick={saveConfigurationToDB}
-          className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all shadow-md"
-        >
-          💾 Save Spec Sheet to Database (All Modes)
-        </button>
+      {statusMsg && (
+        <div className="text-cyan-400 text-[10px] font-bold text-center py-1 bg-cyan-950/40 border border-cyan-500/30 rounded mb-2">
+          {statusMsg}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-slate-800">
+        <div className="flex gap-2">
+          <button
+            onClick={handleResetToDatabase}
+            className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all border border-slate-700"
+            title="Revert tweaks back to last database save or initial load"
+          >
+            🔄 Revert to DB / Last Save
+          </button>
+          <button
+            onClick={saveConfigurationToDB}
+            className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all shadow-md"
+          >
+            💾 Save Spec Sheet
+          </button>
+        </div>
       </div>
     </div>
   );
