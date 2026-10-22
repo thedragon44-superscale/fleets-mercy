@@ -33,44 +33,20 @@ func (rcv *UnitConfigUpdate) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-func (rcv *UnitConfigUpdate) Speed() float64 {
+func (rcv *UnitConfigUpdate) WeightClass() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
-	if o != 0 {
-		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
-	}
-	return 0.0
-}
-
-func (rcv *UnitConfigUpdate) MutateSpeed(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(4, n)
-}
-
-func (rcv *UnitConfigUpdate) Dps() float64 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
-	if o != 0 {
-		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
-	}
-	return 0.0
-}
-
-func (rcv *UnitConfigUpdate) MutateDps(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(6, n)
-}
-
-func (rcv *UnitConfigUpdate) MaxCooldown() int32 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
 		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
 	return 0
 }
 
-func (rcv *UnitConfigUpdate) MutateMaxCooldown(n int32) bool {
-	return rcv._tab.MutateInt32Slot(8, n)
+func (rcv *UnitConfigUpdate) MutateWeightClass(n int32) bool {
+	return rcv._tab.MutateInt32Slot(4, n)
 }
 
 func (rcv *UnitConfigUpdate) VisionRange() int32 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
@@ -78,10 +54,34 @@ func (rcv *UnitConfigUpdate) VisionRange() int32 {
 }
 
 func (rcv *UnitConfigUpdate) MutateVisionRange(n int32) bool {
-	return rcv._tab.MutateInt32Slot(10, n)
+	return rcv._tab.MutateInt32Slot(6, n)
 }
 
-func (rcv *UnitConfigUpdate) MaxThermalCapacity() float64 {
+func (rcv *UnitConfigUpdate) AggroRange() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateAggroRange(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(8, n)
+}
+
+func (rcv *UnitConfigUpdate) AggroThreatWeight() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateAggroThreatWeight(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(10, n)
+}
+
+func (rcv *UnitConfigUpdate) RetreatMoraleThreshold() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
@@ -89,27 +89,927 @@ func (rcv *UnitConfigUpdate) MaxThermalCapacity() float64 {
 	return 0.0
 }
 
-func (rcv *UnitConfigUpdate) MutateMaxThermalCapacity(n float64) bool {
+func (rcv *UnitConfigUpdate) MutateRetreatMoraleThreshold(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(12, n)
 }
 
+func (rcv *UnitConfigUpdate) SquadCohesionLeashRange() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateSquadCohesionLeashRange(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(14, n)
+}
+
+func (rcv *UnitConfigUpdate) ShieldBase() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateShieldBase(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(16, n)
+}
+
+func (rcv *UnitConfigUpdate) HullBase() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateHullBase(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(18, n)
+}
+
+func (rcv *UnitConfigUpdate) QuadrantShieldingEnabled() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateQuadrantShieldingEnabled(n bool) bool {
+	return rcv._tab.MutateBoolSlot(20, n)
+}
+
+func (rcv *UnitConfigUpdate) QuadrantShieldPoolsEnabled() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(22))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateQuadrantShieldPoolsEnabled(n bool) bool {
+	return rcv._tab.MutateBoolSlot(22, n)
+}
+
+func (rcv *UnitConfigUpdate) QuadrantHullPoolsEnabled() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(24))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateQuadrantHullPoolsEnabled(n bool) bool {
+	return rcv._tab.MutateBoolSlot(24, n)
+}
+
+func (rcv *UnitConfigUpdate) ShieldRegenRate() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateShieldRegenRate(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(26, n)
+}
+
+func (rcv *UnitConfigUpdate) ShieldRechargeDelayTicks() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateShieldRechargeDelayTicks(n int32) bool {
+	return rcv._tab.MutateInt32Slot(28, n)
+}
+
+func (rcv *UnitConfigUpdate) DirectionalShieldArc() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateDirectionalShieldArc(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(30, n)
+}
+
+func (rcv *UnitConfigUpdate) ArmorMitigation() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateArmorMitigation(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(32, n)
+}
+
+func (rcv *UnitConfigUpdate) ArmorHardnessRating() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(34))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateArmorHardnessRating(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(34, n)
+}
+
+func (rcv *UnitConfigUpdate) AblativePlatingDurability() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(36))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateAblativePlatingDurability(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(36, n)
+}
+
+func (rcv *UnitConfigUpdate) Speed() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(38))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateSpeed(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(38, n)
+}
+
+func (rcv *UnitConfigUpdate) StrafingSpeed() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(40))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateStrafingSpeed(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(40, n)
+}
+
+func (rcv *UnitConfigUpdate) TurnRate() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(42))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateTurnRate(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(42, n)
+}
+
+func (rcv *UnitConfigUpdate) AngularVelocity() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(44))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateAngularVelocity(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(44, n)
+}
+
+func (rcv *UnitConfigUpdate) LateralThrustPower() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(46))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateLateralThrustPower(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(46, n)
+}
+
+func (rcv *UnitConfigUpdate) ReverseThrustPower() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(48))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateReverseThrustPower(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(48, n)
+}
+
+func (rcv *UnitConfigUpdate) DriftCoefficient() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(50))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateDriftCoefficient(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(50, n)
+}
+
+func (rcv *UnitConfigUpdate) AccelerationCurve() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(52))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateAccelerationCurve(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(52, n)
+}
+
+func (rcv *UnitConfigUpdate) Dps() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(54))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateDps(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(54, n)
+}
+
+func (rcv *UnitConfigUpdate) MaxCooldown() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(56))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateMaxCooldown(n int32) bool {
+	return rcv._tab.MutateInt32Slot(56, n)
+}
+
+func (rcv *UnitConfigUpdate) ProjectileRange() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(58))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateProjectileRange(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(58, n)
+}
+
+func (rcv *UnitConfigUpdate) ProjectileSpeed() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(60))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateProjectileSpeed(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(60, n)
+}
+
+func (rcv *UnitConfigUpdate) OptimalRange() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(62))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateOptimalRange(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(62, n)
+}
+
+func (rcv *UnitConfigUpdate) MaxRange() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(64))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateMaxRange(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(64, n)
+}
+
+func (rcv *UnitConfigUpdate) EngagementRangeCap() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(66))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateEngagementRangeCap(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(66, n)
+}
+
+func (rcv *UnitConfigUpdate) AmmoCapacity() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(68))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateAmmoCapacity(n int32) bool {
+	return rcv._tab.MutateInt32Slot(68, n)
+}
+
+func (rcv *UnitConfigUpdate) InitialOrdnanceCapacity() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(70))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateInitialOrdnanceCapacity(n int32) bool {
+	return rcv._tab.MutateInt32Slot(70, n)
+}
+
+func (rcv *UnitConfigUpdate) TurretTraverseSpeed() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(72))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateTurretTraverseSpeed(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(72, n)
+}
+
+func (rcv *UnitConfigUpdate) WeaponDispersionBloom() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(74))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateWeaponDispersionBloom(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(74, n)
+}
+
+func (rcv *UnitConfigUpdate) ProjectileTrackingCapability() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(76))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateProjectileTrackingCapability(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(76, n)
+}
+
+func (rcv *UnitConfigUpdate) ShieldPenetrationFactor() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(78))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateShieldPenetrationFactor(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(78, n)
+}
+
+func (rcv *UnitConfigUpdate) SustainedFireLimitSeconds() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(80))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateSustainedFireLimitSeconds(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(80, n)
+}
+
+func (rcv *UnitConfigUpdate) BarrelCoolingDurationSeconds() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(82))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateBarrelCoolingDurationSeconds(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(82, n)
+}
+
+func (rcv *UnitConfigUpdate) BurstSalvoCooldown() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(84))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateBurstSalvoCooldown(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(84, n)
+}
+
+func (rcv *UnitConfigUpdate) BeamRaycastDuration() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(86))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateBeamRaycastDuration(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(86, n)
+}
+
+func (rcv *UnitConfigUpdate) MaxThermalCapacity() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(88))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateMaxThermalCapacity(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(88, n)
+}
+
+func (rcv *UnitConfigUpdate) ThermalDissipationRate() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(90))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateThermalDissipationRate(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(90, n)
+}
+
+func (rcv *UnitConfigUpdate) PowerGridAllocationWeight() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(92))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutatePowerGridAllocationWeight(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(92, n)
+}
+
+func (rcv *UnitConfigUpdate) RadarCrossSection() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(94))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateRadarCrossSection(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(94, n)
+}
+
+func (rcv *UnitConfigUpdate) SensorResolutionTier() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(96))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateSensorResolutionTier(n int32) bool {
+	return rcv._tab.MutateInt32Slot(96, n)
+}
+
+func (rcv *UnitConfigUpdate) JammingSusceptibility() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(98))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateJammingSusceptibility(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(98, n)
+}
+
+func (rcv *UnitConfigUpdate) TargetLockTime() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(100))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateTargetLockTime(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(100, n)
+}
+
+func (rcv *UnitConfigUpdate) RadarImmunityActive() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(102))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateRadarImmunityActive(n bool) bool {
+	return rcv._tab.MutateBoolSlot(102, n)
+}
+
+func (rcv *UnitConfigUpdate) ShieldGatedStealthThreshold() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(104))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateShieldGatedStealthThreshold(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(104, n)
+}
+
+func (rcv *UnitConfigUpdate) DecloakOnActionFlag() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(106))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateDecloakOnActionFlag(n bool) bool {
+	return rcv._tab.MutateBoolSlot(106, n)
+}
+
+func (rcv *UnitConfigUpdate) StealthRecoveryDelaySeconds() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(108))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateStealthRecoveryDelaySeconds(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(108, n)
+}
+
+func (rcv *UnitConfigUpdate) ResourceHarvestingType() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(110))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateResourceHarvestingType(n int32) bool {
+	return rcv._tab.MutateInt32Slot(110, n)
+}
+
+func (rcv *UnitConfigUpdate) RequiresReconTelemetry() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(112))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateRequiresReconTelemetry(n bool) bool {
+	return rcv._tab.MutateBoolSlot(112, n)
+}
+
+func (rcv *UnitConfigUpdate) RequiresAnchorDrone() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(114))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateRequiresAnchorDrone(n bool) bool {
+	return rcv._tab.MutateBoolSlot(114, n)
+}
+
+func (rcv *UnitConfigUpdate) RequiresReconAnchor() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(116))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateRequiresReconAnchor(n bool) bool {
+	return rcv._tab.MutateBoolSlot(116, n)
+}
+
+func (rcv *UnitConfigUpdate) PortDockingBayStatus() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(118))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutatePortDockingBayStatus(n bool) bool {
+	return rcv._tab.MutateBoolSlot(118, n)
+}
+
+func (rcv *UnitConfigUpdate) StarboardDeploymentBayStatus() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(120))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateStarboardDeploymentBayStatus(n bool) bool {
+	return rcv._tab.MutateBoolSlot(120, n)
+}
+
+func (rcv *UnitConfigUpdate) SalvageableUponDestruction() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(122))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateSalvageableUponDestruction(n bool) bool {
+	return rcv._tab.MutateBoolSlot(122, n)
+}
+
+func (rcv *UnitConfigUpdate) CryoGasRadius() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(124))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateCryoGasRadius(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(124, n)
+}
+
+func (rcv *UnitConfigUpdate) CryoEffectDuration() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(126))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateCryoEffectDuration(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(126, n)
+}
+
+func (rcv *UnitConfigUpdate) GravitonVortexDuration() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(128))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateGravitonVortexDuration(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(128, n)
+}
+
+func (rcv *UnitConfigUpdate) WarpCanisterCapacity() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(130))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *UnitConfigUpdate) MutateWarpCanisterCapacity(n int32) bool {
+	return rcv._tab.MutateInt32Slot(130, n)
+}
+
+func (rcv *UnitConfigUpdate) EmergencyWarpEvacuationTarget() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(132))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *UnitConfigUpdate) MutateEmergencyWarpEvacuationTarget(n bool) bool {
+	return rcv._tab.MutateBoolSlot(132, n)
+}
+
 func UnitConfigUpdateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(5)
+	builder.StartObject(65)
 }
-func UnitConfigUpdateAddSpeed(builder *flatbuffers.Builder, speed float64) {
-	builder.PrependFloat64Slot(0, speed, 0.0)
-}
-func UnitConfigUpdateAddDps(builder *flatbuffers.Builder, dps float64) {
-	builder.PrependFloat64Slot(1, dps, 0.0)
-}
-func UnitConfigUpdateAddMaxCooldown(builder *flatbuffers.Builder, maxCooldown int32) {
-	builder.PrependInt32Slot(2, maxCooldown, 0)
+func UnitConfigUpdateAddWeightClass(builder *flatbuffers.Builder, weightClass int32) {
+	builder.PrependInt32Slot(0, weightClass, 0)
 }
 func UnitConfigUpdateAddVisionRange(builder *flatbuffers.Builder, visionRange int32) {
-	builder.PrependInt32Slot(3, visionRange, 0)
+	builder.PrependInt32Slot(1, visionRange, 0)
+}
+func UnitConfigUpdateAddAggroRange(builder *flatbuffers.Builder, aggroRange float64) {
+	builder.PrependFloat64Slot(2, aggroRange, 0.0)
+}
+func UnitConfigUpdateAddAggroThreatWeight(builder *flatbuffers.Builder, aggroThreatWeight float64) {
+	builder.PrependFloat64Slot(3, aggroThreatWeight, 0.0)
+}
+func UnitConfigUpdateAddRetreatMoraleThreshold(builder *flatbuffers.Builder, retreatMoraleThreshold float64) {
+	builder.PrependFloat64Slot(4, retreatMoraleThreshold, 0.0)
+}
+func UnitConfigUpdateAddSquadCohesionLeashRange(builder *flatbuffers.Builder, squadCohesionLeashRange float64) {
+	builder.PrependFloat64Slot(5, squadCohesionLeashRange, 0.0)
+}
+func UnitConfigUpdateAddShieldBase(builder *flatbuffers.Builder, shieldBase float64) {
+	builder.PrependFloat64Slot(6, shieldBase, 0.0)
+}
+func UnitConfigUpdateAddHullBase(builder *flatbuffers.Builder, hullBase float64) {
+	builder.PrependFloat64Slot(7, hullBase, 0.0)
+}
+func UnitConfigUpdateAddQuadrantShieldingEnabled(builder *flatbuffers.Builder, quadrantShieldingEnabled bool) {
+	builder.PrependBoolSlot(8, quadrantShieldingEnabled, false)
+}
+func UnitConfigUpdateAddQuadrantShieldPoolsEnabled(builder *flatbuffers.Builder, quadrantShieldPoolsEnabled bool) {
+	builder.PrependBoolSlot(9, quadrantShieldPoolsEnabled, false)
+}
+func UnitConfigUpdateAddQuadrantHullPoolsEnabled(builder *flatbuffers.Builder, quadrantHullPoolsEnabled bool) {
+	builder.PrependBoolSlot(10, quadrantHullPoolsEnabled, false)
+}
+func UnitConfigUpdateAddShieldRegenRate(builder *flatbuffers.Builder, shieldRegenRate float64) {
+	builder.PrependFloat64Slot(11, shieldRegenRate, 0.0)
+}
+func UnitConfigUpdateAddShieldRechargeDelayTicks(builder *flatbuffers.Builder, shieldRechargeDelayTicks int32) {
+	builder.PrependInt32Slot(12, shieldRechargeDelayTicks, 0)
+}
+func UnitConfigUpdateAddDirectionalShieldArc(builder *flatbuffers.Builder, directionalShieldArc float64) {
+	builder.PrependFloat64Slot(13, directionalShieldArc, 0.0)
+}
+func UnitConfigUpdateAddArmorMitigation(builder *flatbuffers.Builder, armorMitigation float64) {
+	builder.PrependFloat64Slot(14, armorMitigation, 0.0)
+}
+func UnitConfigUpdateAddArmorHardnessRating(builder *flatbuffers.Builder, armorHardnessRating float64) {
+	builder.PrependFloat64Slot(15, armorHardnessRating, 0.0)
+}
+func UnitConfigUpdateAddAblativePlatingDurability(builder *flatbuffers.Builder, ablativePlatingDurability float64) {
+	builder.PrependFloat64Slot(16, ablativePlatingDurability, 0.0)
+}
+func UnitConfigUpdateAddSpeed(builder *flatbuffers.Builder, speed float64) {
+	builder.PrependFloat64Slot(17, speed, 0.0)
+}
+func UnitConfigUpdateAddStrafingSpeed(builder *flatbuffers.Builder, strafingSpeed float64) {
+	builder.PrependFloat64Slot(18, strafingSpeed, 0.0)
+}
+func UnitConfigUpdateAddTurnRate(builder *flatbuffers.Builder, turnRate float64) {
+	builder.PrependFloat64Slot(19, turnRate, 0.0)
+}
+func UnitConfigUpdateAddAngularVelocity(builder *flatbuffers.Builder, angularVelocity float64) {
+	builder.PrependFloat64Slot(20, angularVelocity, 0.0)
+}
+func UnitConfigUpdateAddLateralThrustPower(builder *flatbuffers.Builder, lateralThrustPower float64) {
+	builder.PrependFloat64Slot(21, lateralThrustPower, 0.0)
+}
+func UnitConfigUpdateAddReverseThrustPower(builder *flatbuffers.Builder, reverseThrustPower float64) {
+	builder.PrependFloat64Slot(22, reverseThrustPower, 0.0)
+}
+func UnitConfigUpdateAddDriftCoefficient(builder *flatbuffers.Builder, driftCoefficient float64) {
+	builder.PrependFloat64Slot(23, driftCoefficient, 0.0)
+}
+func UnitConfigUpdateAddAccelerationCurve(builder *flatbuffers.Builder, accelerationCurve float64) {
+	builder.PrependFloat64Slot(24, accelerationCurve, 0.0)
+}
+func UnitConfigUpdateAddDps(builder *flatbuffers.Builder, dps float64) {
+	builder.PrependFloat64Slot(25, dps, 0.0)
+}
+func UnitConfigUpdateAddMaxCooldown(builder *flatbuffers.Builder, maxCooldown int32) {
+	builder.PrependInt32Slot(26, maxCooldown, 0)
+}
+func UnitConfigUpdateAddProjectileRange(builder *flatbuffers.Builder, projectileRange float64) {
+	builder.PrependFloat64Slot(27, projectileRange, 0.0)
+}
+func UnitConfigUpdateAddProjectileSpeed(builder *flatbuffers.Builder, projectileSpeed float64) {
+	builder.PrependFloat64Slot(28, projectileSpeed, 0.0)
+}
+func UnitConfigUpdateAddOptimalRange(builder *flatbuffers.Builder, optimalRange float64) {
+	builder.PrependFloat64Slot(29, optimalRange, 0.0)
+}
+func UnitConfigUpdateAddMaxRange(builder *flatbuffers.Builder, maxRange float64) {
+	builder.PrependFloat64Slot(30, maxRange, 0.0)
+}
+func UnitConfigUpdateAddEngagementRangeCap(builder *flatbuffers.Builder, engagementRangeCap float64) {
+	builder.PrependFloat64Slot(31, engagementRangeCap, 0.0)
+}
+func UnitConfigUpdateAddAmmoCapacity(builder *flatbuffers.Builder, ammoCapacity int32) {
+	builder.PrependInt32Slot(32, ammoCapacity, 0)
+}
+func UnitConfigUpdateAddInitialOrdnanceCapacity(builder *flatbuffers.Builder, initialOrdnanceCapacity int32) {
+	builder.PrependInt32Slot(33, initialOrdnanceCapacity, 0)
+}
+func UnitConfigUpdateAddTurretTraverseSpeed(builder *flatbuffers.Builder, turretTraverseSpeed float64) {
+	builder.PrependFloat64Slot(34, turretTraverseSpeed, 0.0)
+}
+func UnitConfigUpdateAddWeaponDispersionBloom(builder *flatbuffers.Builder, weaponDispersionBloom float64) {
+	builder.PrependFloat64Slot(35, weaponDispersionBloom, 0.0)
+}
+func UnitConfigUpdateAddProjectileTrackingCapability(builder *flatbuffers.Builder, projectileTrackingCapability float64) {
+	builder.PrependFloat64Slot(36, projectileTrackingCapability, 0.0)
+}
+func UnitConfigUpdateAddShieldPenetrationFactor(builder *flatbuffers.Builder, shieldPenetrationFactor float64) {
+	builder.PrependFloat64Slot(37, shieldPenetrationFactor, 0.0)
+}
+func UnitConfigUpdateAddSustainedFireLimitSeconds(builder *flatbuffers.Builder, sustainedFireLimitSeconds float64) {
+	builder.PrependFloat64Slot(38, sustainedFireLimitSeconds, 0.0)
+}
+func UnitConfigUpdateAddBarrelCoolingDurationSeconds(builder *flatbuffers.Builder, barrelCoolingDurationSeconds float64) {
+	builder.PrependFloat64Slot(39, barrelCoolingDurationSeconds, 0.0)
+}
+func UnitConfigUpdateAddBurstSalvoCooldown(builder *flatbuffers.Builder, burstSalvoCooldown float64) {
+	builder.PrependFloat64Slot(40, burstSalvoCooldown, 0.0)
+}
+func UnitConfigUpdateAddBeamRaycastDuration(builder *flatbuffers.Builder, beamRaycastDuration float64) {
+	builder.PrependFloat64Slot(41, beamRaycastDuration, 0.0)
 }
 func UnitConfigUpdateAddMaxThermalCapacity(builder *flatbuffers.Builder, maxThermalCapacity float64) {
-	builder.PrependFloat64Slot(4, maxThermalCapacity, 0.0)
+	builder.PrependFloat64Slot(42, maxThermalCapacity, 0.0)
+}
+func UnitConfigUpdateAddThermalDissipationRate(builder *flatbuffers.Builder, thermalDissipationRate float64) {
+	builder.PrependFloat64Slot(43, thermalDissipationRate, 0.0)
+}
+func UnitConfigUpdateAddPowerGridAllocationWeight(builder *flatbuffers.Builder, powerGridAllocationWeight float64) {
+	builder.PrependFloat64Slot(44, powerGridAllocationWeight, 0.0)
+}
+func UnitConfigUpdateAddRadarCrossSection(builder *flatbuffers.Builder, radarCrossSection float64) {
+	builder.PrependFloat64Slot(45, radarCrossSection, 0.0)
+}
+func UnitConfigUpdateAddSensorResolutionTier(builder *flatbuffers.Builder, sensorResolutionTier int32) {
+	builder.PrependInt32Slot(46, sensorResolutionTier, 0)
+}
+func UnitConfigUpdateAddJammingSusceptibility(builder *flatbuffers.Builder, jammingSusceptibility float64) {
+	builder.PrependFloat64Slot(47, jammingSusceptibility, 0.0)
+}
+func UnitConfigUpdateAddTargetLockTime(builder *flatbuffers.Builder, targetLockTime float64) {
+	builder.PrependFloat64Slot(48, targetLockTime, 0.0)
+}
+func UnitConfigUpdateAddRadarImmunityActive(builder *flatbuffers.Builder, radarImmunityActive bool) {
+	builder.PrependBoolSlot(49, radarImmunityActive, false)
+}
+func UnitConfigUpdateAddShieldGatedStealthThreshold(builder *flatbuffers.Builder, shieldGatedStealthThreshold float64) {
+	builder.PrependFloat64Slot(50, shieldGatedStealthThreshold, 0.0)
+}
+func UnitConfigUpdateAddDecloakOnActionFlag(builder *flatbuffers.Builder, decloakOnActionFlag bool) {
+	builder.PrependBoolSlot(51, decloakOnActionFlag, false)
+}
+func UnitConfigUpdateAddStealthRecoveryDelaySeconds(builder *flatbuffers.Builder, stealthRecoveryDelaySeconds float64) {
+	builder.PrependFloat64Slot(52, stealthRecoveryDelaySeconds, 0.0)
+}
+func UnitConfigUpdateAddResourceHarvestingType(builder *flatbuffers.Builder, resourceHarvestingType int32) {
+	builder.PrependInt32Slot(53, resourceHarvestingType, 0)
+}
+func UnitConfigUpdateAddRequiresReconTelemetry(builder *flatbuffers.Builder, requiresReconTelemetry bool) {
+	builder.PrependBoolSlot(54, requiresReconTelemetry, false)
+}
+func UnitConfigUpdateAddRequiresAnchorDrone(builder *flatbuffers.Builder, requiresAnchorDrone bool) {
+	builder.PrependBoolSlot(55, requiresAnchorDrone, false)
+}
+func UnitConfigUpdateAddRequiresReconAnchor(builder *flatbuffers.Builder, requiresReconAnchor bool) {
+	builder.PrependBoolSlot(56, requiresReconAnchor, false)
+}
+func UnitConfigUpdateAddPortDockingBayStatus(builder *flatbuffers.Builder, portDockingBayStatus bool) {
+	builder.PrependBoolSlot(57, portDockingBayStatus, false)
+}
+func UnitConfigUpdateAddStarboardDeploymentBayStatus(builder *flatbuffers.Builder, starboardDeploymentBayStatus bool) {
+	builder.PrependBoolSlot(58, starboardDeploymentBayStatus, false)
+}
+func UnitConfigUpdateAddSalvageableUponDestruction(builder *flatbuffers.Builder, salvageableUponDestruction bool) {
+	builder.PrependBoolSlot(59, salvageableUponDestruction, false)
+}
+func UnitConfigUpdateAddCryoGasRadius(builder *flatbuffers.Builder, cryoGasRadius float64) {
+	builder.PrependFloat64Slot(60, cryoGasRadius, 0.0)
+}
+func UnitConfigUpdateAddCryoEffectDuration(builder *flatbuffers.Builder, cryoEffectDuration float64) {
+	builder.PrependFloat64Slot(61, cryoEffectDuration, 0.0)
+}
+func UnitConfigUpdateAddGravitonVortexDuration(builder *flatbuffers.Builder, gravitonVortexDuration float64) {
+	builder.PrependFloat64Slot(62, gravitonVortexDuration, 0.0)
+}
+func UnitConfigUpdateAddWarpCanisterCapacity(builder *flatbuffers.Builder, warpCanisterCapacity int32) {
+	builder.PrependInt32Slot(63, warpCanisterCapacity, 0)
+}
+func UnitConfigUpdateAddEmergencyWarpEvacuationTarget(builder *flatbuffers.Builder, emergencyWarpEvacuationTarget bool) {
+	builder.PrependBoolSlot(64, emergencyWarpEvacuationTarget, false)
 }
 func UnitConfigUpdateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

@@ -57,54 +57,6 @@ table ServerState {
 // --- UPSTREAM: CLIENT INPUT & INSPECTOR TUNING PAYLOADS ---
 
 table UnitConfigUpdate {
-  speed: double;
-  dps: double;
-  max_cooldown: int;
-  vision_range: int;
-  max_thermal_capacity: double;
-}
-
-table BehaviorConfigUpdate {
-  ai_default_state: string;
-  aggro_range: double;
-  squad_cohesion_leash_range: double;
-  retreat_morale_threshold: double;
-  radar_immunity_active: bool;
-  requires_anchor_drone: bool;
-}
-
-table SandboxCountPair {
-  unit_type: string;
-  count: int;
-}
-
-table UnitGroupingPayload {
-  unit_id: string;
-  battalion_id: int;
-  squad_id: int;
-  is_squad_leader: bool;
-}
-
-table ClientInput {
-  // 1. Movement & Flight Controls (WASD, Aim, Firing)
-  w: bool;
-  s: bool;
-  a: bool;
-  d: bool;
-  angle: float;
-  is_firing: bool;
-  controlled_unit_id: string;
-  reset: bool;
-
-  // 2. Sandbox Spawning & Unit Counts
-  deploy: string;
-  sandbox_spawn: string;
-  sandbox_remove: string;
-  spawn_x: double;
-  spawn_y: double;
-  sandbox_counts: [SandboxCountPair];
-
-table UnitConfigUpdate {
   // 1. Core Identification & General Stats
   weight_class: int;
   vision_range: int;
@@ -183,6 +135,46 @@ table UnitConfigUpdate {
   emergency_warp_evacuation_target: bool;
 }
 
+table BehaviorConfigUpdate {
+  ai_default_state: string;
+  aggro_range: double;
+  squad_cohesion_leash_range: double;
+  retreat_morale_threshold: double;
+  radar_immunity_active: bool;
+  requires_anchor_drone: bool;
+}
+
+table SandboxCountPair {
+  unit_type: string;
+  count: int;
+}
+
+table UnitGroupingPayload {
+  unit_id: string;
+  battalion_id: int;
+  squad_id: int;
+  is_squad_leader: bool;
+}
+
+table ClientInput {
+  // 1. Movement & Flight Controls (WASD, Aim, Firing)
+  w: bool;
+  s: bool;
+  a: bool;
+  d: bool;
+  angle: float;
+  is_firing: bool;
+  controlled_unit_id: string;
+  reset: bool;
+
+  // 2. Sandbox Spawning & Unit Counts
+  deploy: string;
+  sandbox_spawn: string;
+  sandbox_remove: string;
+  spawn_x: double;
+  spawn_y: double;
+  sandbox_counts: [SandboxCountPair];
+
   // 3. Inspector Tab: Live Stat Tuning Overrides
   template_override_type: string;
   template_override_config: UnitConfigUpdate;
@@ -196,5 +188,3 @@ table UnitConfigUpdate {
 }
 
 root_type ServerState;
-
-
