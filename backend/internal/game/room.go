@@ -355,31 +355,31 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
 					// 1. Movement & Physics Dynamics
-					if val := configTable.Speed(); val != 0 { tmpl.Speed = val }
-					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = val }
-					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = val }
-					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = val }
-					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = val }
+					if val := configTable.Speed(); val != 0 { tmpl.Speed = float64(val) }
+					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = float64(val) }
+					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = float64(val) }
+					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = float64(val) }
+					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = float64(val) }
 
 					// 2. Combat Output & Ballistics
-					if val := configTable.Dps(); val != 0 { tmpl.DPS = val }
+					if val := configTable.Dps(); val != 0 { tmpl.DPS = float64(val) }
 					if val := configTable.MaxCooldown(); val != 0 { tmpl.MaxCooldown = int(val) }
-					if val := configTable.ProjectileRange(); val != 0 { tmpl.ProjectileRange = val }
-					if val := configTable.ProjectileSpeed(); val != 0 { tmpl.ProjectileSpeed = val }
-					if val := configTable.MaxThermalCapacity(); val != 0 { tmpl.MaxThermalCapacity = val }
+					if val := configTable.ProjectileRange(); val != 0 { tmpl.ProjectileRange = float64(val) }
+					if val := configTable.ProjectileSpeed(); val != 0 { tmpl.ProjectileSpeed = float64(val) }
+					if val := configTable.MaxThermalCapacity(); val != 0 { tmpl.MaxThermalCapacity = float64(val) }
 
 					// 3. Vitals, Health & Shield Systems
-					if val := configTable.ShieldBase(); val != 0 { tmpl.ShieldBase = val }
-					if val := configTable.HullBase(); val != 0 { tmpl.HullBase = val }
-					if val := configTable.ShieldRegenRate(); val != 0 { tmpl.ShieldRegenRate = val }
+					if val := configTable.ShieldBase(); val != 0 { tmpl.ShieldBase = float64(val) }
+					if val := configTable.HullBase(); val != 0 { tmpl.HullBase = float64(val) }
+					if val := configTable.ShieldRegenRate(); val != 0 { tmpl.ShieldRegenRate = float64(val) }
 					if val := configTable.ShieldRechargeDelayTicks(); val != 0 { tmpl.ShieldRechargeDelayTicks = int(val) }
-					if val := configTable.ArmorMitigation(); val != 0 { tmpl.ArmorMitigation = val }
+					if val := configTable.ArmorMitigation(); val != 0 { tmpl.ArmorMitigation = float64(val) }
 
 					// 4. AI & Sensors
 					if val := configTable.VisionRange(); val != 0 { tmpl.VisionRange = int(val) }
-					if val := configTable.AggroRange(); val != 0 { tmpl.AggroRange = val }
-					if val := configTable.RetreatMoraleThreshold(); val != 0 { tmpl.RetreatMoraleThreshold = val }
-					if val := configTable.SquadCohesionLeashRange(); val != 0 { tmpl.SquadCohesionLeashRange = val }
+					if val := configTable.AggroRange(); val != 0 { tmpl.AggroRange = float64(val) }
+					if val := configTable.RetreatMoraleThreshold(); val != 0 { tmpl.RetreatMoraleThreshold = float64(val) }
+					if val := configTable.SquadCohesionLeashRange(); val != 0 { tmpl.SquadCohesionLeashRange = float64(val) }
 
 					// 5. Logistics & Special Systems
 					if val := configTable.ResourceHarvestingType(); val != 0 { tmpl.ResourceHarvestingType = int(val) }
@@ -395,11 +395,40 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				// Hot-update any active unit instances currently alive in the room
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if val := configTable.Speed(); val != 0 { u.Speed = val }
-						if val := configTable.Dps(); val != 0 { u.DPS = val }
+						if val := configTable.Speed(); val != 0 { u.Speed = float64(val) }
+						if val := configTable.StrafingSpeed(); val != 0 { u.StrafingSpeed = float64(val) }
+						if val := configTable.TurnRate(); val != 0 { u.TurnRate = float64(val) }
+						if val := configTable.AngularVelocity(); val != 0 { u.AngularVelocity = float64(val) }
+						if val := configTable.AccelerationCurve(); val != 0 { u.AccelerationCurve = float64(val) }
+
+						if val := configTable.Dps(); val != 0 { u.DPS = float64(val) }
 						if val := configTable.MaxCooldown(); val != 0 { u.MaxCooldown = int(val) }
+						if val := configTable.ProjectileRange(); val != 0 { u.ProjectileRange = float64(val) }
+						if val := configTable.ProjectileSpeed(); val != 0 { u.ProjectileSpeed = float64(val) }
+						if val := configTable.MaxThermalCapacity(); val != 0 { u.MaxThermalCapacity = float64(val) }
+
+						if val := configTable.ShieldBase(); val != 0 { 
+							u.ShieldBase = float64(val)
+							u.Shields.Front = float64(val)
+							u.Shields.Rear = float64(val)
+							u.Shields.Port = float64(val)
+							u.Shields.Starboard = float64(val)
+						}
+						if val := configTable.HullBase(); val != 0 { 
+							u.HullBase = float64(val)
+							u.Hull.Front = float64(val)
+							u.Hull.Rear = float64(val)
+							u.Hull.Port = float64(val)
+							u.Hull.Starboard = float64(val)
+						}
+						if val := configTable.ShieldRegenRate(); val != 0 { u.ShieldRegenRate = float64(val) }
+						if val := configTable.ShieldRechargeDelayTicks(); val != 0 { u.ShieldRechargeDelayTicks = int(val) }
+						if val := configTable.ArmorMitigation(); val != 0 { u.ArmorMitigation = float64(val) }
+
 						if val := configTable.VisionRange(); val != 0 { u.VisionRange = int(val) }
-						if val := configTable.MaxThermalCapacity(); val != 0 { u.MaxThermalCapacity = val }
+						if val := configTable.AggroRange(); val != 0 { u.AggroRange = float64(val) }
+						if val := configTable.RetreatMoraleThreshold(); val != 0 { u.RetreatMoraleThreshold = float64(val) }
+						if val := configTable.SquadCohesionLeashRange(); val != 0 { u.SquadCohesionLeashRange = float64(val) }
 					}
 				}
 				log.Printf("⚙️ Applied binary WebSocket template override for: %s", unitType)

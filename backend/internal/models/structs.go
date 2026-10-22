@@ -156,7 +156,7 @@ type FleetUnit struct {
 	IsBattalionCommander bool   `json:"isBattalionCommander"`
 	BuddyID              string `json:"buddyId"`
 
-	// --- Resource & Logistics Tracking (Flagships, Command Ships, Harvesters, Repair, Supply)[cite: 3] ---
+	// --- Resource & Logistics Tracking[cite: 3] ---
 	ResourceCache       float64 `json:"resourceCache"`
 	MaxResourceCapacity float64 `json:"maxResourceCapacity"`
 
@@ -168,6 +168,28 @@ type FleetUnit struct {
 	StealthActive       bool    `json:"stealthActive"`
 	RadarImmunityActive bool    `json:"radarImmunityActive"`
 	StealthTimer        float64 `json:"stealthTimer"`
+
+	// --- Config Override Tuning Fields ---
+	StrafingSpeed                float64 `json:"strafingSpeed"`
+	TurnRate                     float64 `json:"turnRate"`
+	AngularVelocity              float64 `json:"angularVelocity"`
+	AccelerationCurve            float64 `json:"accelerationCurve"`
+	ProjectileRange              float64 `json:"projectileRange"`
+	ProjectileSpeed              float64 `json:"projectileSpeed"`
+	ShieldBase                   float64 `json:"shieldBase"`
+	HullBase                     float64 `json:"hullBase"`
+	ShieldRegenRate              float64 `json:"shieldRegenRate"`
+	ShieldRechargeDelayTicks     int     `json:"shieldRechargeDelayTicks"`
+	ArmorMitigation              float64 `json:"armorMitigation"`
+	AggroRange                   float64 `json:"aggroRange"`
+	RetreatMoraleThreshold       float64 `json:"retreatMoraleThreshold"`
+	SquadCohesionLeashRange      float64 `json:"squadCohesionLeashRange"`
+	ResourceHarvestingType       int     `json:"resourceHarvestingType"`
+	WarpCanisterCapacity         int     `json:"warpCanisterCapacity"`
+	PortDockingBayStatus         bool    `json:"portDockingBayStatus"`
+	StarboardDeploymentBayStatus bool    `json:"starboardDeploymentBayStatus"`
+	SalvageableUponDestruction   bool    `json:"salvageableUponDestruction"`
+	RequiresReconTelemetry       bool    `json:"requiresReconTelemetry"`
 }
 
 type Projectile struct {
