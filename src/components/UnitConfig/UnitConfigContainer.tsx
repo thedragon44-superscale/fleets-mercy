@@ -16,6 +16,7 @@ interface UnitConfigContainerProps {
   initialUnitId?: string;
   onClose: () => void;
   sendTemplateOverride?: (unitType: string, override: any) => void;
+  hasCommandShip?: boolean;
 }
 
 export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
@@ -23,6 +24,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
   initialUnitId = 'flagship',
   onClose,
   sendTemplateOverride,
+  hasCommandShip = false,
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<string>(initialUnitId);
   const [activeTab, setActiveTab] = useState<ConfigTabType>('movement');
@@ -101,10 +103,19 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
   };
 
   const handleGroupingChange = (field: keyof UnitGroupingPayload, value: any) => {
+    const updatedGrouping = { ...currentGrouping, [field]: value };
+
     setGroupings((prev) => ({
       ...prev,
-      [selectedUnitId]: { ...currentGrouping, [field]: value },
+      [selectedUnitId]: updatedGrouping,
     }));
+
+    // Broadcast grouping parameter update live across the WebSocket channel
+    if (sendTemplateOverride) {
+      sendTemplateOverride(selectedUnitId, {
+        grouping: updatedGrouping,
+      });
+    }
   };
 
   // Revert current unit back to its last database / saved configuration state
@@ -180,7 +191,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
           <LogisticsTab config={currentConfig} onChange={handleConfigChange} />
         )}
         {activeTab === 'grouping' && (
-          <GroupingSquadsTab grouping={currentGrouping} onChange={handleGroupingChange} />
+          <GroupingSquadsTab grouping={currentGrouping} onChange={handleGroupingChange} hasCommandShip={hasCommandShip} />
         )}
       </div>
 

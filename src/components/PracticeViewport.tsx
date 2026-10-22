@@ -348,6 +348,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       return a.id.localeCompare(b.id);
     }) || [];
 
+  const hasCommandShip = playerUnits.some(u => u.type === 'battalion_command_ship');
+
   return (
     <div 
       className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-2 gap-2 font-mono select-none"
@@ -432,13 +434,22 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
               <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
                 {playerUnits.map(unit => {
                   const isControlled = controlledUnitId === unit.id;
+                  // Fallback or read live squad/battalion tags from unit object if available
+                  const squadId = (unit as any).squadId || 0;
+                  const battalionId = (unit as any).battalionId || 0;
+                  
+                  // Squad background & Battalion border mapping
+                  const bgHex = squadId === 1 ? '#ef444433' : squadId === 2 ? '#3b82f633' : squadId === 3 ? '#22c55e33' : squadId === 4 ? '#a855f733' : '#161922';
+                  const borderCol = battalionId === 1 ? 'border-amber-400' : battalionId === 2 ? 'border-slate-200' : 'border-slate-800';
+
                   return (
                     <button
                       key={unit.id}
                       onClick={() => setControlledUnitId(unit.id)}
-                      className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase transition-all ${isControlled ? 'bg-cyan-400 text-slate-950 border-white shadow-md font-black' : 'bg-[#161922] border-slate-800 text-slate-300 hover:border-slate-700'}`}
+                      style={{ backgroundColor: isControlled ? '#38bdf8' : bgHex }}
+                      className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase transition-all ${borderCol} ${isControlled ? 'text-slate-950 border-white shadow-md font-black' : 'text-slate-200 hover:opacity-80'}`}
                     >
-                      {unit.id}
+                      {unit.id} {squadId > 0 ? `[Sq ${squadId}]` : ''}
                     </button>
                   );
                 })}
@@ -490,6 +501,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           initialUnitId={selectedCatalogUnitId}
           onClose={() => setIsInspectorOpen(false)}
           sendTemplateOverride={sendTemplateOverride}
+          hasCommandShip={hasCommandShip}
         />
       </div>
     </div>

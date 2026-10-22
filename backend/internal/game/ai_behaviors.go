@@ -251,10 +251,21 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		return
 	}
 
-	// 6. Standard SEEK and GUARD Combat State Loops
+	// 6. Standard SEEK and GUARD Combat State Loops (Battalion-Aware)
 	target := r.findBestTarget(unit)
 	if unit.OwnerID == "enemy" && target == nil {
 		target = flagship
+	}
+
+	// Resolve local anchor: if assigned to a battalion, look for that battalion's command ship
+	localAnchor := flagship
+	if unit.BattalionID > 0 && unit.OwnerID == "player" {
+		for _, u := range r.units {
+			if u.OwnerID == "player" && u.Type == "battalion_command_ship" && u.BattalionID == unit.BattalionID && !u.IsDestroyed {
+				localAnchor = u
+				break
+			}
+		}
 	}
 
 	if target != nil && !target.IsDestroyed {
@@ -270,9 +281,9 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		} else {
 			unit.IsFiring = true
 		}
-	} else if (unit.AIState == "BODYGUARD" || unit.Type == "command_escort") && flagship != nil && !flagship.IsDestroyed {
-		dx := flagship.Pos.X - unit.Pos.X
-		dy := flagship.Pos.Y - unit.Pos.Y
+	} else if (unit.AIState == "BODYGUARD" || unit.Type == "command_escort") && localAnchor != nil && !localAnchor.IsDestroyed {
+		dx := localAnchor.Pos.X - unit.Pos.X
+		dy := localAnchor.Pos.Y - unit.Pos.Y
 		distToCapital := math.Hypot(dx, dy)
 		
 		guardTarget := r.findBestTarget(unit)
@@ -294,18 +305,18 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 			unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 1.1
 			unit.IsFiring = false
 		} else {
-			unit.Angle = flagship.Angle
+			unit.Angle = localAnchor.Angle
 			unit.IsFiring = false
 		}
-	} else if unit.AIState == "GUARD" && flagship != nil && !flagship.IsDestroyed {
-		dx := flagship.Pos.X - unit.Pos.X
-		dy := flagship.Pos.Y - unit.Pos.Y
+	} else if unit.AIState == "GUARD" && localAnchor != nil && !localAnchor.IsDestroyed {
+		dx := localAnchor.Pos.X - unit.Pos.X
+		dy := localAnchor.Pos.Y - unit.Pos.Y
 		if math.Hypot(dx, dy) > 200 {
 			unit.Angle = math.Atan2(dy, dx)
 			unit.Vel.X += math.Cos(unit.Angle) * unit.Speed * 0.8
 			unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed * 0.8
 		} else {
-			unit.Angle = flagship.Angle
+			unit.Angle = localAnchor.Angle
 		}
 		unit.IsFiring = false
 	} else {
