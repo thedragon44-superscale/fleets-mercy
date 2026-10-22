@@ -43,46 +43,59 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		return
 	}
 
-	// 2. Recon Probe Advanced Evasion & Orbital Scouting
+	// 2. Recon Probe Landmark Anchoring Protocol
 	if unit.Type == "recon_probe" {
-		var nearestTarget *models.FleetUnit
+		// If already anchored, lock movement in place
+		if unit.AIState == "ANCHORED" {
+			unit.Vel.X = 0
+			unit.Vel.Y = 0
+			unit.IsFiring = false
+			return
+		}
+
+		var nearestStruct *models.MapStructure
 		minDist := math.MaxFloat64
-		for _, other := range r.units {
-			if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
-				d := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
-				if d <= 2500.0 && d < minDist {
-					minDist = d
-					nearestTarget = other
-				}
+
+		// Scan all environmental structures loaded in the map
+		for i := range r.structures {
+			s := &r.structures[i]
+			dx := s.PosX - unit.Pos.X
+			dy := s.PosY - unit.Pos.Y
+			dist := math.Hypot(dx, dy)
+			if dist < minDist {
+				minDist = dist
+				nearestStruct = s
 			}
 		}
 
-		if nearestTarget != nil {
-			dx := nearestTarget.Pos.X - unit.Pos.X
-			dy := nearestTarget.Pos.Y - unit.Pos.Y
-			currentDist := math.Hypot(dx, dy)
+		if nearestStruct != nil {
+			targetDist := nearestStruct.Radius + 40.0
+			dx := nearestStruct.PosX - unit.Pos.X
+			dy := nearestStruct.PosY - unit.Pos.Y
+			angle := math.Atan2(dy, dx)
+			unit.Angle = angle
 
-			if currentDist < 1000.0 {
-				fleeAngle := math.Atan2(-dy, -dx)
-				unit.Angle = fleeAngle
-				unit.Vel.X = math.Cos(fleeAngle) * 3.5
-				unit.Vel.Y = math.Sin(fleeAngle) * 3.5
+			if minDist <= targetDist {
+				// Reached landmark: lock position and set state to ANCHORED
+				unit.AIState = "ANCHORED"
+				unit.Vel.X = 0
+				unit.Vel.Y = 0
 			} else {
-				targetOrbitDist := 1800.0
-				angleToTarget := math.Atan2(dy, dx)
-				
-				orbitAngle := angleToTarget + (math.Pi / 2)
-				if currentDist > targetOrbitDist + 100 {
-					orbitAngle = angleToTarget
-				}
+				// Navigate towards structure perimeter
+				unit.Vel.X += math.Cos(angle) * unit.Speed * 1.2
+				unit.Vel.Y += math.Sin(angle) * unit.Speed * 1.2
 
-				unit.Angle = angleToTarget
-				unit.Vel.X = math.Cos(orbitAngle) * 3.5
-				unit.Vel.Y = math.Sin(orbitAngle) * 3.5
+				// Clamp velocity
+				speed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+				maxSpeed := unit.Speed * 1.5
+				if speed > maxSpeed {
+					unit.Vel.X = (unit.Vel.X / speed) * maxSpeed
+					unit.Vel.Y = (unit.Vel.Y / speed) * maxSpeed
+				}
 			}
 		} else {
-			unit.Vel.X = math.Cos(unit.Angle) * 3.5
-			unit.Vel.Y = math.Sin(unit.Angle) * 3.5
+			unit.Vel.X = 0
+			unit.Vel.Y = 0
 		}
 		unit.IsFiring = false
 		return

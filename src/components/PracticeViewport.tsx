@@ -6,6 +6,7 @@ import { UNIT_DB } from './GarageDashboard';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 import { UnitConfigModal } from './UnitConfig';
+import { LoadingIndicator } from './common/LoadingIndicator';
 
 // Bundle local asset PNGs via Vite to bypass CORS entirely
 const localAssets = import.meta.glob('../assets/*.png', { eager: true }) as Record<string, { default: string }>;
@@ -70,6 +71,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
   const [simulationSpeed, setSimulationSpeed] = useState<number>(1.0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isBootstrapping, setIsBootstrapping] = useState<boolean>(true);
 
   // Preload PNG images on mount
   useEffect(() => {
@@ -101,7 +103,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   if (socketState) {
     serverState.current = socketState;
 
-    if (socketState.units) {
+    if (socketState.units && socketState.units.length > 0) {
+      if (isBootstrapping) {
+        setIsBootstrapping(false); // Dismiss loader once initial units are received
+      }
+
       const now = performance.now();
       serverHistoryRef.current.push({ timestamp: now, units: socketState.units });
       if (serverHistoryRef.current.length > 20) {
@@ -395,6 +401,10 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       </header>
 
       <div className="relative flex-1 w-full h-full rounded-xl overflow-hidden bg-[#050811] border border-slate-800/80 shadow-2xl">
+        {isBootstrapping && (
+          <LoadingIndicator message="ESTABLISHING SECURE HANGAR LINK & SPAWNING UNITS..." />
+        )}
+
         <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="w-full h-full block cursor-crosshair" />
 
         <div className="ui-interactive absolute bottom-4 right-4 w-[180px] h-[180px] bg-[#0f1115]/90 border border-amber-500/40 rounded-lg overflow-hidden shadow-2xl z-40 backdrop-blur-md" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
@@ -469,7 +479,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             </div>
 
             <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-slate-800">
-              <button onClick={() => sendAction({ reset: true })} className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all">Reset Sandbox</button>
+              <button onClick={() => { setIsBootstrapping(true); sendAction({ reset: true }); }} className="w-full bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all">Reset Sandbox</button>
             </div>
           </div>
         )}
