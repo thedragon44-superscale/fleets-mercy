@@ -5,6 +5,7 @@ import { getInterpolatedUnits } from '../renderer/interpolation';
 import { UNIT_DB } from './GarageDashboard';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
+import { UnitConfigModal } from './UnitConfig';
 
 // Bundle local asset PNGs via Vite to bypass CORS entirely
 const localAssets = import.meta.glob('../assets/*.png', { eager: true }) as Record<string, { default: string }>;
@@ -63,10 +64,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
-  const [accordionSection, setAccordionSection] = useState<'movement' | 'combat' | 'vitals' | 'ai'>('movement');
-
-  const [customUnitOverrides, setCustomUnitOverrides] = useState<{ [key: string]: any }>({});
-  const [runtimeHealthOverrides, setRuntimeHealthOverrides] = useState<{ [key: string]: { shields: number; hull: number } }>({});
 
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
@@ -98,87 +95,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
       });
     }
   }, [mapId]);
-
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/templates`)
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          const initialOverrides: { [key: string]: any } = {};
-          Object.keys(data).forEach(key => {
-            const t = data[key];
-            const isUnarmed = key === 'recon_probe';
-
-            initialOverrides[key] = {
-              speed: t.speed ?? 4.0,
-              strafingSpeed: t.strafing_speed || 3.0,
-              turnRate: t.turn_rate || 0.05,
-              angularVelocity: t.angular_velocity || 0.1,
-              accelerationCurve: t.acceleration_curve || 1.0,
-              dps: isUnarmed ? 0.0 : (t.dps ?? 50.0),
-              maxCooldown: t.max_cooldown ?? 20,
-              projectileRange: t.projectile_range || 1500,
-              projectileSpeed: t.projectile_speed || 18.0,
-              maxThermalCapacity: t.max_thermal_capacity ?? 100.0,
-              shieldBase: t.shield_base ?? 100.0,
-              hullBase: t.hull_base ?? 100.0,
-              shieldRegenRate: t.shield_regen_rate || 0.5,
-              shieldRechargeDelayTicks: t.shield_recharge_delay_ticks || 180,
-              armorMitigation: t.armor_mitigation || 10.0,
-              visionRange: t.vision_range ?? 2500.0,
-              aggroRange: t.aggro_range || 1500.0,
-              retreatMoraleThreshold: t.retreat_morale_threshold || 0.15,
-              squadCohesionLeashRange: t.squad_cohesion_leash_range || 300.0
-            };
-          });
-          setCustomUnitOverrides(initialOverrides);
-        }
-      })
-      .catch(err => console.log('⚠️ Failed to fetch DB templates:', err));
-  }, []);
-
-  const selectedTemplate = UNIT_DB.find(u => u.id === selectedCatalogUnitId) || UNIT_DB[0];
-  const isSelectedUnarmed = selectedCatalogUnitId === 'recon_probe';
-
-  const activeOverrides = customUnitOverrides[selectedCatalogUnitId] || {
-    speed: 4.0, strafingSpeed: 3.0, turnRate: 0.05, angularVelocity: 0.1, accelerationCurve: 1.0,
-    dps: isSelectedUnarmed ? 0.0 : 50.0, maxCooldown: 20, projectileRange: 1500, projectileSpeed: 18.0, maxThermalCapacity: 100.0,
-    shieldBase: 100.0, hullBase: 100.0, shieldRegenRate: 0.5, shieldRechargeDelayTicks: 180, armorMitigation: 10.0,
-    visionRange: 2500.0, aggroRange: 1500.0, retreatMoraleThreshold: 0.15, squadCohesionLeashRange: 300.0
-  };
-
-  const handleOverrideChange = (field: string, val: number) => {
-    setCustomUnitOverrides(prev => ({
-      ...prev,
-      [selectedCatalogUnitId]: { ...activeOverrides, [field]: val }
-    }));
-  };
-
-  const selectedSpawnedUnit = serverState.current?.units?.find(u => u.ownerId === 'player' && u.type === selectedCatalogUnitId && !u.isDestroyed);
-  const activeRuntimeHealth = runtimeHealthOverrides[selectedCatalogUnitId] || {
-    shields: selectedSpawnedUnit?.shields?.front || 100,
-    hull: selectedSpawnedUnit?.hull?.front || 100
-  };
-
-  const handleRuntimeHealthChange = (field: 'shields' | 'hull', val: number) => {
-    setRuntimeHealthOverrides(prev => ({
-      ...prev,
-      [selectedCatalogUnitId]: { ...activeRuntimeHealth, [field]: val }
-    }));
-  };
-
-  const saveConfigurationToDB = () => {
-    fetch(`${API_BASE_URL}/api/templates?type=${selectedCatalogUnitId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(activeOverrides)
-    })
-      .then(res => {
-        if (res.ok) alert(`Successfully saved configuration for ${selectedCatalogUnitId}!`);
-        else alert('Failed to save configuration.');
-      })
-      .catch(err => console.log('⚠️ Save error:', err));
-  };
 
   const { state: socketState, sendInput, updateUnitCount: sendUnitCount, sendTemplateOverride } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
 
@@ -558,39 +474,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           </div>
         )}
 
-        {isSidebarVisible && isInspectorOpen && (
-          <div className="ui-interactive absolute top-4 left-[340px] w-80 h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-3 z-50 flex flex-col shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-left duration-200" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2 shrink-0">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">⚙️ Live Inspector</span>
-                <span className="text-[8px] text-amber-400 uppercase font-bold">{selectedTemplate.name}</span>
-              </div>
-              <button onClick={() => setIsInspectorOpen(false)} className="text-[9px] font-bold text-slate-400 hover:text-white">[CLOSE]</button>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1 mb-2 shrink-0 bg-[#161922] p-1 rounded-lg border border-slate-800">
-              {(['movement', 'combat', 'vitals', 'ai'] as const).map(sec => (
-                <button key={sec} onClick={() => setAccordionSection(sec)} className={`py-1 rounded text-[8px] font-black uppercase transition-all ${accordionSection === sec ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>{sec}</button>
-              ))}
-            </div>
-
-            <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto pr-1 mb-2">
-              {accordionSection === 'movement' && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-[9px] font-black text-amber-400 uppercase border-b border-slate-800 pb-1">Movement & Dynamics</div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Speed: {activeOverrides.speed}</label>
-                    <input type="range" min="1" max="15" step="0.5" value={activeOverrides.speed} onChange={e => handleOverrideChange('speed', parseFloat(e.target.value))} onMouseUp={() => sendTemplateOverride(selectedCatalogUnitId, activeOverrides)} className="accent-cyan-400" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-slate-800">
-              <button onClick={saveConfigurationToDB} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black py-2 rounded-lg text-[9px] uppercase tracking-widest transition-all shadow-md">💾 Save to Database (All Modes)</button>
-            </div>
-          </div>
-        )}
+        {/* MODULAR UNIT CONFIGURATION STUDIO MODAL */}
+        <UnitConfigModal
+          isOpen={isSidebarVisible && isInspectorOpen}
+          initialUnitId={selectedCatalogUnitId}
+          onClose={() => setIsInspectorOpen(false)}
+          sendTemplateOverride={sendTemplateOverride}
+        />
       </div>
     </div>
   );

@@ -354,20 +354,52 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if clientInput.TemplateOverrideConfig(&configTable) != nil {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
-					if speed := configTable.Speed(); speed != 0 { tmpl.Speed = speed }
-					if dps := configTable.Dps(); dps != 0 { tmpl.DPS = dps }
-					if cool := configTable.MaxCooldown(); cool != 0 { tmpl.MaxCooldown = int(cool) }
-					if vis := configTable.VisionRange(); vis != 0 { tmpl.VisionRange = int(vis) }
-					if therm := configTable.MaxThermalCapacity(); therm != 0 { tmpl.MaxThermalCapacity = therm }
+					// 1. Movement & Physics Dynamics
+					if val := configTable.Speed(); val != 0 { tmpl.Speed = val }
+					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = val }
+					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = val }
+					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = val }
+					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = val }
+
+					// 2. Combat Output & Ballistics
+					if val := configTable.Dps(); val != 0 { tmpl.DPS = val }
+					if val := configTable.MaxCooldown(); val != 0 { tmpl.MaxCooldown = int(val) }
+					if val := configTable.ProjectileRange(); val != 0 { tmpl.ProjectileRange = val }
+					if val := configTable.ProjectileSpeed(); val != 0 { tmpl.ProjectileSpeed = val }
+					if val := configTable.MaxThermalCapacity(); val != 0 { tmpl.MaxThermalCapacity = val }
+
+					// 3. Vitals, Health & Shield Systems
+					if val := configTable.ShieldBase(); val != 0 { tmpl.ShieldBase = val }
+					if val := configTable.HullBase(); val != 0 { tmpl.HullBase = val }
+					if val := configTable.ShieldRegenRate(); val != 0 { tmpl.ShieldRegenRate = val }
+					if val := configTable.ShieldRechargeDelayTicks(); val != 0 { tmpl.ShieldRechargeDelayTicks = int(val) }
+					if val := configTable.ArmorMitigation(); val != 0 { tmpl.ArmorMitigation = val }
+
+					// 4. AI & Sensors
+					if val := configTable.VisionRange(); val != 0 { tmpl.VisionRange = int(val) }
+					if val := configTable.AggroRange(); val != 0 { tmpl.AggroRange = val }
+					if val := configTable.RetreatMoraleThreshold(); val != 0 { tmpl.RetreatMoraleThreshold = val }
+					if val := configTable.SquadCohesionLeashRange(); val != 0 { tmpl.SquadCohesionLeashRange = val }
+
+					// 5. Logistics & Special Systems
+					if val := configTable.ResourceHarvestingType(); val != 0 { tmpl.ResourceHarvestingType = int(val) }
+					if val := configTable.WarpCanisterCapacity(); val != 0 { tmpl.WarpCanisterCapacity = int(val) }
+					tmpl.PortDockingBayStatus = configTable.PortDockingBayStatus()
+					tmpl.StarboardDeploymentBayStatus = configTable.StarboardDeploymentBayStatus()
+					tmpl.SalvageableUponDestruction = configTable.SalvageableUponDestruction()
+					tmpl.RequiresReconTelemetry = configTable.RequiresReconTelemetry()
+
 					db.Templates[unitType] = tmpl
 				}
+
+				// Hot-update any active unit instances currently alive in the room
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if speed := configTable.Speed(); speed != 0 { u.Speed = speed }
-						if dps := configTable.Dps(); dps != 0 { u.DPS = dps }
-						if cool := configTable.MaxCooldown(); cool != 0 { u.MaxCooldown = int(cool) }
-						if vis := configTable.VisionRange(); vis != 0 { u.VisionRange = int(vis) }
-						if therm := configTable.MaxThermalCapacity(); therm != 0 { u.MaxThermalCapacity = therm }
+						if val := configTable.Speed(); val != 0 { u.Speed = val }
+						if val := configTable.Dps(); val != 0 { u.DPS = val }
+						if val := configTable.MaxCooldown(); val != 0 { u.MaxCooldown = int(val) }
+						if val := configTable.VisionRange(); val != 0 { u.VisionRange = int(val) }
+						if val := configTable.MaxThermalCapacity(); val != 0 { u.MaxThermalCapacity = val }
 					}
 				}
 				log.Printf("⚙️ Applied binary WebSocket template override for: %s", unitType)
