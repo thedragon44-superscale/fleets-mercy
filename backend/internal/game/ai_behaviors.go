@@ -2,6 +2,7 @@ package game
 
 import (
 	"math"
+	"math/rand"
 	"space-tactics-server/internal/models"
 )
 
@@ -43,14 +44,50 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		return
 	}
 
-	// 2. Recon Probe Landmark Anchoring Protocol
+	// 2. Recon Probe Landmark Orbital Patrol, Sector Sweep & Emergency Evasion Protocol
 	if unit.Type == "recon_probe" {
-		// If already anchored, lock movement in place
-		if unit.AIState == "ANCHORED" {
-			unit.Vel.X = 0
-			unit.Vel.Y = 0
+		// Emergency Evasion: Check if any enemy unit breaches the 1,000m safety threshold[cite: 7]
+		var closestEnemy *models.FleetUnit
+		minEnemyDist := math.MaxFloat64
+
+		for _, other := range r.units {
+			if other.OwnerID != unit.OwnerID && !other.IsDestroyed {
+				d := math.Hypot(other.Pos.X-unit.Pos.X, other.Pos.Y-unit.Pos.Y)
+				if d < minEnemyDist {
+					minEnemyDist = d
+					closestEnemy = other
+				}
+			}
+		}
+
+		if closestEnemy != nil && minEnemyDist < 1000.0 {
+			// Flee directly away from the threat at maximum speed (3.5)[cite: 7]
+			dx := unit.Pos.X - closestEnemy.Pos.X
+			dy := unit.Pos.Y - closestEnemy.Pos.Y
+			angle := math.Atan2(dy, dx)
+			unit.Angle = angle
+
+			unit.Vel.X = math.Cos(angle) * 3.5
+			unit.Vel.Y = math.Sin(angle) * 3.5
 			unit.IsFiring = false
 			return
+		}
+
+		// Calculate repulsion from other friendly recon probes to enforce 2,300m - 2,400m spacing[cite: 7]
+		var repelX, repelY float64
+		minAllowedDist := 2300.0
+
+		for _, sibling := range r.units {
+			if sibling.OwnerID == unit.OwnerID && sibling.Type == "recon_probe" && sibling.ID != unit.ID && !sibling.IsDestroyed {
+				dx := unit.Pos.X - sibling.Pos.X
+				dy := unit.Pos.Y - sibling.Pos.Y
+				dist := math.Hypot(dx, dy)
+				if dist < minAllowedDist && dist > 0 {
+					repelFactor := (minAllowedDist - dist) / minAllowedDist
+					repelX += (dx / dist) * repelFactor * unit.Speed * 2.0
+					repelY += (dy / dist) * repelFactor * unit.Speed * 2.0
+				}
+			}
 		}
 
 		var nearestStruct *models.MapStructure
@@ -69,34 +106,48 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		}
 
 		if nearestStruct != nil {
-			targetDist := nearestStruct.Radius + 40.0
+			// Target an optimal orbital standoff (~1,800m or structure radius + buffer)[cite: 7]
+			targetOrbitDist := math.Max(1800.0, nearestStruct.Radius + 200.0)
 			dx := nearestStruct.PosX - unit.Pos.X
 			dy := nearestStruct.PosY - unit.Pos.Y
-			angle := math.Atan2(dy, dx)
-			unit.Angle = angle
+			distToStruct := math.Hypot(dx, dy)
+			angleToStruct := math.Atan2(dy, dx)
 
-			if minDist <= targetDist {
-				// Reached landmark: lock position and set state to ANCHORED
-				unit.AIState = "ANCHORED"
-				unit.Vel.X = 0
-				unit.Vel.Y = 0
-			} else {
-				// Navigate towards structure perimeter
-				unit.Vel.X += math.Cos(angle) * unit.Speed * 1.2
-				unit.Vel.Y += math.Sin(angle) * unit.Speed * 1.2
-
-				// Clamp velocity
-				speed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-				maxSpeed := unit.Speed * 1.5
-				if speed > maxSpeed {
-					unit.Vel.X = (unit.Vel.X / speed) * maxSpeed
-					unit.Vel.Y = (unit.Vel.Y / speed) * maxSpeed
+			// Compute orbital tangent vector for smooth high-speed patrol rotation around landmark
+			orbitAngle := angleToStruct + (math.Pi / 2)
+			if math.Abs(distToStruct - targetOrbitDist) > 150.0 {
+				if distToStruct < targetOrbitDist {
+					orbitAngle = angleToStruct + math.Pi // Move outward
+				} else {
+					orbitAngle = angleToStruct // Move inward
 				}
 			}
+
+			unit.Angle = angleToStruct
+			unit.Vel.X = math.Cos(orbitAngle) * unit.Speed * 1.1 + repelX
+			unit.Vel.Y = math.Sin(orbitAngle) * unit.Speed * 1.1 + repelY
 		} else {
-			unit.Vel.X = 0
-			unit.Vel.Y = 0
+			// Autonomous Blind Sweep / Sector Grid Distribution into open space[cite: 7]
+			centerDX := unit.Pos.X - 6000.0
+			centerDY := unit.Pos.Y - 6000.0
+			sweepAngle := math.Atan2(centerDY, centerDX)
+			if math.Hypot(centerDX, centerDY) < 500.0 {
+				sweepAngle = rand.Float64() * 2 * math.Pi
+			}
+
+			unit.Angle = sweepAngle
+			unit.Vel.X = math.Cos(sweepAngle) * unit.Speed * 0.9 + repelX
+			unit.Vel.Y = math.Sin(sweepAngle) * unit.Speed * 0.9 + repelY
 		}
+
+		// Clamp velocity
+		speed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+		maxSpeed := unit.Speed * 1.8
+		if speed > maxSpeed {
+			unit.Vel.X = (unit.Vel.X / speed) * maxSpeed
+			unit.Vel.Y = (unit.Vel.Y / speed) * maxSpeed
+		}
+
 		unit.IsFiring = false
 		return
 	}

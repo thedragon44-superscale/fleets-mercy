@@ -155,7 +155,9 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 			continue
 		}
 
-		if !r.IsUnitVisible(unit.OwnerID, target) {
+		// Enforce radar fog-of-war state: must be at least Pinged (1) or Clear (2) to target
+		visibilityState := r.GetUnitVisibilityState(unit.OwnerID, target)
+		if visibilityState == VisibilityShrouded {
 			continue
 		}
 

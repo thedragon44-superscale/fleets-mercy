@@ -298,7 +298,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const rw = radarCanvas.width;
           const rh = radarCanvas.height;
 
-          radarCtx.fillStyle = 'rgba(5, 8, 17, 0.85)';
+          radarCtx.fillStyle = 'rgba(5, 8, 17, 0.95)';
           radarCtx.fillRect(0, 0, rw, rh);
           radarCtx.strokeStyle = '#a855f7';
           radarCtx.lineWidth = 1.5;
@@ -307,25 +307,84 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
+          // 1. Render Recon Probe 2,500m sensor bubbles and overlap zones[cite: 7]
+          (serverState.current.units || []).forEach((u: any) => {
+            if (u.isDestroyed || u.ownerId !== 'player') return;
+            if (u.type === 'recon_probe') {
+              const rx = (u.id === activeId ? renderPos.current.x : u.pos.x) * scaleX;
+              const ry = (u.id === activeId ? renderPos.current.y : u.pos.y) * scaleY;
+              const radiusPixels = 2500 * scaleX;
+
+              radarCtx.beginPath();
+              radarCtx.arc(rx, ry, radiusPixels, 0, Math.PI * 2);
+              radarCtx.fillStyle = 'rgba(0, 243, 255, 0.04)';
+              radarCtx.fill();
+              radarCtx.strokeStyle = 'rgba(0, 243, 255, 0.25)';
+              radarCtx.lineWidth = 0.75;
+              radarCtx.stroke();
+            }
+          });
+
+          // 2. Render environmental structures / obstacles[cite: 7]
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
               const rx = s.posX * scaleX;
               const ry = s.posY * scaleY;
               const rr = Math.max(2, s.radius * scaleX);
-              radarCtx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.25)' : 'rgba(168, 85, 247, 0.6)';
+              radarCtx.fillStyle = s.structureType === 'gas_giant' ? 'rgba(100, 150, 255, 0.2)' : 'rgba(168, 85, 247, 0.5)';
+              radarCtx.strokeStyle = 'rgba(168, 85, 247, 0.8)';
+              radarCtx.lineWidth = 1;
               radarCtx.beginPath();
               radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
               radarCtx.fill();
+              radarCtx.stroke();
             });
           }
 
+          // 3. Render units using distinct geometric figures based on weight class[cite: 7]
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed) return;
             const isControlled = u.id === activeId;
             const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
             const ry = (isControlled ? renderPos.current.y : u.pos.y) * scaleY;
-            radarCtx.fillStyle = isControlled ? '#38bdf8' : (u.ownerId === 'player' ? '#22c55e' : '#ef4444');
-            radarCtx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
+            
+            const unitMeta = UNIT_DB.find(item => item.id === u.type);
+            const weight = unitMeta ? unitMeta.weight : 1;
+
+            const baseColor = isControlled ? '#38bdf8' : (u.ownerId === 'player' ? '#22c55e' : '#ef4444');
+            radarCtx.fillStyle = baseColor;
+            radarCtx.strokeStyle = baseColor;
+            radarCtx.lineWidth = 1;
+
+            radarCtx.beginPath();
+            if (weight === 1) {
+              // 1W: Triangle (Scouts / Interceptors / Probes)
+              radarCtx.moveTo(rx, ry - 3.5);
+              radarCtx.lineTo(rx - 3, ry + 3);
+              radarCtx.lineTo(rx + 3, ry + 3);
+              radarCtx.closePath();
+              radarCtx.fill();
+            } else if (weight === 2) {
+              // 2W: Circle (Light Utility / Harvesters / Gunships)
+              radarCtx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+              radarCtx.fill();
+            } else if (weight === 3) {
+              // 3W: Square (Frigates / Jammers / Minelayers)
+              radarCtx.rect(rx - 2.5, ry - 2.5, 5, 5);
+              radarCtx.fill();
+            } else if (weight === 4) {
+              // 4W: Diamond (Heavy Support / Railguns / Bombers)
+              radarCtx.moveTo(rx, ry - 4);
+              radarCtx.lineTo(rx + 3.5, ry);
+              radarCtx.lineTo(rx, ry + 4);
+              radarCtx.lineTo(rx - 3.5, ry);
+              radarCtx.closePath();
+              radarCtx.fill();
+            } else {
+              // 5W+: Capital Frame (Flagships / Command Ships / Warp Anchors)
+              radarCtx.rect(rx - 4, ry - 4, 8, 8);
+              radarCtx.stroke();
+            }
           });
         }
       }
