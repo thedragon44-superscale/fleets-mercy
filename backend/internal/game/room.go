@@ -192,16 +192,25 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 }
 
 func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64, overrideAI string) {
+	assignedBattalionID := 0
 	if unitType == "battalion_command_ship" {
 		commandCount := 0
+		existingBattalions := map[int]bool{}
 		for _, u := range r.units {
 			if u.OwnerID == owner && u.Type == "battalion_command_ship" && !u.IsDestroyed {
 				commandCount++
+				existingBattalions[u.BattalionID] = true
 			}
 		}
 		if commandCount >= 2 {
 			log.Printf("⚠️ Spawn rejected: Owner '%s' already has the maximum cap of 2 Battalion Command Ships.", owner)
 			return
+		}
+		// Automatically assign to Battalion 1 first, then Battalion 2
+		if !existingBattalions[1] {
+			assignedBattalionID = 1
+		} else {
+			assignedBattalionID = 2
 		}
 	}
 
@@ -261,7 +270,7 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		RadarImmunityActive:          template.RadarImmunityActive,
 		StealthTimer:                 template.StealthTimer,
 		IsBattalionCommander:         (unitType == "battalion_command_ship"),
-		BattalionID:                  0,
+		BattalionID:                  assignedBattalionID,
 		SquadID:                      0,
 		ResourceCache:                100.0,
 		MaxResourceCapacity:          500.0,
