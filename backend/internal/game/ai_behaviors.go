@@ -103,7 +103,7 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 
 	// 3. Squad Member & Leader Formation Leash Logic
 	if unit.SquadID > 0 && !unit.IsSquadLeader {
-		leader := r.findSquadLeader(unit.OwnerID, unit.SquadID)
+		leader := r.findSquadLeader(unit.OwnerID, unit.BattalionID, unit.SquadID)
 		if leader != nil && !leader.IsDestroyed {
 			target := r.findBestTarget(leader)
 			if target == nil {
