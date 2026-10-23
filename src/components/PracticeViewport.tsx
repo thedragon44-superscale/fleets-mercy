@@ -7,6 +7,7 @@ import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 import { UnitConfigModal } from './UnitConfig';
 import { DockingModal } from './DockingModal';
+import { PilotSwitcherModal } from './PilotSwitcherModal';
 import { LoadingIndicator } from './common/LoadingIndicator';
 
 // Bundle local asset PNGs via Vite to bypass CORS entirely
@@ -67,6 +68,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
+  const [isPilotOpen, setIsPilotOpen] = useState<boolean>(false);
 
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
@@ -431,40 +433,32 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
             <p className="text-[9px] text-slate-400 font-medium leading-tight mb-2 shrink-0">Click unit to inspect/tweak stats. Use +/- to spawn/despawn.</p>
 
-            <div className="flex flex-col gap-1.5 mb-2 shrink-0">
-              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Active Units (Pilot Switcher)</span>
-              <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
-                {playerUnits.map(unit => {
-                  const isControlled = controlledUnitId === unit.id;
-                  // Fallback or read live squad/battalion tags from unit object if available
-                  const squadId = (unit as any).squadId || 0;
-                  const battalionId = (unit as any).battalionId || 0;
-                  
-                  // Squad background & Battalion border mapping
-                  const bgHex = squadId === 1 ? '#ef444433' : squadId === 2 ? '#3b82f633' : squadId === 3 ? '#22c55e33' : squadId === 4 ? '#a855f733' : '#161922';
-                  const borderCol = battalionId === 1 ? 'border-amber-400' : battalionId === 2 ? 'border-slate-200' : 'border-slate-800';
-
-                  return (
-                    <button
-                      key={unit.id}
-                      onClick={() => setControlledUnitId(unit.id)}
-                      style={{ backgroundColor: isControlled ? '#38bdf8' : bgHex }}
-                      className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase transition-all ${borderCol} ${isControlled ? 'text-slate-950 border-white shadow-md font-black' : 'text-slate-200 hover:opacity-80'}`}
-                    >
-                      {unit.id} {squadId > 0 ? `[Sq ${squadId}]` : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div className="flex justify-between items-center mb-1 shrink-0 gap-1">
               <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Catalog Spawner</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
+                    setIsPilotOpen(prev => !prev);
+                    if (!isPilotOpen) {
+                      setIsDockingOpen(false);
+                      setIsInspectorOpen(false);
+                    }
+                  }}
+                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                    isPilotOpen
+                      ? 'bg-cyan-400 text-slate-950 border-cyan-300'
+                      : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
+                  }`}
+                >
+                  {isPilotOpen ? 'Close Pilots 🚀' : 'Pilots 🚀'}
+                </button>
+                <button
+                  onClick={() => {
                     setIsDockingOpen(prev => !prev);
-                    if (!isDockingOpen) setIsInspectorOpen(false);
+                    if (!isDockingOpen) {
+                      setIsPilotOpen(false);
+                      setIsInspectorOpen(false);
+                    }
                   }}
                   className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
                     isDockingOpen
@@ -472,12 +466,15 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                       : 'bg-slate-800 text-amber-400 border-slate-700 hover:bg-slate-700'
                   }`}
                 >
-                  {isDockingOpen ? 'Close Docking ⚓' : 'Fleet Docking ⚓'}
+                  {isDockingOpen ? 'Close Docking ⚓' : 'Docking ⚓'}
                 </button>
                 <button
                   onClick={() => {
                     setIsInspectorOpen(prev => !prev);
-                    if (!isInspectorOpen) setIsDockingOpen(false);
+                    if (!isInspectorOpen) {
+                      setIsPilotOpen(false);
+                      setIsDockingOpen(false);
+                    }
                   }}
                   className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
                     isInspectorOpen
@@ -485,7 +482,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
                       : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
                   }`}
                 >
-                  {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspect Unit ⚙️'}
+                  {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspector ⚙️'}
                 </button>
               </div>
             </div>
@@ -521,6 +518,20 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             </div>
           </div>
         )}
+
+        {/* PILOT SWITCHER STUDIO MODAL */}
+        <PilotSwitcherModal
+          isOpen={isSidebarVisible && isPilotOpen}
+          onClose={() => setIsPilotOpen(false)}
+          playerUnits={playerUnits.map(u => ({
+            id: u.id,
+            type: u.type,
+            squadId: (u as any).squadId || 0,
+            battalionId: (u as any).battalionId || 0,
+          }))}
+          controlledUnitId={controlledUnitId}
+          onSelectUnit={(unitId) => setControlledUnitId(unitId)}
+        />
 
         {/* MODULAR UNIT CONFIGURATION STUDIO MODAL */}
         <UnitConfigModal

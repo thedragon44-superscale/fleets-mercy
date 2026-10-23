@@ -42,10 +42,17 @@ export const DockingModal: React.FC<DockingModalProps> = ({
     : 'border-slate-800 shadow-[0_0_15px_rgba(0,0,0,0.5)]';
 
   const activeBattalionUnits = spawnedUnits.filter(u => (u.battalionId || 0) === activeBattalionTab);
+  
+  // Filter for unassigned units, excluding foundational capital command ships
+  const unassignedUnits = spawnedUnits.filter(u => 
+    (u.squadId || 0) === 0 && 
+    u.type !== 'flagship' && 
+    u.type !== 'battalion_command_ship'
+  );
 
   const handleDockUnit = (unitId: string, squadId: number) => {
     if (onAssignUnitToSquad) {
-      onAssignUnitToSquad(unitId, squadId, activeBattalionTab);
+      onAssignUnitToSquad(unitId, squadId, activeBattalionTab, false);
     }
     setPickerSlot(null);
   };
@@ -161,20 +168,35 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                           >
                             <div className="flex justify-between items-center">
                               <span className="text-[8px] font-black truncate text-white">{unit.id}</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onAssignUnitToSquad) {
-                                    onAssignUnitToSquad(unit.id, sqId, activeBattalionTab, !unit.isLeader);
-                                  }
-                                }}
-                                className={`text-[7px] font-black px-1 rounded transition-all ${
-                                  unit.isLeader ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
-                                }`}
-                                title="Toggle Squad Leader status"
-                              >
-                                {unit.isLeader ? 'LDR' : 'SET'}
-                              </button>
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onAssignUnitToSquad) {
+                                      onAssignUnitToSquad(unit.id, sqId, activeBattalionTab, !unit.isLeader);
+                                    }
+                                  }}
+                                  className={`text-[7px] font-black px-1 rounded transition-all ${
+                                    unit.isLeader ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+                                  }`}
+                                  title="Toggle Squad Leader status"
+                                >
+                                  {unit.isLeader ? 'LDR' : 'SET'}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onAssignUnitToSquad) {
+                                      // Unassign: reset squadId to 0, battalionId to 0, and clear leader status
+                                      onAssignUnitToSquad(unit.id, 0, 0, false);
+                                    }
+                                  }}
+                                  className="text-[7px] bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white font-black px-1 rounded transition-all"
+                                  title="Undock / Unassign unit"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
                             <span className="text-[7px] text-slate-400 font-bold uppercase">{unit.type}</span>
                           </div>
@@ -217,7 +239,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
             </div>
 
             <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
-              {spawnedUnits.map((unit) => (
+              {unassignedUnits.map((unit) => (
                 <button
                   key={unit.id}
                   onClick={() => handleDockUnit(unit.id, pickerSlot.squadId)}
@@ -228,9 +250,9 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                 </button>
               ))}
 
-              {spawnedUnits.length === 0 && (
+              {unassignedUnits.length === 0 && (
                 <div className="text-red-400 text-[9px] text-center py-2">
-                  No units available in sandbox. Spawn units first.
+                  No unassigned units available. All units are currently docked.
                 </div>
               )}
             </div>
