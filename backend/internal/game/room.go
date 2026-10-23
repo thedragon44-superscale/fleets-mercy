@@ -138,7 +138,7 @@ func (r *GameRoom) findSquadLeader(ownerID string, args ...int) *models.FleetUni
 	}
 	for _, unit := range r.units {
 		if unit.OwnerID == ownerID && unit.SquadID == squadID && unit.IsSquadLeader && !unit.IsDestroyed {
-			if battalionID == 0 || unit.BattalionID == battalionID {
+			if unit.BattalionID == battalionID {
 				return unit
 			}
 		}
