@@ -216,8 +216,6 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 
 	if unitType == "flagship" {
 		if owner == "player" { id = "player-flagship" } else { id = "enemy-flagship" }
-	} else if unitType == "battalion_command_ship" {
-		if owner == "player" { id = "player-battalion-command" } else { id = "enemy-battalion-command" }
 	}
 
 	aiState := template.AIState

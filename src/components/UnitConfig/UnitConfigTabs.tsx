@@ -13,7 +13,6 @@ const TABS: { id: ConfigTabType; label: string; icon: string }[] = [
   { id: 'combat', label: 'Combat', icon: '⚡' },
   { id: 'ai', label: 'AI & Sensors', icon: '📡' },
   { id: 'logistics', label: 'Logistics', icon: '📦' },
-  { id: 'grouping', label: 'Squads & Grouping', icon: '👥' }, // Directly tied to formations.md roadmap[cite: 17]
 ];
 
 export const UnitConfigTabs: React.FC<UnitConfigTabsProps> = ({ activeTab, onSelectTab }) => {

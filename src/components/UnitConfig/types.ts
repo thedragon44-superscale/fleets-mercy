@@ -87,4 +87,4 @@ export interface UnitGroupingPayload {
   buddyId?: string;          // Exclusive 1-to-1 support tether (e.g., Repair Corvette anchor)
 }
 
-export type ConfigTabType = 'movement' | 'vitals' | 'combat' | 'ai' | 'logistics' | 'grouping';
+export type ConfigTabType = 'movement' | 'vitals' | 'combat' | 'ai' | 'logistics';

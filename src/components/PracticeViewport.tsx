@@ -6,6 +6,7 @@ import { UNIT_DB } from './GarageDashboard';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 import { UnitConfigModal } from './UnitConfig';
+import { DockingModal } from './DockingModal';
 import { LoadingIndicator } from './common/LoadingIndicator';
 
 // Bundle local asset PNGs via Vite to bypass CORS entirely
@@ -65,6 +66,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
+  const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
 
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
@@ -456,11 +458,36 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
               </div>
             </div>
 
-            <div className="flex justify-between items-center mb-1 shrink-0">
+            <div className="flex justify-between items-center mb-1 shrink-0 gap-1">
               <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Catalog Spawner</span>
-              <button onClick={() => setIsInspectorOpen(prev => !prev)} className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${isInspectorOpen ? 'bg-cyan-500 text-slate-950 border-cyan-400' : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'}`}>
-                {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspect Unit ⚙️'}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setIsDockingOpen(prev => !prev);
+                    if (!isDockingOpen) setIsInspectorOpen(false);
+                  }}
+                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                    isDockingOpen
+                      ? 'bg-amber-500 text-slate-950 border-amber-400'
+                      : 'bg-slate-800 text-amber-400 border-slate-700 hover:bg-slate-700'
+                  }`}
+                >
+                  {isDockingOpen ? 'Close Docking ⚓' : 'Fleet Docking ⚓'}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsInspectorOpen(prev => !prev);
+                    if (!isInspectorOpen) setIsDockingOpen(false);
+                  }}
+                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                    isInspectorOpen
+                      ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                      : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
+                  }`}
+                >
+                  {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspect Unit ⚙️'}
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 mb-3">
@@ -501,7 +528,32 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           initialUnitId={selectedCatalogUnitId}
           onClose={() => setIsInspectorOpen(false)}
           sendTemplateOverride={sendTemplateOverride}
+        />
+
+        {/* FLEET DOCKING & GROUPING STUDIO MODAL */}
+        <DockingModal
+          isOpen={isSidebarVisible && isDockingOpen}
+          onClose={() => setIsDockingOpen(false)}
           hasCommandShip={hasCommandShip}
+          spawnedUnits={playerUnits.map(u => ({
+            id: u.id,
+            type: u.type,
+            squadId: (u as any).squadId || 0,
+            battalionId: (u as any).battalionId || 0,
+            isLeader: (u as any).isSquadLeader || false,
+          }))}
+          onAssignUnitToSquad={(unitId, squadId, battalionId, isLeader) => {
+            // Dispatch websocket payload to backend
+            sendInput({
+              type: 'UPDATE_GROUPING',
+              unitGrouping: {
+                unitId,
+                squadId,
+                battalionId,
+                isSquadLeader: isLeader || false,
+              }
+            });
+          }}
         />
       </div>
     </div>
