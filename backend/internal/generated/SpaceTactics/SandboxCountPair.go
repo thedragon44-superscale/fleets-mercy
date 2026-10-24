@@ -53,14 +53,25 @@ func (rcv *SandboxCountPair) MutateCount(n int32) bool {
 	return rcv._tab.MutateInt32Slot(6, n)
 }
 
+func (rcv *SandboxCountPair) OwnerId() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
 func SandboxCountPairStart(builder *flatbuffers.Builder) {
-	builder.StartObject(2)
+	builder.StartObject(3)
 }
 func SandboxCountPairAddUnitType(builder *flatbuffers.Builder, unitType flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(unitType), 0)
 }
 func SandboxCountPairAddCount(builder *flatbuffers.Builder, count int32) {
 	builder.PrependInt32Slot(1, count, 0)
+}
+func SandboxCountPairAddOwnerId(builder *flatbuffers.Builder, ownerId flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(ownerId), 0)
 }
 func SandboxCountPairEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

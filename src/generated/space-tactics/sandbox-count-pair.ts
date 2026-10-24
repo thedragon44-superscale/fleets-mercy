@@ -32,8 +32,15 @@ count():number {
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
+ownerId():string|null
+ownerId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+ownerId(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
 static startSandboxCountPair(builder:flatbuffers.Builder) {
-  builder.startObject(2);
+  builder.startObject(3);
 }
 
 static addUnitType(builder:flatbuffers.Builder, unitTypeOffset:flatbuffers.Offset) {
@@ -44,15 +51,20 @@ static addCount(builder:flatbuffers.Builder, count:number) {
   builder.addFieldInt32(1, count, 0);
 }
 
+static addOwnerId(builder:flatbuffers.Builder, ownerIdOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(2, ownerIdOffset, 0);
+}
+
 static endSandboxCountPair(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createSandboxCountPair(builder:flatbuffers.Builder, unitTypeOffset:flatbuffers.Offset, count:number):flatbuffers.Offset {
+static createSandboxCountPair(builder:flatbuffers.Builder, unitTypeOffset:flatbuffers.Offset, count:number, ownerIdOffset:flatbuffers.Offset):flatbuffers.Offset {
   SandboxCountPair.startSandboxCountPair(builder);
   SandboxCountPair.addUnitType(builder, unitTypeOffset);
   SandboxCountPair.addCount(builder, count);
+  SandboxCountPair.addOwnerId(builder, ownerIdOffset);
   return SandboxCountPair.endSandboxCountPair(builder);
 }
 }

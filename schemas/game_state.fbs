@@ -147,6 +147,7 @@ table BehaviorConfigUpdate {
 table SandboxCountPair {
   unit_type: string;
   count: int;
+  owner_id: string; // Added to distinguish "player" vs "enemy" spawner counts
 }
 
 table UnitGroupingPayload {

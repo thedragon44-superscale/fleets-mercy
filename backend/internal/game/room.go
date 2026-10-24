@@ -342,7 +342,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		// Parse sandbox counts vector
+		// Parse sandbox counts vector with faction/owner attribution
 		countsLength := clientInput.SandboxCountsLength()
 		if countsLength > 0 {
 			if r.lastInput.SandboxCounts == nil {
@@ -353,30 +353,32 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				if clientInput.SandboxCounts(&pairPtr, i) {
 					unitType := string(pairPtr.UnitType())
 					targetCount := int(pairPtr.Count())
-					r.lastInput.SandboxCounts[unitType] = targetCount
+					ownerID := string(pairPtr.OwnerId())
+					if ownerID == "" {
+						ownerID = "player"
+					}
+
+					mapCompoundKey := ownerID + "_" + unitType
+					r.lastInput.SandboxCounts[mapCompoundKey] = targetCount
 
 					if unitType != "flagship" {
 						currentCount := 0
 						for _, u := range r.units {
-							if u.OwnerID == "player" && u.Type == unitType && !u.IsDestroyed {
+							if u.OwnerID == ownerID && u.Type == unitType && !u.IsDestroyed {
 								currentCount++
 							}
 						}
 						if targetCount > currentCount {
 							diff := targetCount - currentCount
 							for j := 0; j < diff; j++ {
-								spawnX, spawnY := 6000.0, 10000.0
-								if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
-									spawnX = flagship.Pos.X + (rand.Float64()-0.5)*200
-									spawnY = flagship.Pos.Y + (rand.Float64()-0.5)*200
-								}
-								r.spawnUnit(unitType, "player", spawnX, spawnY, "GUARD")
+								spawnX, spawnY := r.CalculateSpawnPosition(ownerID, j, targetCount)
+								r.spawnUnit(unitType, ownerID, spawnX, spawnY, "GUARD")
 							}
 						} else if targetCount < currentCount {
 							diff := currentCount - targetCount
 							removed := 0
 							for id, u := range r.units {
-								if removed < diff && u.OwnerID == "player" && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
+								if removed < diff && u.OwnerID == ownerID && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
 									delete(r.units, id)
 									removed++
 								}
@@ -523,6 +525,29 @@ func (r *GameRoom) runAI() {
 		spawnY := ai.Pos.Y + (rand.Float64() - 0.5) * 300
 		r.spawnUnit(choice, "enemy", spawnX, spawnY, "SEEK")
 	}
+}
+
+func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) (float64, float64) {
+	var baseX, baseY float64
+	if ownerID == "player" {
+		baseX = 2000.0
+		baseY = 10000.0
+		if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
+			baseX = flagship.Pos.X
+			baseY = flagship.Pos.Y - 250.0
+		}
+	} else {
+		baseX = 10000.0
+		baseY = 2000.0
+		if flagship, ok := r.units["enemy-flagship"]; ok && !flagship.IsDestroyed {
+			baseX = flagship.Pos.X
+			baseY = flagship.Pos.Y + 250.0
+		}
+	}
+	cols := 5
+	col := index % cols
+	row := index / cols
+	return baseX + float64(col)*50.0 + (rand.Float64()-0.5)*20, baseY + float64(row)*50.0 + (rand.Float64()-0.5)*20
 }
 
 func (r *GameRoom) Run() {

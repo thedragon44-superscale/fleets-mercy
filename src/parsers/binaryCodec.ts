@@ -114,7 +114,11 @@ export function serializeClientInput(actionParams: {
   sandboxRemove?: string;
   spawnX?: number;
   spawnY?: number;
-  sandboxCounts?: Record<string, number>;
+  sandboxCounts?: Array<{
+    unitType: string;
+    count: number;
+    ownerId: string;
+  }>;
   templateOverride?: {
     type: string;
     config: {
@@ -305,13 +309,15 @@ export function serializeClientInput(actionParams: {
 
   // 4. Build Sandbox Counts Vector (if provided)
   let countsVectorOffset = 0;
-  if (actionParams.sandboxCounts && Object.keys(actionParams.sandboxCounts).length > 0) {
-    const entries = Object.entries(actionParams.sandboxCounts);
-    const pairOffsets = entries.map(([unitType, count]) => {
-      const typeOffset = builder.createString(unitType);
+  if (actionParams.sandboxCounts && actionParams.sandboxCounts.length > 0) {
+    const pairOffsets = actionParams.sandboxCounts.map((item) => {
+      const typeOffset = builder.createString(item.unitType);
+      const ownerOffset = builder.createString(item.ownerId || 'player');
+
       SandboxCountPair.startSandboxCountPair(builder);
       SandboxCountPair.addUnitType(builder, typeOffset);
-      SandboxCountPair.addCount(builder, count);
+      SandboxCountPair.addCount(builder, item.count);
+      SandboxCountPair.addOwnerId(builder, ownerOffset);
       return SandboxCountPair.endSandboxCountPair(builder);
     });
 

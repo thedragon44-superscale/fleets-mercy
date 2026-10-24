@@ -66,6 +66,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
+  const [spawnerFaction, setSpawnerFaction] = useState<'player' | 'enemy'>('player'); // 🔴 Faction toggle state for spawner
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
   const [isPilotOpen, setIsPilotOpen] = useState<boolean>(false);
@@ -163,13 +164,23 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const updateUnitCount = (unitType: string, delta: number) => {
     if (serverState.current) {
-      const counts: { [key: string]: number } = {};
-      UNIT_DB.forEach(u => {
-        const currentCount = serverState.current?.units?.filter(unit => unit.ownerId === 'player' && unit.type === u.id && !unit.isDestroyed).length || 0;
-        counts[u.id] = currentCount;
+      const sandboxCountsPayload = UNIT_DB.map(u => {
+        const currentCount = serverState.current?.units?.filter(
+          unit => unit.ownerId === spawnerFaction && unit.type === u.id && !unit.isDestroyed
+        ).length || 0;
+        
+        const targetCount = u.id === unitType ? Math.max(0, currentCount + delta) : currentCount;
+        return {
+          unitType: u.id,
+          count: targetCount,
+          ownerId: spawnerFaction // Attributes counts to either "player" or "enemy"
+        };
       });
-      counts[unitType] = Math.max(0, (counts[unitType] || 0) + delta);
-      sendUnitCount(counts);
+
+      sendInput({
+        keys: keys.current,
+        sandboxCounts: sandboxCountsPayload
+      });
     }
   };
 
@@ -492,64 +503,89 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
             <p className="text-[9px] text-slate-400 font-medium leading-tight mb-2 shrink-0">Click unit to inspect/tweak stats. Use +/- to spawn/despawn.</p>
 
-            <div className="flex justify-between items-center mb-1 shrink-0 gap-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Catalog Spawner</span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setIsPilotOpen(prev => !prev);
-                    if (!isPilotOpen) {
-                      setIsDockingOpen(false);
-                      setIsInspectorOpen(false);
-                    }
-                  }}
-                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
-                    isPilotOpen
-                      ? 'bg-cyan-400 text-slate-950 border-cyan-300'
-                      : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
-                  }`}
-                >
-                  {isPilotOpen ? 'Close Pilots 🚀' : 'Pilots 🚀'}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsDockingOpen(prev => !prev);
-                    if (!isDockingOpen) {
-                      setIsPilotOpen(false);
-                      setIsInspectorOpen(false);
-                    }
-                  }}
-                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
-                    isDockingOpen
-                      ? 'bg-amber-500 text-slate-950 border-amber-400'
-                      : 'bg-slate-800 text-amber-400 border-slate-700 hover:bg-slate-700'
-                  }`}
-                >
-                  {isDockingOpen ? 'Close Docking ⚓' : 'Docking ⚓'}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsInspectorOpen(prev => !prev);
-                    if (!isInspectorOpen) {
-                      setIsPilotOpen(false);
-                      setIsDockingOpen(false);
-                    }
-                  }}
-                  className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
-                    isInspectorOpen
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400'
-                      : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
-                  }`}
-                >
-                  {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspector ⚙️'}
-                </button>
+            <div className="flex flex-col gap-1.5 mb-2 shrink-0">
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Catalog Spawner</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setIsPilotOpen(prev => !prev);
+                      if (!isPilotOpen) {
+                        setIsDockingOpen(false);
+                        setIsInspectorOpen(false);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                      isPilotOpen
+                        ? 'bg-cyan-400 text-slate-950 border-cyan-300'
+                        : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {isPilotOpen ? 'Close Pilots 🚀' : 'Pilots 🚀'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsDockingOpen(prev => !prev);
+                      if (!isDockingOpen) {
+                        setIsPilotOpen(false);
+                        setIsInspectorOpen(false);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                      isDockingOpen
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-800 text-amber-400 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {isDockingOpen ? 'Close Docking ⚓' : 'Docking ⚓'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsInspectorOpen(prev => !prev);
+                      if (!isInspectorOpen) {
+                        setIsPilotOpen(false);
+                        setIsDockingOpen(false);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-all border ${
+                      isInspectorOpen
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                        : 'bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {isInspectorOpen ? 'Close Inspector ⚙️' : 'Inspector ⚙️'}
+                  </button>
+                </div>
               </div>
+
+              {/* Faction Spawner Selector */}
+              <div className="flex items-center justify-between bg-[#161922] p-1 rounded-lg border border-slate-800">
+                <span className="text-[8px] font-black uppercase text-slate-400 px-1">Spawn Faction:</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setSpawnerFaction('player')}
+                    className={`px-2.5 py-0.5 rounded text-[8px] font-black uppercase transition-all ${spawnerFaction === 'player' ? 'bg-green-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Player 🟢
+                  </button>
+                  <button
+                    onClick={() => setSpawnerFaction('enemy')}
+                    className={`px-2.5 py-0.5 rounded text-[8px] font-black uppercase transition-all ${spawnerFaction === 'enemy' ? 'bg-red-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Enemy 🔴
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center mb-1 shrink-0 gap-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Units List ({spawnerFaction.toUpperCase()})</span>
             </div>
 
             <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 mb-3">
               {UNIT_DB.map(unit => {
                 const isSelected = selectedCatalogUnitId === unit.id;
-                const unitCount = playerUnits.filter(u => u.type === unit.id).length;
+                const unitCount = serverState.current?.units?.filter(u => u.ownerId === spawnerFaction && u.type === unit.id && !u.isDestroyed).length || 0;
 
                 return (
                   <div
