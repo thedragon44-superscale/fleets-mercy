@@ -493,6 +493,18 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (r *GameRoom) IsTargetVisibleToFaction(factionOwner string, target *models.FleetUnit) bool {
+	for _, unit := range r.units {
+		if unit.OwnerID == factionOwner && !unit.IsDestroyed {
+			visibilityState := r.GetUnitVisibilityState(factionOwner, target)
+			if visibilityState > VisibilityShrouded {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (r *GameRoom) runAI() {
 	if r.isSandbox { return }
 
@@ -505,6 +517,14 @@ func (r *GameRoom) runAI() {
 	}
 
 	if ai == nil || player == nil || ai.IsDestroyed || player.IsDestroyed { return }
+
+	// Enforce radar telemetry: Enemy faction must have visual/radar contact to track and engage
+	if !r.IsTargetVisibleToFaction("enemy", player) {
+		ai.IsFiring = false
+		ai.Vel.X *= 0.95
+		ai.Vel.Y *= 0.95
+		return
+	}
 
 	dx := player.Pos.X - ai.Pos.X
 	dy := player.Pos.Y - ai.Pos.Y

@@ -318,6 +318,22 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
+          // Helper: Check if a world coordinate is within active player sensor/recon telemetry range
+          const isVisibleToPlayer = (x: number, y: number): boolean => {
+            if (!serverState.current?.units) return false;
+            for (const u of serverState.current.units) {
+              if (u.ownerId === 'player' && !u.isDestroyed) {
+                const unitMeta = UNIT_DB.find(item => item.id === u.type);
+                const visionRange = unitMeta?.visionRange || (u.type === 'recon_probe' ? 2500 : 2000);
+                const dist = Math.hypot(u.pos.x - x, u.pos.y - y);
+                if (dist <= visionRange) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
           // 1. Render Recon Probe 2,500m sensor bubbles and overlap zones[cite: 7]
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed || u.ownerId !== 'player') return;
@@ -336,9 +352,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             }
           });
 
-          // 2. Render environmental structures / obstacles[cite: 7]
+          // 2. Render environmental structures / obstacles ONLY if detected by player telemetry[cite: 7]
           if (mapDetails?.structures) {
             mapDetails.structures.forEach(s => {
+              if (!isVisibleToPlayer(s.posX, s.posY)) return;
+
               const rx = s.posX * scaleX;
               const ry = s.posY * scaleY;
               const rr = Math.max(2, s.radius * scaleX);
@@ -355,6 +373,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           // 3. Render units using distinct geometric figures based on weight class[cite: 7]
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed) return;
+
+            // Player's own units are always visible; enemy/other units require active recon telemetry
+            if (u.ownerId !== 'player' && !isVisibleToPlayer(u.pos.x, u.pos.y)) {
+              return;
+            }
+
             const isControlled = u.id === activeId;
             const rx = (isControlled ? renderPos.current.x : u.pos.x) * scaleX;
             const ry = (isControlled ? renderPos.current.y : u.pos.y) * scaleY;
