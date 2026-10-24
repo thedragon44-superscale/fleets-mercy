@@ -302,11 +302,8 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		return
 	}
 
-	// 6. Standard SEEK and GUARD Combat State Loops (Battalion-Aware)
+	// 6. Standard SEEK and GUARD Combat State Loops (Battalion-Aware & Telemetry Gated)
 	target := r.findBestTarget(unit)
-	if unit.OwnerID == "enemy" && target == nil {
-		target = flagship
-	}
 
 	// Resolve local anchor: if assigned to a battalion, look for that battalion's command ship
 	localAnchor := flagship
@@ -371,6 +368,17 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		}
 		unit.IsFiring = false
 	} else {
+		// 🔴 BLIND LOCAL PATROL FALLBACK: When no telemetry target is visible, mill about locally instead of marching blindly
 		unit.IsFiring = false
+		
+		// Apply a gentle sinusoidal/orbital drift rotation so they look active in their local sector
+		driftAngle := unit.Angle + 0.02
+		unit.Angle = driftAngle
+		unit.Vel.X += math.Cos(driftAngle) * (unit.Speed * 0.25)
+		unit.Vel.Y += math.Sin(driftAngle) * (unit.Speed * 0.25)
+
+		// Damp velocity so they stay localized
+		unit.Vel.X *= 0.92
+		unit.Vel.Y *= 0.92
 	}
 }
