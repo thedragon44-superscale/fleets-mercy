@@ -176,6 +176,12 @@ type FleetUnit struct {
 	AccelerationCurve            float64 `json:"accelerationCurve"`
 	ProjectileRange              float64 `json:"projectileRange"`
 	ProjectileSpeed              float64 `json:"projectileSpeed"`
+	OptimalRange                 float64 `json:"optimalRange"`
+	MaxRange                     float64 `json:"maxRange"`
+	EngagementRangeCap           float64 `json:"engagementRangeCap"`
+	LateralThrustPower           float64 `json:"lateralThrustPower"`
+	ReverseThrustPower           float64 `json:"reverseThrustPower"`
+	DriftCoefficient             float64 `json:"driftCoefficient"`
 	ShieldBase                   float64 `json:"shieldBase"`
 	HullBase                     float64 `json:"hullBase"`
 	ShieldRegenRate              float64 `json:"shieldRegenRate"`
