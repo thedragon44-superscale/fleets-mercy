@@ -8,9 +8,9 @@ import (
 func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
 	if target.IsDestroyed { return }
 
-	// Capital Dreadnought & Command Ship Armor Mitigation (95% flat reduction post-shield)[cite: 5]
-	if target.Type == "flagship" || target.Type == "battalion_command_ship" {
-		damage *= 0.05
+	// Database-driven Armor Mitigation (replaces hardcoded flagship/command ship string checks)
+	if target.ArmorMitigation > 0 {
+		damage *= (1.0 - target.ArmorMitigation)
 	}
 
 	relAngle := math.Mod(impactAngle-target.Angle+math.Pi*3, math.Pi*2) - math.Pi
@@ -52,7 +52,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
-			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances[cite: 15]
+			// Cluster-aware collision check across individual nodes with precise tactical gap tolerances
 			for i := 0; i < 12; i++ {
 				angle := float64(i) / 12.0 * 2 * math.Pi
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
@@ -94,7 +94,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 
 		if dist < collisionRadius {
 			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
-				// Core Death Zone: Instant destruction[cite: 15]
+				// Core Death Zone: Instant destruction
 				unit.IsDestroyed = true
 				unit.Shields = models.QuadrantStats{}
 				return

@@ -11,7 +11,7 @@ const (
 	VisibilityClear    = 2
 )
 
-// GetUnitVisibilityState checks a target unit's visibility state for a given player.
+// GetUnitVisibilityState checks a target unit's visibility state for a given player using database-backed vision ranges.
 // Returns: 0 (Shrouded), 1 (Radar Contact / Pinged), 2 (Visually Clear)[cite: 7]
 func (r *GameRoom) GetUnitVisibilityState(playerID string, target *models.FleetUnit) int {
 	maxState := VisibilityShrouded
@@ -21,15 +21,13 @@ func (r *GameRoom) GetUnitVisibilityState(playerID string, target *models.FleetU
 			continue
 		}
 
-		// Determine the sensor range of the observing unit[cite: 12]
-		var sensorRange float64 = 600.0 // Standard visual default[cite: 12]
-		if unit.Type == "recon_probe" {
-			sensorRange = 2500.0 // Extended Recon Probe network bubble[cite: 12]
-		} else if unit.WeightClass >= 3 {
-			sensorRange = 1200.0 // Tactical Frigate Relay[cite: 12]
+		// Determine sensor range dynamically from the database-backed VisionRange property
+		sensorRange := float64(unit.VisionRange)
+		if sensorRange <= 0 {
+			sensorRange = 600.0 // Standard visual baseline default
 		}
 
-		// Calculate distance from observer to the target[cite: 12]
+		// Calculate distance from observer to the target
 		dist := math.Hypot(target.Pos.X-unit.Pos.X, target.Pos.Y-unit.Pos.Y)
 
 		// 1. Check for Visually Clear range (Standard 600m visual baseline)
@@ -37,7 +35,7 @@ func (r *GameRoom) GetUnitVisibilityState(playerID string, target *models.FleetU
 			return VisibilityClear
 		}
 
-		// 2. If within extended sensor range, it qualifies as a Radar Contact (Pinged)
+		// 2. If within extended sensor/vision range, it qualifies as a Radar Contact (Pinged)
 		if dist <= sensorRange {
 			maxState = VisibilityPinged
 		}

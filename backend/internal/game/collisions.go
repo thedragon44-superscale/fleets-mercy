@@ -5,18 +5,15 @@ import (
 	"space-tactics-server/internal/models"
 )
 
-// getUnitRadius returns the physical footprint radius based on unit type
+// getUnitRadius calculates the physical footprint radius dynamically from database weight class
 func getUnitRadius(unit *models.FleetUnit) float64 {
-	switch unit.Type {
-	case "flagship", "battalion_command_ship":
-		return 75.0
-	case "aegis_wall":
-		return 55.0
-	case "lancer_corvette", "torpedo_bomber":
-		return 35.0
-	default: // interceptors, recon probes, fighters
-		return 22.0
+	wc := unit.WeightClass
+	if wc < 1 {
+		wc = 1
 	}
+	
+	// Scale physical radius proportionally based on database weight class (e.g., Weight 1 = 25m, Weight 3 = 75m)
+	return float64(wc) * 25.0
 }
 
 // ResolveUnitCollisions checks and resolves physics-based overlapping collisions between individual fleet units

@@ -150,12 +150,21 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 	var bestTarget *models.FleetUnit
 	bestScore := -999999.0
 
+	// Use database-backed EngagementRangeCap, falling back to MaxRange or standard default
+	maxRange := unit.EngagementRangeCap
+	if maxRange <= 0 {
+		maxRange = unit.MaxRange
+	}
+	if maxRange <= 0 {
+		maxRange = 1500.0
+	}
+
 	for _, target := range r.units {
 		if target.IsDestroyed || target.OwnerID == unit.OwnerID || target.Type == "asteroid" {
 			continue
 		}
 
-		// Enforce radar fog-of-war state: must be at least Pinged (1) or Clear (2) to target
+		// Enforce radar fog-of-war state: must be at least Pinged (1) or Clear (2) to target[cite: 8]
 		visibilityState := r.GetUnitVisibilityState(unit.OwnerID, target)
 		if visibilityState == VisibilityShrouded {
 			continue
@@ -165,25 +174,9 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 		dy := target.Pos.Y - unit.Pos.Y
 		dist := math.Hypot(dx, dy)
 
-		if dist > 1500.0 { continue }
+		if dist > maxRange { continue }
 
 		score := 2000.0 - dist 
-
-		if unit.Type == "torpedo_bomber" && (target.Type == "flagship" || target.Type == "battalion_command_ship" || target.Type == "target_dummy") {
-			score += 5000.0 
-		} else if target.Type == "flagship" || target.Type == "battalion_command_ship" || target.Type == "target_dummy" {
-			score -= 1500.0 
-		}
-
-		if (unit.Type == "viper_interceptor" || unit.Type == "assault_gunship") && 
-		   (target.Type == "torpedo_bomber" || target.Type == "recon_probe" || target.Type == "viper_interceptor") {
-			score += 1000.0 
-		}
-
-		if (unit.Type == "lancer_corvette" || unit.Type == "ion_interceptor") && 
-		   (target.Type == "aegis_wall" || target.Type == "cryo_flak" || target.Type == "lancer_corvette") {
-			score += 1000.0 
-		}
 
 		if score > bestScore {
 			bestScore = score
@@ -637,15 +630,15 @@ func (r *GameRoom) Run() {
 				}
 			}
 
-			// Player Movement or Autonomous AI State Machine
+			// Player Movement or Autonomous AI State Machine (with room dimensions passed)
 			if unit.ID == controlledID && unit.OwnerID == "player" {
-				HandlePlayerMovement(unit, r.lastInput)
+				HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
 			} else {
 				RunUnitAI(unit, r, flagship)
 			}
 
-			// Physics, Damping, Environment Collisions & World Gravity
-			ApplyUnitPhysics(unit)
+			// Physics, Damping, Environment Collisions & World Gravity (with room dimensions passed)
+			ApplyUnitPhysics(unit, 12000.0, 12000.0)
 			ApplyEnvironmentalCollisions(unit, r.structures)
 			ApplyMajorWorldGravity(unit, r.structures)
 

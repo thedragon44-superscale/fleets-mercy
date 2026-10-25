@@ -247,7 +247,9 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 			unit.Vel.Y += math.Sin(orbitAngle) * unit.Speed
 
 			if unit.Type == "aegis_repair" && distToBuddy <= 200.0 {
-				buddyTarget.Hull.Front = math.Min(100.0, buddyTarget.Hull.Front + 0.2)
+				maxBuddyHull := buddyTarget.HullBase
+				if maxBuddyHull <= 0 { maxBuddyHull = 100.0 }
+				buddyTarget.Hull.Front = math.Min(maxBuddyHull, buddyTarget.Hull.Front + 0.2)
 			}
 			unit.IsFiring = false
 		} else {
@@ -295,7 +297,9 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 				distToDock := math.Hypot(ally.Pos.X-unit.Pos.X, ally.Pos.Y-unit.Pos.Y)
 				if distToDock < 150.0 && unit.ResourceCache >= 1.0 {
 					unit.ResourceCache -= 0.1
-					ally.Hull.Front = math.Min(100.0, ally.Hull.Front + 0.5)
+					maxAllyHull := ally.HullBase
+					if maxAllyHull <= 0 { maxAllyHull = 100.0 }
+					ally.Hull.Front = math.Min(maxAllyHull, ally.Hull.Front + 0.5)
 				}
 			}
 		}
@@ -322,7 +326,13 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 		dist := math.Hypot(dx, dy)
 		unit.Angle = math.Atan2(dy, dx)
 
-		if dist > 250 {
+		// Use database-driven optimal range, falling back to 250 if unconfigured
+		engagementDist := unit.OptimalRange
+		if engagementDist <= 0 {
+			engagementDist = 250.0
+		}
+
+		if dist > engagementDist {
 			unit.Vel.X += math.Cos(unit.Angle) * unit.Speed
 			unit.Vel.Y += math.Sin(unit.Angle) * unit.Speed
 			unit.IsFiring = false

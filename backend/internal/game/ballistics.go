@@ -16,18 +16,32 @@ func HandleWeaponFiring(unit *models.FleetUnit, r *GameRoom) {
 		unit.Cooldown--
 	}
 
+	// Strict data-driven rule: if projectile speed or DPS is zero/negative, unit does not fire
+	if unit.ProjectileSpeed <= 0 || unit.DPS <= 0 {
+		return
+	}
+
 	if unit.IsFiring && unit.Cooldown <= 0 {
 		r.idCounter++
-		projSpeed, projDmg, projColor := 18.0, 50.0, "laser"
 		
-		if unit.Type == "lancer_corvette" || unit.Type == "flagship" || unit.Type == "battalion_command_ship" {
-			projSpeed = 25.0
-			projDmg = 120.0
+		projSpeed := unit.ProjectileSpeed
+		projDmg := unit.DPS
+		
+		// Determine visual projectile type dynamically based on stats/weight class instead of hardcoded unit names
+		projColor := "laser"
+		if unit.WeightClass >= 3 || projSpeed > 20.0 {
 			projColor = "railgun"
-		} else if unit.Type == "torpedo_bomber" {
-			projSpeed = 12.0
-			projDmg = 300.0
+		} else if projSpeed <= 15.0 && projDmg > 200.0 {
 			projColor = "torpedo"
+		}
+
+		// Calculate projectile lifetime dynamically from database range and speed
+		life := 100
+		if unit.ProjectileRange > 0 && projSpeed > 0 {
+			life = int(unit.ProjectileRange / projSpeed)
+			if life < 1 {
+				life = 1
+			}
 		}
 
 		r.projectiles = append(r.projectiles, models.Projectile{
@@ -42,7 +56,7 @@ func HandleWeaponFiring(unit *models.FleetUnit, r *GameRoom) {
 				X: unit.Vel.X + math.Cos(unit.Angle)*projSpeed, 
 				Y: unit.Vel.Y + math.Sin(unit.Angle)*projSpeed,
 			},
-			Life: 100, 
+			Life: life, 
 			Damage: projDmg,
 		})
 		unit.Cooldown = unit.MaxCooldown
