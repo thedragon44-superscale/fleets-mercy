@@ -245,108 +245,113 @@ powerGridAllocationWeight():number {
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
-radarCrossSection():number {
+sensorRange():number {
   const offset = this.bb!.__offset(this.bb_pos, 94);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
-sensorResolutionTier():number {
+radarCrossSection():number {
   const offset = this.bb!.__offset(this.bb_pos, 96);
+  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+}
+
+sensorResolutionTier():number {
+  const offset = this.bb!.__offset(this.bb_pos, 98);
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
 jammingSusceptibility():number {
-  const offset = this.bb!.__offset(this.bb_pos, 98);
-  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
-}
-
-targetLockTime():number {
   const offset = this.bb!.__offset(this.bb_pos, 100);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
-radarImmunityActive():boolean {
+targetLockTime():number {
   const offset = this.bb!.__offset(this.bb_pos, 102);
+  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+}
+
+radarImmunityActive():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 104);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 shieldGatedStealthThreshold():number {
-  const offset = this.bb!.__offset(this.bb_pos, 104);
+  const offset = this.bb!.__offset(this.bb_pos, 106);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
 decloakOnActionFlag():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 106);
+  const offset = this.bb!.__offset(this.bb_pos, 108);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 stealthRecoveryDelaySeconds():number {
-  const offset = this.bb!.__offset(this.bb_pos, 108);
+  const offset = this.bb!.__offset(this.bb_pos, 110);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
 resourceHarvestingType():number {
-  const offset = this.bb!.__offset(this.bb_pos, 110);
+  const offset = this.bb!.__offset(this.bb_pos, 112);
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
 requiresReconTelemetry():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 112);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-requiresAnchorDrone():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 114);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-requiresReconAnchor():boolean {
+requiresAnchorDrone():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 116);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-portDockingBayStatus():boolean {
+requiresReconAnchor():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 118);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-starboardDeploymentBayStatus():boolean {
+portDockingBayStatus():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 120);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-salvageableUponDestruction():boolean {
+starboardDeploymentBayStatus():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 122);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-cryoGasRadius():number {
+salvageableUponDestruction():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 124);
-  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-cryoEffectDuration():number {
+cryoGasRadius():number {
   const offset = this.bb!.__offset(this.bb_pos, 126);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
-gravitonVortexDuration():number {
+cryoEffectDuration():number {
   const offset = this.bb!.__offset(this.bb_pos, 128);
   return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
 }
 
-warpCanisterCapacity():number {
+gravitonVortexDuration():number {
   const offset = this.bb!.__offset(this.bb_pos, 130);
+  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+}
+
+warpCanisterCapacity():number {
+  const offset = this.bb!.__offset(this.bb_pos, 132);
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
 emergencyWarpEvacuationTarget():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 132);
+  const offset = this.bb!.__offset(this.bb_pos, 134);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 static startUnitConfigUpdate(builder:flatbuffers.Builder) {
-  builder.startObject(65);
+  builder.startObject(66);
 }
 
 static addWeightClass(builder:flatbuffers.Builder, weightClass:number) {
@@ -529,84 +534,88 @@ static addPowerGridAllocationWeight(builder:flatbuffers.Builder, powerGridAlloca
   builder.addFieldFloat64(44, powerGridAllocationWeight, 0.0);
 }
 
+static addSensorRange(builder:flatbuffers.Builder, sensorRange:number) {
+  builder.addFieldFloat64(45, sensorRange, 0.0);
+}
+
 static addRadarCrossSection(builder:flatbuffers.Builder, radarCrossSection:number) {
-  builder.addFieldFloat64(45, radarCrossSection, 0.0);
+  builder.addFieldFloat64(46, radarCrossSection, 0.0);
 }
 
 static addSensorResolutionTier(builder:flatbuffers.Builder, sensorResolutionTier:number) {
-  builder.addFieldInt32(46, sensorResolutionTier, 0);
+  builder.addFieldInt32(47, sensorResolutionTier, 0);
 }
 
 static addJammingSusceptibility(builder:flatbuffers.Builder, jammingSusceptibility:number) {
-  builder.addFieldFloat64(47, jammingSusceptibility, 0.0);
+  builder.addFieldFloat64(48, jammingSusceptibility, 0.0);
 }
 
 static addTargetLockTime(builder:flatbuffers.Builder, targetLockTime:number) {
-  builder.addFieldFloat64(48, targetLockTime, 0.0);
+  builder.addFieldFloat64(49, targetLockTime, 0.0);
 }
 
 static addRadarImmunityActive(builder:flatbuffers.Builder, radarImmunityActive:boolean) {
-  builder.addFieldInt8(49, +radarImmunityActive, +false);
+  builder.addFieldInt8(50, +radarImmunityActive, +false);
 }
 
 static addShieldGatedStealthThreshold(builder:flatbuffers.Builder, shieldGatedStealthThreshold:number) {
-  builder.addFieldFloat64(50, shieldGatedStealthThreshold, 0.0);
+  builder.addFieldFloat64(51, shieldGatedStealthThreshold, 0.0);
 }
 
 static addDecloakOnActionFlag(builder:flatbuffers.Builder, decloakOnActionFlag:boolean) {
-  builder.addFieldInt8(51, +decloakOnActionFlag, +false);
+  builder.addFieldInt8(52, +decloakOnActionFlag, +false);
 }
 
 static addStealthRecoveryDelaySeconds(builder:flatbuffers.Builder, stealthRecoveryDelaySeconds:number) {
-  builder.addFieldFloat64(52, stealthRecoveryDelaySeconds, 0.0);
+  builder.addFieldFloat64(53, stealthRecoveryDelaySeconds, 0.0);
 }
 
 static addResourceHarvestingType(builder:flatbuffers.Builder, resourceHarvestingType:number) {
-  builder.addFieldInt32(53, resourceHarvestingType, 0);
+  builder.addFieldInt32(54, resourceHarvestingType, 0);
 }
 
 static addRequiresReconTelemetry(builder:flatbuffers.Builder, requiresReconTelemetry:boolean) {
-  builder.addFieldInt8(54, +requiresReconTelemetry, +false);
+  builder.addFieldInt8(55, +requiresReconTelemetry, +false);
 }
 
 static addRequiresAnchorDrone(builder:flatbuffers.Builder, requiresAnchorDrone:boolean) {
-  builder.addFieldInt8(55, +requiresAnchorDrone, +false);
+  builder.addFieldInt8(56, +requiresAnchorDrone, +false);
 }
 
 static addRequiresReconAnchor(builder:flatbuffers.Builder, requiresReconAnchor:boolean) {
-  builder.addFieldInt8(56, +requiresReconAnchor, +false);
+  builder.addFieldInt8(57, +requiresReconAnchor, +false);
 }
 
 static addPortDockingBayStatus(builder:flatbuffers.Builder, portDockingBayStatus:boolean) {
-  builder.addFieldInt8(57, +portDockingBayStatus, +false);
+  builder.addFieldInt8(58, +portDockingBayStatus, +false);
 }
 
 static addStarboardDeploymentBayStatus(builder:flatbuffers.Builder, starboardDeploymentBayStatus:boolean) {
-  builder.addFieldInt8(58, +starboardDeploymentBayStatus, +false);
+  builder.addFieldInt8(59, +starboardDeploymentBayStatus, +false);
 }
 
 static addSalvageableUponDestruction(builder:flatbuffers.Builder, salvageableUponDestruction:boolean) {
-  builder.addFieldInt8(59, +salvageableUponDestruction, +false);
+  builder.addFieldInt8(60, +salvageableUponDestruction, +false);
 }
 
 static addCryoGasRadius(builder:flatbuffers.Builder, cryoGasRadius:number) {
-  builder.addFieldFloat64(60, cryoGasRadius, 0.0);
+  builder.addFieldFloat64(61, cryoGasRadius, 0.0);
 }
 
 static addCryoEffectDuration(builder:flatbuffers.Builder, cryoEffectDuration:number) {
-  builder.addFieldFloat64(61, cryoEffectDuration, 0.0);
+  builder.addFieldFloat64(62, cryoEffectDuration, 0.0);
 }
 
 static addGravitonVortexDuration(builder:flatbuffers.Builder, gravitonVortexDuration:number) {
-  builder.addFieldFloat64(62, gravitonVortexDuration, 0.0);
+  builder.addFieldFloat64(63, gravitonVortexDuration, 0.0);
 }
 
 static addWarpCanisterCapacity(builder:flatbuffers.Builder, warpCanisterCapacity:number) {
-  builder.addFieldInt32(63, warpCanisterCapacity, 0);
+  builder.addFieldInt32(64, warpCanisterCapacity, 0);
 }
 
 static addEmergencyWarpEvacuationTarget(builder:flatbuffers.Builder, emergencyWarpEvacuationTarget:boolean) {
-  builder.addFieldInt8(64, +emergencyWarpEvacuationTarget, +false);
+  builder.addFieldInt8(65, +emergencyWarpEvacuationTarget, +false);
 }
 
 static endUnitConfigUpdate(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -614,7 +623,7 @@ static endUnitConfigUpdate(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, visionRange:number, aggroRange:number, aggroThreatWeight:number, retreatMoraleThreshold:number, squadCohesionLeashRange:number, shieldBase:number, hullBase:number, quadrantShieldingEnabled:boolean, quadrantShieldPoolsEnabled:boolean, quadrantHullPoolsEnabled:boolean, shieldRegenRate:number, shieldRechargeDelayTicks:number, directionalShieldArc:number, armorMitigation:number, armorHardnessRating:number, ablativePlatingDurability:number, speed:number, strafingSpeed:number, turnRate:number, angularVelocity:number, lateralThrustPower:number, reverseThrustPower:number, driftCoefficient:number, accelerationCurve:number, dps:number, maxCooldown:number, projectileRange:number, projectileSpeed:number, optimalRange:number, maxRange:number, engagementRangeCap:number, ammoCapacity:number, initialOrdnanceCapacity:number, turretTraverseSpeed:number, weaponDispersionBloom:number, projectileTrackingCapability:number, shieldPenetrationFactor:number, sustainedFireLimitSeconds:number, barrelCoolingDurationSeconds:number, burstSalvoCooldown:number, beamRaycastDuration:number, maxThermalCapacity:number, thermalDissipationRate:number, powerGridAllocationWeight:number, radarCrossSection:number, sensorResolutionTier:number, jammingSusceptibility:number, targetLockTime:number, radarImmunityActive:boolean, shieldGatedStealthThreshold:number, decloakOnActionFlag:boolean, stealthRecoveryDelaySeconds:number, resourceHarvestingType:number, requiresReconTelemetry:boolean, requiresAnchorDrone:boolean, requiresReconAnchor:boolean, portDockingBayStatus:boolean, starboardDeploymentBayStatus:boolean, salvageableUponDestruction:boolean, cryoGasRadius:number, cryoEffectDuration:number, gravitonVortexDuration:number, warpCanisterCapacity:number, emergencyWarpEvacuationTarget:boolean):flatbuffers.Offset {
+static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, visionRange:number, aggroRange:number, aggroThreatWeight:number, retreatMoraleThreshold:number, squadCohesionLeashRange:number, shieldBase:number, hullBase:number, quadrantShieldingEnabled:boolean, quadrantShieldPoolsEnabled:boolean, quadrantHullPoolsEnabled:boolean, shieldRegenRate:number, shieldRechargeDelayTicks:number, directionalShieldArc:number, armorMitigation:number, armorHardnessRating:number, ablativePlatingDurability:number, speed:number, strafingSpeed:number, turnRate:number, angularVelocity:number, lateralThrustPower:number, reverseThrustPower:number, driftCoefficient:number, accelerationCurve:number, dps:number, maxCooldown:number, projectileRange:number, projectileSpeed:number, optimalRange:number, maxRange:number, engagementRangeCap:number, ammoCapacity:number, initialOrdnanceCapacity:number, turretTraverseSpeed:number, weaponDispersionBloom:number, projectileTrackingCapability:number, shieldPenetrationFactor:number, sustainedFireLimitSeconds:number, barrelCoolingDurationSeconds:number, burstSalvoCooldown:number, beamRaycastDuration:number, maxThermalCapacity:number, thermalDissipationRate:number, powerGridAllocationWeight:number, sensorRange:number, radarCrossSection:number, sensorResolutionTier:number, jammingSusceptibility:number, targetLockTime:number, radarImmunityActive:boolean, shieldGatedStealthThreshold:number, decloakOnActionFlag:boolean, stealthRecoveryDelaySeconds:number, resourceHarvestingType:number, requiresReconTelemetry:boolean, requiresAnchorDrone:boolean, requiresReconAnchor:boolean, portDockingBayStatus:boolean, starboardDeploymentBayStatus:boolean, salvageableUponDestruction:boolean, cryoGasRadius:number, cryoEffectDuration:number, gravitonVortexDuration:number, warpCanisterCapacity:number, emergencyWarpEvacuationTarget:boolean):flatbuffers.Offset {
   UnitConfigUpdate.startUnitConfigUpdate(builder);
   UnitConfigUpdate.addWeightClass(builder, weightClass);
   UnitConfigUpdate.addVisionRange(builder, visionRange);
@@ -661,6 +670,7 @@ static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, v
   UnitConfigUpdate.addMaxThermalCapacity(builder, maxThermalCapacity);
   UnitConfigUpdate.addThermalDissipationRate(builder, thermalDissipationRate);
   UnitConfigUpdate.addPowerGridAllocationWeight(builder, powerGridAllocationWeight);
+  UnitConfigUpdate.addSensorRange(builder, sensorRange);
   UnitConfigUpdate.addRadarCrossSection(builder, radarCrossSection);
   UnitConfigUpdate.addSensorResolutionTier(builder, sensorResolutionTier);
   UnitConfigUpdate.addJammingSusceptibility(builder, jammingSusceptibility);
