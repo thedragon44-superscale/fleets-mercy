@@ -636,12 +636,19 @@ func (r *GameRoom) Run() {
 				}
 			}
 
-			if unit.ID == controlledID && unit.OwnerID == "player" {
+			// Player Movement or Autonomous AI State Machine (with room dimensions passed)
+			if unit.ID == controlledID {
+				// Unit currently under direct player control
 				HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
-				// Explicitly sync client input intent to the player unit struct (with type cast)
 				unit.IsFiring = r.lastInput.IsFiring
 				unit.Angle = float64(r.lastInput.Angle)
+			} else if unit.OwnerID == "player" && unit.Type == "flagship" {
+				// Player flagship should NEVER move or run AI when unpiloted; it holds position.
+				unit.IsFiring = false
+				unit.Vel.X *= 0.95
+				unit.Vel.Y *= 0.95
 			} else {
+				// All other units (enemy units, spawned support drones, etc.) run their AI behavior
 				RunUnitAI(unit, r, flagship)
 			}
 

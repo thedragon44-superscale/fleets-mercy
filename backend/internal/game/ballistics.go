@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"space-tactics-server/internal/models"
 )
@@ -16,8 +17,17 @@ func HandleWeaponFiring(unit *models.FleetUnit, r *GameRoom) {
 		unit.Cooldown--
 	}
 
+	if unit.IsFiring {
+		log.Printf("[BALLISTICS] Attempt fire -> Unit: %s, Cooldown: %d, Speed: %.1f, Range: %.1f, DPS: %.1f", 
+			unit.ID, unit.Cooldown, unit.ProjectileSpeed, unit.ProjectileRange, unit.DPS)
+	}
+
 	// Strict data-driven rule: if projectile speed or DPS is zero/negative, unit does not fire
 	if unit.ProjectileSpeed <= 0 || unit.DPS <= 0 {
+		if unit.IsFiring {
+			log.Printf("❌ [BALLISTICS] Firing blocked: ProjectileSpeed (%.1f) or DPS (%.1f) is <= 0 for unit type %s", 
+				unit.ProjectileSpeed, unit.DPS, unit.Type)
+		}
 		return
 	}
 
@@ -27,7 +37,7 @@ func HandleWeaponFiring(unit *models.FleetUnit, r *GameRoom) {
 		projSpeed := unit.ProjectileSpeed
 		projDmg := unit.DPS
 		
-		// Determine visual projectile type dynamically based on stats/weight class instead of hardcoded unit names
+		// Determine visual projectile type dynamically based on stats/weight class
 		projColor := "laser"
 		if unit.WeightClass >= 3 || projSpeed > 20.0 {
 			projColor = "railgun"
@@ -35,14 +45,18 @@ func HandleWeaponFiring(unit *models.FleetUnit, r *GameRoom) {
 			projColor = "torpedo"
 		}
 
-		// Calculate projectile lifetime dynamically from database range and speed
-		life := 100
-		if unit.ProjectileRange > 0 && projSpeed > 0 {
-			life = int(unit.ProjectileRange / projSpeed)
-			if life < 1 {
-				life = 1
-			}
+		// Pure data-driven calculation: lifetime derived strictly from database range and speed parameters
+		if unit.ProjectileRange <= 0 {
+			log.Printf("⚠️ [BALLISTICS] Warning: Unit %s (type %s) has ProjectileRange <= 0.", unit.ID, unit.Type)
 		}
+		
+		life := int(unit.ProjectileRange / projSpeed)
+		if life < 1 {
+			life = 1
+		}
+
+		log.Printf("🚀 [BALLISTICS] SUCCESS! Spawned projectile %s for %s at pos (%.1f, %.1f) with life %d", 
+			fmt.Sprintf("proj-%d", r.idCounter), unit.ID, unit.Pos.X, unit.Pos.Y, life)
 
 		r.projectiles = append(r.projectiles, models.Projectile{
 			ID: fmt.Sprintf("proj-%d", r.idCounter), 
