@@ -25,10 +25,19 @@ func InitDB() {
 
 	query := `
 		SELECT 
-			unit_class, speed, max_cooldown, shield_base, hull_base, 
-			ai_default_state, weight_class, vision_range, dps,
-			max_thermal_capacity, thermal_dissipation_rate, ammo_capacity,
-			radar_immunity_active, stealth_recovery_delay_seconds
+			unit_class, ai_default_state,
+			weight_class, vision_range, aggro_range, aggro_threat_weight, retreat_morale_threshold, squad_cohesion_leash_range,
+			shield_base, hull_base, quadrant_shielding_enabled, quadrant_shield_pools_enabled, quadrant_hull_pools_enabled, 
+			shield_regen_rate, shield_recharge_delay_ticks, directional_shield_arc, armor_mitigation, armor_hardness_rating, ablative_plating_durability,
+			speed, strafing_speed, turn_rate, angular_velocity, lateral_thrust_power, reverse_thrust_power, drift_coefficient, acceleration_curve,
+			dps, max_cooldown, projectile_range, projectile_speed, optimal_range, max_range, engagement_range_cap, ammo_capacity, initial_ordnance_capacity, 
+			turret_traverse_speed, weapon_dispersion_bloom, projectile_tracking_capability, shield_penetration_factor, sustained_fire_limit_seconds, 
+			barrel_cooling_duration_seconds, burst_salvo_cooldown, beam_raycast_duration, max_thermal_capacity, thermal_dissipation_rate, power_grid_allocation_weight,
+			radar_cross_section, sensor_resolution_tier, jamming_susceptibility, target_lock_time, radar_immunity_active, shield_gated_stealth_threshold, 
+			decloak_on_action_flag, stealth_recovery_delay_seconds,
+			resource_harvesting_type, requires_recon_telemetry, requires_anchor_drone, requires_recon_anchor, port_docking_bay_status, 
+			starboard_deployment_bay_status, salvageable_upon_destruction, cryo_gas_radius, cryo_effect_duration, graviton_vortex_duration, 
+			warp_canister_capacity, emergency_warp_evacuation_target
 		FROM unit_templates
 	`
 
@@ -40,36 +49,88 @@ func InitDB() {
 
 	for rows.Next() {
 		var class, aiState string
-		var speed, shieldBase, hullBase, dps, thermalCap, thermalDiss, stealthDelay float64
-		var maxCooldown, weightClass, visionRange, ammoCap int
-		var radarImmune bool
+		var weightClass, visionRange int
+		var aggroRange, aggroThreatWeight, retreatMoraleThreshold, squadCohesionLeashRange float64
+		var shieldBase, hullBase, shieldRegenRate, armorMitigation, armorHardnessRating, ablativePlatingDurability float64
+		var quadrantShieldingEnabled, quadrantShieldPoolsEnabled, quadrantHullPoolsEnabled bool
+		var shieldRechargeDelayTicks int
+		var directionalShieldArc float64
+		var speed, strafingSpeed, turnRate, angularVelocity, lateralThrustPower, reverseThrustPower, driftCoefficient, accelerationCurve float64
+		var dps, projectileRange, projectileSpeed, optimalRange, maxRange, engagementRangeCap float64
+		var maxCooldown, ammoCap, initialOrdnanceCapacity int
+		var turretTraverseSpeed, weaponDispersionBloom, projectileTrackingCapability, shieldPenetrationFactor float64
+		var sustainedFireLimitSeconds, barrelCoolingDurationSeconds, burstSalvoCooldown, beamRaycastDuration float64
+		var thermalCap, thermalDiss, powerGridAllocationWeight float64
+		var radarCrossSection, sensorResolutionTier, jammingSusceptibility, targetLockTime float64
+		var radarImmune, shieldGatedStealthThresholdBool, decloakOnActionFlag bool
+		var stealthDelay float64
+		var resourceHarvestingType int
+		var requiresReconTelemetry, requiresAnchorDrone, requiresReconAnchor, portDockingBayStatus, starboardDeploymentBayStatus, salvageableUponDestruction bool
+		var cryoGasRadius, cryoEffectDuration, gravitonVortexDuration float64
+		var warpCanisterCapacity int
+		var emergencyWarpEvacuationTarget bool
 
 		if err := rows.Scan(
-			&class, &speed, &maxCooldown, &shieldBase, &hullBase, 
-			&aiState, &weightClass, &visionRange, &dps,
-			&thermalCap, &thermalDiss, &ammoCap,
-			&radarImmune, &stealthDelay,
+			&class, &aiState,
+			&weightClass, &visionRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
+			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled, 
+			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
+			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
+			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity, 
+			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds, 
+			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
+			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThresholdBool, 
+			&decloakOnActionFlag, &stealthDelay,
+			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus, 
+			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration, 
+			&warpCanisterCapacity, &emergencyWarpEvacuationTarget,
 		); err != nil {
 			log.Fatal(err)
 		}
 
 		Templates[class] = models.FleetUnit{
-			Type:                class,
-			Speed:               speed,
-			MaxCooldown:         maxCooldown,
-			AIState:             aiState,
-			Shields:             models.QuadrantStats{Front: shieldBase, Rear: shieldBase, Port: shieldBase, Starboard: shieldBase},
-			Hull:                models.QuadrantStats{Front: hullBase, Rear: hullBase, Port: hullBase, Starboard: hullBase},
-			WeightClass:         weightClass,
-			VisionRange:         visionRange,
-			DPS:                 dps,
-			MaxThermalCapacity:  thermalCap,
-			CurrentThermal:      0.0,
-			MaxAmmoCapacity:     ammoCap,
-			CurrentAmmo:         ammoCap,
-			RadarImmunityActive: radarImmune,
-			StealthTimer:        stealthDelay,
+			Type:                         class,
+			AIState:                      aiState,
+			WeightClass:                  weightClass,
+			VisionRange:                  visionRange,
+			AggroRange:                   aggroRange,
+			RetreatMoraleThreshold:       retreatMoraleThreshold,
+			SquadCohesionLeashRange:      squadCohesionLeashRange,
+			Shields:                      models.QuadrantStats{Front: shieldBase, Rear: shieldBase, Port: shieldBase, Starboard: shieldBase},
+			Hull:                         models.QuadrantStats{Front: hullBase, Rear: hullBase, Port: hullBase, Starboard: hullBase},
+			ShieldBase:                   shieldBase,
+			HullBase:                     hullBase,
+			ShieldRegenRate:              shieldRegenRate,
+			ShieldRechargeDelayTicks:     shieldRechargeDelayTicks,
+			ArmorMitigation:              armorMitigation,
+			Speed:                        speed,
+			StrafingSpeed:                strafingSpeed,
+			TurnRate:                     turnRate,
+			AngularVelocity:              angularVelocity,
+			LateralThrustPower:           lateralThrustPower,
+			ReverseThrustPower:           reverseThrustPower,
+			DriftCoefficient:             driftCoefficient,
+			AccelerationCurve:            accelerationCurve,
+			DPS:                          dps,
+			MaxCooldown:                  maxCooldown,
+			ProjectileRange:              projectileRange,
+			ProjectileSpeed:              projectileSpeed,
+			OptimalRange:                 optimalRange,
+			MaxRange:                     maxRange,
+			EngagementRangeCap:           engagementRangeCap,
+			MaxAmmoCapacity:              ammoCap,
+			CurrentAmmo:                  ammoCap,
+			MaxThermalCapacity:           thermalCap,
+			CurrentThermal:               0.0,
+			RadarImmunityActive:          radarImmune,
+			StealthTimer:                 stealthDelay,
+			ResourceHarvestingType:       resourceHarvestingType,
+			WarpCanisterCapacity:         warpCanisterCapacity,
+			PortDockingBayStatus:         portDockingBayStatus,
+			StarboardDeploymentBayStatus: starboardDeploymentBayStatus,
+			SalvageableUponDestruction:   salvageableUponDestruction,
+			RequiresReconTelemetry:       requiresReconTelemetry,
 		}
 	}
-	log.Printf("🗄️ PostgreSQL connected: Loaded %d unit blueprints into memory.", len(Templates))
+	log.Printf("🗄️ PostgreSQL connected: Loaded %d unit blueprints into memory with full schema mapping.", len(Templates))
 }
