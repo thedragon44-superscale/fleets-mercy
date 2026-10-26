@@ -1,6 +1,51 @@
 // src/parsers/binaryCodec.ts
 import * as flatbuffersNS from "flatbuffers";
 import { ServerState } from "../generated/space-tactics/server-state";
+
+export interface Vector2D {
+  x: number;
+  y: number;
+}
+
+export interface QuadrantStats {
+  front: number;
+  rear: number;
+  port: number;
+  starboard: number;
+}
+
+export interface SnapshotUnit {
+  id: string;
+  type: string;
+  ownerId: string;
+  pos: Vector2D;
+  angle: number;
+  shields: QuadrantStats;
+  hull: QuadrantStats;
+  isDestroyed: boolean;
+  isSquadLeader: boolean;
+  isFiring: boolean;
+  battalionId: number;
+  squadId: number;
+}
+
+export interface SnapshotProjectile {
+  id: string;
+  ownerId: string;
+  type: string;
+  pos: Vector2D;
+  vel: Vector2D;
+}
+
+export interface ServerStateSnapshot {
+  tick: number | bigint;
+  units: SnapshotUnit[];
+  projectiles: SnapshotProjectile[];
+  mapBounds: {
+    width: number;
+    height: number;
+  };
+}
 import { ClientInput } from "../generated/space-tactics/client-input";
 import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
 import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
@@ -18,7 +63,7 @@ const Builder = FB.Builder || flatbuffersNS.Builder;
  * DOWNSTREAM: Unpack Server Binary Message
  * ==========================================
  */
-export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
+export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerStateSnapshot | null {
   try {
     const uint8Array = new Uint8Array(arrayBuffer);
     const bb = new ByteBuffer(uint8Array);
@@ -30,7 +75,7 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
 
     // Parse Fleet Units
     const unitsLength = serverState.unitsLength();
-    const units = new Array(unitsLength);
+    const units = [];
     for (let i = 0; i < unitsLength; i++) {
       const u = serverState.units(i);
       if (!u) continue;
@@ -39,7 +84,7 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
       const shields = u.shields();
       const hull = u.hull();
 
-      units[i] = {
+      units.push({
         id: u.id() || '',
         type: u.type() || 'default',
         ownerId: u.ownerId() || 'enemy',
@@ -62,25 +107,25 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer) {
         isFiring: u.isFiring(),
         battalionId: u.battalionId(),
         squadId: u.squadId(),
-      };
+      });
     }
 
     // Parse Projectiles
     const projLength = serverState.projectilesLength();
-    const projectiles = new Array(projLength);
+    const projectiles = [];
     for (let i = 0; i < projLength; i++) {
       const p = serverState.projectiles(i);
       if (!p) continue;
 
       const pos = p.pos();
       const vel = p.vel();
-      projectiles[i] = {
+      projectiles.push({
         id: p.id() || '',
         ownerId: p.ownerId() || '',
         type: p.type() || 'player',
         pos: { x: pos?.x() || 0, y: pos?.y() || 0 },
         vel: { x: vel?.x() || 0, y: vel?.y() || 0 },
-      };
+      });
     }
 
     return {

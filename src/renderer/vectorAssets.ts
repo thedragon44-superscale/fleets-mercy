@@ -5,6 +5,8 @@ export interface QuadrantStats {
   starboard: number;
 }
 
+import { useSettingsStore } from '../config/settingsStore';
+
 const spriteCache: { [key: string]: HTMLImageElement } = {};
 const loadedSprites = new Set<string>();
 
@@ -32,20 +34,22 @@ const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   gun_emplacement: 'turret.png'
 };
 
-Object.entries(ASSET_FILENAME_MAP).forEach(([unitId, filename]) => {
-  const img = new Image();
-  try {
-    img.src = new URL(`../assets/${filename}`, import.meta.url).href;
-    img.onload = () => {
-      if (img.naturalWidth !== 0) {
-        loadedSprites.add(unitId);
-      }
-    };
-    spriteCache[unitId] = img;
-  } catch (e) {
-    console.warn(`Failed to load asset: ${filename}`);
-  }
-});
+if (typeof window !== 'undefined') {
+  Object.entries(ASSET_FILENAME_MAP).forEach(([unitId, filename]) => {
+    const img = new Image();
+    try {
+      img.src = new URL(`../assets/${filename}`, import.meta.url).href;
+      img.onload = () => {
+        if (img.naturalWidth !== 0) {
+          loadedSprites.add(unitId);
+        }
+      };
+      spriteCache[unitId] = img;
+    } catch (e) {
+      console.warn(`Failed to load asset: ${filename}`);
+    }
+  });
+}
 
 const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
   flagship: { w: 90, h: 90 },
@@ -106,11 +110,33 @@ const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
 export function drawFlagship(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, shields?: QuadrantStats, hull?: QuadrantStats, isFiring = false, isDestroyed = false, isAccelerating = false) {
   if (isDestroyed) return;
 
+  const { debugCollisions, debugRadarRanges } = useSettingsStore.getState();
+
   ctx.save();
   ctx.translate(x, y);
   
   const offset = UNIT_ROTATION_OFFSETS['flagship'] ?? Math.PI / 2;
   ctx.rotate(angle + offset);
+
+  if (debugRadarRanges) {
+    ctx.save();
+    ctx.rotate(-offset);
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 2000, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (debugCollisions) {
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const scale = UNIT_SCALES['flagship'];
+    ctx.strokeRect(-scale.w / 2, -scale.h / 2, scale.w, scale.h);
+    ctx.setLineDash([]);
+  }
 
   const img = spriteCache['flagship'];
 if (img && loadedSprites.has('flagship')) {
@@ -160,10 +186,19 @@ if (img && loadedSprites.has('flagship')) {
 export function drawUnitAsset(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, unitType: string, ownerId: string, isDestroyed = false) {
   if (isDestroyed) return;
 
+  const { debugCollisions, debugRadarRanges } = useSettingsStore.getState();
+
   ctx.save();
   ctx.translate(x, y);
 
   if (unitType === 'asteroid') {
+    if (debugCollisions) {
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(-40, -40, 80, 80);
+      ctx.setLineDash([]);
+    }
     ctx.strokeStyle = '#475569';
     ctx.fillStyle = '#0f172a';
     ctx.lineWidth = 2;
@@ -177,6 +212,26 @@ export function drawUnitAsset(ctx: CanvasRenderingContext2D, x: number, y: numbe
 
   const offset = UNIT_ROTATION_OFFSETS[unitType] ?? 0;
   ctx.rotate(angle + offset);
+
+  if (debugRadarRanges) {
+    ctx.save();
+    ctx.rotate(-offset);
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1200, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (debugCollisions) {
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const scale = UNIT_SCALES[unitType] || UNIT_SCALES.default;
+    ctx.strokeRect(-scale.w / 2, -scale.h / 2, scale.w, scale.h);
+    ctx.setLineDash([]);
+  }
 
   const img = spriteCache[unitType];
   const scale = UNIT_SCALES[unitType] || UNIT_SCALES.default;
@@ -211,10 +266,11 @@ function drawShieldArcs(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, 
 export function drawHUDDiagnostics(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, hull?: QuadrantStats) {
   ctx.save();
   ctx.font = '10px monospace'; ctx.fillStyle = '#00f3ff';
-  ctx.fillText('FRONT SHD: ' + (shields?.front || 0).toFixed(1), 20, window.innerHeight - 80);
-  ctx.fillText('REAR  SHD: ' + (shields?.rear || 0).toFixed(1), 20, window.innerHeight - 65);
-  ctx.fillText('PORT  SHD: ' + (shields?.port || 0).toFixed(1), 20, window.innerHeight - 50);
-  ctx.fillText('STBD  SHD: ' + (shields?.starboard || 0).toFixed(1), 20, window.innerHeight - 35);
+  const canvasHeight = ctx.canvas?.height || window.innerHeight;
+  ctx.fillText('FRONT SHD: ' + (shields?.front || 0).toFixed(1), 20, canvasHeight - 80);
+  ctx.fillText('REAR  SHD: ' + (shields?.rear || 0).toFixed(1), 20, canvasHeight - 65);
+  ctx.fillText('PORT  SHD: ' + (shields?.port || 0).toFixed(1), 20, canvasHeight - 50);
+  ctx.fillText('STBD  SHD: ' + (shields?.starboard || 0).toFixed(1), 20, canvasHeight - 35);
   ctx.restore();
 }
 

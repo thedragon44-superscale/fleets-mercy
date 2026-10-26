@@ -9,17 +9,45 @@ export interface UnitBlueprint {
   weight: number;
   classType: 'LIGHT' | 'INDUSTRIAL' | 'MEDIUM' | 'HEAVY' | 'CAPITAL';
   role: string;
-  speed: string;
-  shields: string;
-  hull: string;
-  cooldown: string;
-  aggroRange: string;
   aiState: string;
   doctrine: string;
+  // Comprehensive Template Variables from DB[cite: 3, 8]
+  speed: string;
+  strafingSpeed: string;
+  turnRate: string;
+  angularVelocity: string;
+  accelerationCurve: string;
+  shields: string;
+  hull: string;
+  shieldRegenRate: string;
+  armorMitigation: string;
+  dps: string;
+  maxCooldown: string;
+  projectileRange: string;
+  projectileSpeed: string;
+  optimalRange: string;
+  maxRange: string;
+  engagementRangeCap: string;
+  visionRange: string;
+  aggroRange: string;
+  retreatMoraleThreshold: string;
+  squadCohesionLeashRange: string;
+  maxThermalCapacity: string;
+  lateralThrustPower: string;
+  reverseThrustPower: string;
+  driftCoefficient: string;
+  ammoCapacity: string;
 }
 
-// Static UI-only visual metadata (no stats hardcoded)
-const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'shields' | 'hull' | 'cooldown' | 'aggroRange'>[] = [
+// Data-Driven Configuration Constants & Limits
+const MAX_FLEET_WEIGHT = 100;
+const FLEET_SLOTS = [1, 2, 3, 4, 5] as const;
+const SQUAD_KEYS = ['squad1', 'squad2', 'squad3', 'squad4'] as const;
+const SQUAD_SLOTS = [0, 1, 2, 3, 4] as const;
+const FLEET_TIERS = ['FLAGSHIP', 'BATTALION_1', 'BATTALION_2'] as const;
+
+// Static UI-only visual metadata fallback
+const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'strafingSpeed' | 'turnRate' | 'angularVelocity' | 'accelerationCurve' | 'shields' | 'hull' | 'shieldRegenRate' | 'armorMitigation' | 'dps' | 'maxCooldown' | 'projectileRange' | 'projectileSpeed' | 'optimalRange' | 'maxRange' | 'engagementRangeCap' | 'visionRange' | 'aggroRange' | 'retreatMoraleThreshold' | 'squadCohesionLeashRange' | 'maxThermalCapacity' | 'lateralThrustPower' | 'reverseThrustPower' | 'driftCoefficient' | 'ammoCapacity'>[] = [
   { id: 'flagship', name: 'Player Flagship', shortName: 'Flagship', weight: 10, classType: 'CAPITAL', role: 'Fleet Command', aiState: 'MANUAL', doctrine: 'FLAGSHIP AI: Command mothership of the fleet. Houses deployment bays, repair drones, and strategic warhead launchers.' },
   { id: 'viper_interceptor', name: 'Viper Interceptor', shortName: 'Viper', weight: 1, classType: 'LIGHT', role: 'Air Superiority', aiState: 'SEEK', doctrine: 'SEEK AI: Auto-detects hostiles. Closes distance to deliver kinetic auto-cannon bursts.' },
   { id: 'recon_probe', name: 'Recon Probe', shortName: 'Recon', weight: 1, classType: 'LIGHT', role: 'Radar Expansion', aiState: 'SEEK', doctrine: 'SEEK AI: Unarmed scout. Maintains maximum sensor range from hostiles to paint targets through Fog of War.' },
@@ -46,10 +74,30 @@ const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'shields' | 'hull' | 
 export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map(m => ({
   ...m,
   speed: 'LOADING...',
+  strafingSpeed: 'LOADING...',
+  turnRate: 'LOADING...',
+  angularVelocity: 'LOADING...',
+  accelerationCurve: 'LOADING...',
   shields: 'LOADING...',
   hull: 'LOADING...',
-  cooldown: 'LOADING...',
-  aggroRange: 'LOADING...'
+  shieldRegenRate: 'LOADING...',
+  armorMitigation: 'LOADING...',
+  dps: 'LOADING...',
+  maxCooldown: 'LOADING...',
+  projectileRange: 'LOADING...',
+  projectileSpeed: 'LOADING...',
+  optimalRange: 'LOADING...',
+  maxRange: 'LOADING...',
+  engagementRangeCap: 'LOADING...',
+  visionRange: 'LOADING...',
+  aggroRange: 'LOADING...',
+  retreatMoraleThreshold: 'LOADING...',
+  squadCohesionLeashRange: 'LOADING...',
+  maxThermalCapacity: 'LOADING...',
+  lateralThrustPower: 'LOADING...',
+  reverseThrustPower: 'LOADING...',
+  driftCoefficient: 'LOADING...',
+  ammoCapacity: 'LOADING...'
 }));
 
 export interface LoadoutData {
@@ -72,7 +120,7 @@ interface GarageProps {
   onNavigateHome: () => void;
 }
 
-export type FleetTier = 'FLAGSHIP' | 'BATTALION_1' | 'BATTALION_2';
+export type FleetTier = typeof FLEET_TIERS[number];
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   flagship: 'flagship.png', viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
@@ -94,19 +142,18 @@ const PREVIEW_ROTATION_CSS: { [unitId: string]: string } = {
 };
 
 export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractice, onLogout, onNavigateHome }) => {
-  const [unitDbState, setUnitDbState] = useState<UnitBlueprint[]>(INITIAL_UNIT_DB);
+  const [unitDbState, setUnitDbState] = useState<UnitBlueprint[]>(UNIT_DB);
   const [loadouts, setLoadouts] = useState<LoadoutData[]>([]);
   const [activeSlot, setActiveSlot] = useState<number>(1);
   const [activeTier, setActiveTier] = useState<FleetTier>('FLAGSHIP');
   const [activeLoadout, setActiveLoadout] = useState<LoadoutData | null>(null);
-  const [inspectedUnit, setInspectedUnit] = useState<UnitBlueprint>(INITIAL_UNIT_DB[0]);
+  const [inspectedUnit, setInspectedUnit] = useState<UnitBlueprint>(UNIT_DB[0]);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
-  const [pickerState, setPickerState] = useState<{ squadKey: 'squad1' | 'squad2' | 'squad3' | 'squad4'; slotIdx: number } | null>(null);
+  const [pickerState, setPickerState] = useState<{ squadKey: typeof SQUAD_KEYS[number]; slotIdx: number } | null>(null);
 
   useEffect(() => {
-    // Fetch DB template specs dynamically
     fetch(`${API_BASE_URL}/api/templates`)
       .then((res) => res.json())
       .then((dbTemplates) => {
@@ -116,10 +163,30 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
             return {
               ...meta,
               speed: t.speed !== undefined ? `${t.speed.toFixed(2)}` : 'N/A',
+              strafingSpeed: t.strafing_speed !== undefined ? `${t.strafing_speed.toFixed(2)}` : 'N/A',
+              turnRate: t.turn_rate !== undefined ? `${t.turn_rate.toFixed(2)}` : 'N/A',
+              angularVelocity: t.angular_velocity !== undefined ? `${t.angular_velocity.toFixed(2)}` : 'N/A',
+              accelerationCurve: t.acceleration_curve !== undefined ? `${t.acceleration_curve.toFixed(2)}` : 'N/A',
               shields: t.shield_base !== undefined ? `${t.shield_base.toFixed(2)}` : 'N/A',
               hull: t.hull_base !== undefined ? `${t.hull_base.toFixed(2)}` : 'N/A',
-              cooldown: t.max_cooldown !== undefined ? `${t.max_cooldown} Ticks` : 'N/A',
+              shieldRegenRate: t.shield_regen_rate !== undefined ? `${t.shield_regen_rate.toFixed(2)}` : 'N/A',
+              armorMitigation: t.armor_mitigation !== undefined ? `${t.armor_mitigation.toFixed(2)}` : 'N/A',
+              dps: t.dps !== undefined ? `${t.dps.toFixed(2)}` : 'N/A',
+              maxCooldown: t.max_cooldown !== undefined ? `${t.max_cooldown} Ticks` : 'N/A',
+              projectileRange: t.projectile_range !== undefined ? `${t.projectile_range}px` : 'N/A',
+              projectileSpeed: t.projectile_speed !== undefined ? `${t.projectile_speed.toFixed(2)}` : 'N/A',
+              optimalRange: t.optimal_range !== undefined ? `${t.optimal_range}px` : 'N/A',
+              maxRange: t.max_range !== undefined ? `${t.max_range}px` : 'N/A',
+              engagementRangeCap: t.engagement_range_cap !== undefined ? `${t.engagement_range_cap}px` : 'N/A',
+              visionRange: t.vision_range !== undefined ? `${t.vision_range}px` : 'N/A',
               aggroRange: t.aggro_range !== undefined ? `${t.aggro_range}px` : 'N/A',
+              retreatMoraleThreshold: t.retreat_morale_threshold !== undefined ? `${t.retreat_morale_threshold}` : 'N/A',
+              squadCohesionLeashRange: t.squad_cohesion_leash_range !== undefined ? `${t.squad_cohesion_leash_range}px` : 'N/A',
+              maxThermalCapacity: t.max_thermal_capacity !== undefined ? `${t.max_thermal_capacity}` : 'N/A',
+              lateralThrustPower: t.lateral_thrust_power !== undefined ? `${t.lateral_thrust_power}` : 'N/A',
+              reverseThrustPower: t.reverse_thrust_power !== undefined ? `${t.reverse_thrust_power}` : 'N/A',
+              driftCoefficient: t.drift_coefficient !== undefined ? `${t.drift_coefficient}` : 'N/A',
+              ammoCapacity: t.ammo_capacity !== undefined ? `${t.ammo_capacity}` : 'N/A',
             };
           });
 
@@ -193,7 +260,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     const newComp = { ...activeLoadout.fleetComposition, [unitId]: nextVal };
     if (nextVal === 0) {
       delete newComp[unitId];
-      (['squad1', 'squad2', 'squad3', 'squad4'] as const).forEach(sq => {
+      SQUAD_KEYS.forEach(sq => {
         activeLoadout[sq] = activeLoadout[sq].filter(id => id !== unitId);
       });
     }
@@ -211,11 +278,11 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
   const getAssignedCount = (unitId: string) => {
     if (!activeLoadout) return 0;
-    const allSquads = [...activeLoadout.squad1, ...activeLoadout.squad2, ...activeLoadout.squad3, ...activeLoadout.squad4];
+    const allSquads = SQUAD_KEYS.flatMap(sq => activeLoadout[sq]);
     return allSquads.filter(id => id === unitId).length;
   };
 
-  const assignUnitToSlot = (squadKey: 'squad1' | 'squad2' | 'squad3' | 'squad4', slotIdx: number, unitId: string) => {
+  const assignUnitToSlot = (squadKey: typeof SQUAD_KEYS[number], slotIdx: number, unitId: string) => {
     if (!activeLoadout) return;
     const arr = [...activeLoadout[squadKey]];
     arr[slotIdx] = unitId;
@@ -223,7 +290,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     setPickerState(null);
   };
 
-  const removeUnitFromSlot = (squadKey: 'squad1' | 'squad2' | 'squad3' | 'squad4', slotIdx: number) => {
+  const removeUnitFromSlot = (squadKey: typeof SQUAD_KEYS[number], slotIdx: number) => {
     if (!activeLoadout) return;
     const arr = [...activeLoadout[squadKey]];
     arr.splice(slotIdx, 1);
@@ -289,7 +356,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
   if (!activeLoadout) return <div className="text-cyan-400 bg-[#0b0e14] h-screen p-5 font-mono">INITIALIZING HANGAR BAY...</div>;
 
   const totalWeight = calculateTotalWeight();
-  const isOverCapacity = totalWeight > 100;
+  const isOverCapacity = totalWeight > MAX_FLEET_WEIGHT;
 
   return (
     <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-2 gap-2 font-mono select-none">
@@ -311,7 +378,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
         {/* Slot Selector & Fleet Tier Tabs */}
         <div className="flex items-center gap-3">
           <div className="flex bg-[#161922] p-0.5 rounded-lg border border-slate-800 gap-1 shrink-0">
-            {[1, 2, 3, 4, 5].map(idx => (
+            {FLEET_SLOTS.map(idx => (
               <button
                 key={idx}
                 onClick={() => handleSelectSlot(idx)}
@@ -323,7 +390,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
 
           <div className="flex bg-[#161922] p-0.5 rounded-lg border border-slate-800 gap-1 shrink-0">
-            {(['FLAGSHIP', 'BATTALION_1', 'BATTALION_2'] as const).map(tier => (
+            {FLEET_TIERS.map(tier => (
               <button
                 key={tier}
                 onClick={() => setActiveTier(tier)}
@@ -346,12 +413,12 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           <div className="flex-1">
             <div className={`flex justify-between text-[9px] font-bold uppercase mb-0.5 ${isOverCapacity ? 'text-red-400' : 'text-slate-400'}`}>
               <span>Weight</span>
-              <span>{totalWeight}/100</span>
+              <span>{totalWeight}/{MAX_FLEET_WEIGHT}</span>
             </div>
             <div className="w-full bg-slate-900 h-1 rounded-full overflow-hidden">
               <div 
                 className={`h-full transition-all ${isOverCapacity ? 'bg-red-500' : 'bg-cyan-400'}`} 
-                style={{ width: `${Math.min((totalWeight / 100) * 100, 100)}%` }} 
+                style={{ width: `${Math.min((totalWeight / MAX_FLEET_WEIGHT) * 100, 100)}%` }} 
               />
             </div>
           </div>
@@ -429,16 +496,16 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
         </div>
 
-        {/* COLUMN 2: HOTKEY SQUADS (Strict 4 Rows Grid) */}
+        {/* COLUMN 2: HOTKEY SQUADS (Strict Formations Grid) */}
         <div className="md:col-span-6 bg-[#0f1115] border border-slate-800/80 rounded-xl p-2.5 flex flex-col min-h-0 shadow-xl">
           <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 shrink-0">
             <h2 className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-              Tactical Squads — {activeTier.replace('_', ' ')} (4 Formations x 5 Slots)
+              Tactical Squads — {activeTier.replace('_', ' ')} ({SQUAD_KEYS.length} Formations x {SQUAD_SLOTS.length} Slots)
             </h2>
           </div>
 
           <div className="flex-1 grid grid-rows-4 gap-2 min-h-0">
-            {(['squad1', 'squad2', 'squad3', 'squad4'] as const).map((sqKey, sqIdx) => {
+            {SQUAD_KEYS.map((sqKey, sqIdx) => {
               const sqList = activeLoadout[sqKey];
               const leaderIdx = activeLoadout.squadLeaders?.[sqKey];
 
@@ -446,11 +513,11 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                 <div key={sqKey} className="bg-[#161922] border border-slate-800 rounded-lg p-2 flex flex-col justify-between min-h-0">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Formation [{sqIdx + 1}]</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">{sqList.length} / 5 Slots</span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">{sqList.length} / {SQUAD_SLOTS.length} Slots</span>
                   </div>
 
                   <div className="grid grid-cols-5 gap-1.5 flex-1 min-h-0">
-                    {[0, 1, 2, 3, 4].map(slotIdx => {
+                    {SQUAD_SLOTS.map(slotIdx => {
                       const unitId = sqList[slotIdx];
                       const unitObj = unitId ? unitDbState.find(u => u.id === unitId) : null;
                       const isLeader = leaderIdx === slotIdx;
@@ -519,10 +586,10 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </button>
         </div>
 
-        {/* COLUMN 3: TELEMETRY INSPECTOR */}
+        {/* COLUMN 3: COMPREHENSIVE TELEMETRY INSPECTOR */}
         <div className="md:col-span-3 bg-[#0f1115] border border-slate-800/80 rounded-xl p-2.5 flex flex-col min-h-0 shadow-xl">
           <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 shrink-0">
-            <h2 className="text-[10px] font-black uppercase tracking-widest text-white">Telemetry</h2>
+            <h2 className="text-[10px] font-black uppercase tracking-widest text-white">Telemetry & DB Specs</h2>
           </div>
 
           <div className="flex flex-col flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
@@ -540,10 +607,10 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
               </span>
             </div>
 
-            {/* Specs Grid */}
+            {/* Comprehensive Specs Grid */}
             <div className="grid grid-cols-2 gap-1.5 shrink-0">
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
-                <div className="text-[8px] font-bold text-slate-500 uppercase">Weight</div>
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Weight Class</div>
                 <div className="text-[10px] font-black text-white">{inspectedUnit.weight} SLOTS</div>
               </div>
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
@@ -551,12 +618,100 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                 <div className="text-[10px] font-black text-white">{inspectedUnit.speed}</div>
               </div>
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
-                <div className="text-[8px] font-bold text-slate-500 uppercase">Shields</div>
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Strafing Speed</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.strafingSpeed}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Turn Rate</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.turnRate}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Angular Velocity</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.angularVelocity}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Accel Curve</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.accelerationCurve}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Shield Base</div>
                 <div className="text-[10px] font-black text-cyan-400">{inspectedUnit.shields} / QUAD</div>
               </div>
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
-                <div className="text-[8px] font-bold text-slate-500 uppercase">Hull</div>
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Shield Regen</div>
+                <div className="text-[10px] font-black text-cyan-400">{inspectedUnit.shieldRegenRate}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Hull Base</div>
                 <div className="text-[10px] font-black text-red-400">{inspectedUnit.hull} / QUAD</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Armor Mitigation</div>
+                <div className="text-[10px] font-black text-red-400">{inspectedUnit.armorMitigation}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">DPS Output</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.dps}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Max Cooldown</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.maxCooldown}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Proj Range</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.projectileRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Proj Speed</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.projectileSpeed}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Optimal Range</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.optimalRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Max Range</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.maxRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Engagement Cap</div>
+                <div className="text-[10px] font-black text-amber-400">{inspectedUnit.engagementRangeCap}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Vision Range</div>
+                <div className="text-[10px] font-black text-cyan-300">{inspectedUnit.visionRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Aggro Range</div>
+                <div className="text-[10px] font-black text-cyan-300">{inspectedUnit.aggroRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Retreat Threshold</div>
+                <div className="text-[10px] font-black text-purple-400">{inspectedUnit.retreatMoraleThreshold}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Squad Leash</div>
+                <div className="text-[10px] font-black text-purple-400">{inspectedUnit.squadCohesionLeashRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Thermal Capacity</div>
+                <div className="text-[10px] font-black text-red-300">{inspectedUnit.maxThermalCapacity}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Lateral Thrust</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.lateralThrustPower}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Reverse Thrust</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.reverseThrustPower}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Drift Coeff</div>
+                <div className="text-[10px] font-black text-white">{inspectedUnit.driftCoefficient}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Ammo Capacity</div>
+                <div className="text-[10px] font-black text-amber-300">{inspectedUnit.ammoCapacity}</div>
               </div>
             </div>
 

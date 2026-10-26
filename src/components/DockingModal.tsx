@@ -18,6 +18,23 @@ interface DockingModalProps {
   onAssignUnitToSquad?: (unitId: string, squadId: number, battalionId: number, isLeader?: boolean) => void;
 }
 
+// Data-Driven Configuration Constants
+const BATTALION_TIERS = [
+  { id: 0, name: 'Main Flagship', color: 'border-slate-800 text-slate-300' },
+  { id: 1, name: 'Alpha Cmd (Gold)', color: 'border-amber-400 text-amber-400' },
+  { id: 2, name: 'Beta Cmd (Silver)', color: 'border-slate-200 text-slate-200' },
+] as const;
+
+const FORMATION_SQUAD_IDS = [1, 2, 3, 4] as const;
+const FORMATION_SLOTS = [0, 1, 2, 3, 4] as const;
+const CAPITAL_UNIT_TYPES = new Set(['flagship', 'battalion_command_ship']);
+
+const BATTALION_BORDER_CLASSES: { [key: number]: string } = {
+  1: 'border-amber-400 shadow-[0_0_25px_rgba(234,179,8,0.2)]',
+  2: 'border-slate-200 shadow-[0_0_25px_rgba(226,232,240,0.2)]',
+  0: 'border-slate-800 shadow-[0_0_15px_rgba(0,0,0,0.5)]',
+};
+
 export const DockingModal: React.FC<DockingModalProps> = ({
   isOpen,
   onClose,
@@ -35,19 +52,14 @@ export const DockingModal: React.FC<DockingModalProps> = ({
     setActiveBattalionTab(batId);
   };
 
-  const activeBattalionBorderClass = activeBattalionTab === 1 
-    ? 'border-amber-400 shadow-[0_0_25px_rgba(234,179,8,0.2)]' 
-    : activeBattalionTab === 2 
-    ? 'border-slate-200 shadow-[0_0_25px_rgba(226,232,240,0.2)]' 
-    : 'border-slate-800 shadow-[0_0_15px_rgba(0,0,0,0.5)]';
+  const activeBattalionBorderClass = BATTALION_BORDER_CLASSES[activeBattalionTab] || BATTALION_BORDER_CLASSES[0];
 
   const activeBattalionUnits = spawnedUnits.filter(u => (u.battalionId || 0) === activeBattalionTab);
   
-  // Filter for unassigned units, excluding foundational capital command ships
+  // Filter for unassigned units, excluding foundational capital command ships using data-driven Set lookup
   const unassignedUnits = spawnedUnits.filter(u => 
     (u.squadId || 0) === 0 && 
-    u.type !== 'flagship' && 
-    u.type !== 'battalion_command_ship'
+    !CAPITAL_UNIT_TYPES.has(u.type)
   );
 
   const handleDockUnit = (unitId: string, squadId: number) => {
@@ -88,17 +100,13 @@ export const DockingModal: React.FC<DockingModalProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
-        {/* 1. Battalion Selector */}
+        {/* 1. Battalion Selector (Data-Driven mapping from BATTALION_TIERS) */}
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
             Command Echelon Tier (Select Detachment)
           </span>
           <div className="grid grid-cols-3 gap-1.5">
-            {[
-              { id: 0, name: 'Main Flagship', color: 'border-slate-800 text-slate-300' },
-              { id: 1, name: 'Alpha Cmd (Gold)', color: 'border-amber-400 text-amber-400' },
-              { id: 2, name: 'Beta Cmd (Silver)', color: 'border-slate-200 text-slate-200' },
-            ].map((bat) => {
+            {BATTALION_TIERS.map((bat) => {
               const isSelected = activeBattalionTab === bat.id;
               const isLocked = bat.id > 0 && !hasCommandShip;
 
@@ -121,7 +129,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Squad Docking Bays */}
+        {/* 2. Squad Docking Bays (Data-Driven from FORMATION_SQUAD_IDS and FORMATION_SLOTS) */}
         <div className={`flex flex-col gap-2 p-3 bg-[#161922] rounded-xl border-2 transition-all ${activeBattalionBorderClass}`}>
           <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-white">
@@ -133,7 +141,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-2">
-            {[1, 2, 3, 4].map((sqId) => {
+            {FORMATION_SQUAD_IDS.map((sqId) => {
               const sqStyle = SQUAD_COLORS[sqId];
               const squadUnits = activeBattalionUnits.filter(u => u.squadId === sqId);
 
@@ -151,12 +159,12 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                       </span>
                     </div>
                     <span className="text-[8px] font-bold text-slate-400 uppercase">
-                      {squadUnits.length} / 5 Docked
+                      {squadUnits.length} / {FORMATION_SLOTS.length} Docked
                     </span>
                   </div>
 
                   <div className="grid grid-cols-5 gap-1">
-                    {[0, 1, 2, 3, 4].map((slotIdx) => {
+                    {FORMATION_SLOTS.map((slotIdx) => {
                       const unit = squadUnits[slotIdx];
 
                       if (unit) {
@@ -187,7 +195,6 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (onAssignUnitToSquad) {
-                                      // Unassign: reset squadId to 0, battalionId to 0, and clear leader status
                                       onAssignUnitToSquad(unit.id, 0, 0, false);
                                     }
                                   }}

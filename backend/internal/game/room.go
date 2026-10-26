@@ -639,6 +639,9 @@ func (r *GameRoom) Run() {
 			// Player Movement or Autonomous AI State Machine (with room dimensions passed)
 			if unit.ID == controlledID && unit.OwnerID == "player" {
 				HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
+				// Explicitly sync client input intent to the player unit struct
+				unit.IsFiring = r.lastInput.IsFiring
+				unit.Angle = r.lastInput.Angle
 			} else {
 				RunUnitAI(unit, r, flagship)
 			}

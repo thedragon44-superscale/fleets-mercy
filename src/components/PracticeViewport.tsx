@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawUnitAsset, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
 import { getInterpolatedUnits } from '../renderer/interpolation';
 import { UNIT_DB } from './GarageDashboard';
-import { API_BASE_URL, WS_BASE_URL } from '../config';
+import { WS_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 import { UnitConfigModal } from './UnitConfig';
 import { DockingModal } from './DockingModal';
@@ -12,6 +12,13 @@ import { LoadingIndicator } from './common/LoadingIndicator';
 
 // Bundle local asset PNGs via Vite to bypass CORS entirely
 const localAssets = import.meta.glob('../assets/*.png', { eager: true }) as Record<string, { default: string }>;
+
+// Data-Driven Configuration Constants
+const DEFAULT_MAP_SIZE = 12000;
+const GRID_SPACING = 200;
+const DEFAULT_VISION_RANGE = 2000;
+const RECON_PROBE_VISION_RANGE = 2500;
+const INITIAL_CAMERA_POS = { x: DEFAULT_MAP_SIZE / 2, y: DEFAULT_MAP_SIZE / 2 };
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
@@ -53,12 +60,15 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const serverState = useRef<ServerState | null>(null);
   const serverHistoryRef = useRef<{ timestamp: number; units: FleetUnit[] }[]>([]);
-  const cameraPos = useRef({ x: 6000, y: 10000 });
+  
+  // Data-driven dynamic camera and render positions initialized at map center
+  const cameraPos = useRef({ ...INITIAL_CAMERA_POS });
+  const renderPos = useRef({ ...INITIAL_CAMERA_POS });
+
   const keys = useRef<{ [key: string]: boolean }>({});
   const mousePos = useRef({ x: 0, y: 0 });
   const isFiring = useRef(false);
 
-  const renderPos = useRef({ x: 6000, y: 10000 });
   const isInitialized = useRef(false);
   
   // Preloaded HTML Image cache for 2D Canvas rendering
@@ -66,7 +76,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
-  const [spawnerFaction, setSpawnerFaction] = useState<'player' | 'enemy'>('player'); // 🔴 Faction toggle state for spawner
+  const [spawnerFaction, setSpawnerFaction] = useState<'player' | 'enemy'>('player');
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
   const [isPilotOpen, setIsPilotOpen] = useState<boolean>(false);
@@ -98,19 +108,26 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   useEffect(() => {
     if (mapId) {
       fetchMapDetail(mapId).then(data => {
-        if (data) setMapDetails(data);
+        if (data) {
+          setMapDetails(data);
+          // Dynamically adjust camera/render center based on loaded map dimensions
+          const centerX = data.width / 2;
+          const centerY = data.height / 2;
+          cameraPos.current = { x: centerX, y: centerY };
+          renderPos.current = { x: centerX, y: centerY };
+        }
       });
     }
   }, [mapId]);
 
-  const { state: socketState, sendInput, updateUnitCount: sendUnitCount, sendTemplateOverride } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
+  const { state: socketState, sendInput, updateUnitCount: _updateUnitCount, sendTemplateOverride } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
 
   if (socketState) {
     serverState.current = socketState;
 
     if (socketState.units && socketState.units.length > 0) {
       if (isBootstrapping) {
-        setIsBootstrapping(false); // Dismiss loader once initial units are received
+        setIsBootstrapping(false);
       }
 
       const now = performance.now();
@@ -173,7 +190,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         return {
           unitType: u.id,
           count: targetCount,
-          ownerId: spawnerFaction // Attributes counts to either "player" or "enemy"
+          ownerId: spawnerFaction
         };
       });
 
@@ -258,12 +275,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         ctx.save();
         ctx.translate(canvas.width / 2 - cameraPos.current.x, canvas.height / 2 - cameraPos.current.y);
 
-        const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? 12000;
-        const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? 12000;
+        const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? DEFAULT_MAP_SIZE;
+        const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? DEFAULT_MAP_SIZE;
 
         ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
-        for (let i = 0; i <= mapW; i += 200) { ctx.moveTo(i, 0); ctx.lineTo(i, mapH); }
-        for (let i = 0; i <= mapH; i += 200) { ctx.moveTo(0, i); ctx.lineTo(mapW, i); }
+        for (let i = 0; i <= mapW; i += GRID_SPACING) { ctx.moveTo(i, 0); ctx.lineTo(i, mapH); }
+        for (let i = 0; i <= mapH; i += GRID_SPACING) { ctx.moveTo(0, i); ctx.lineTo(mapW, i); }
         ctx.stroke();
 
         ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 4;
@@ -293,6 +310,10 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             drawUnitAsset(ctx, rx, ry, u.angle, u.type, u.ownerId, u.isDestroyed);
           }
         });
+
+        if (serverState.current?.projectiles && serverState.current.projectiles.length > 0) {
+  console.log('[PROJECTILE DEBUG] Count:', serverState.current.projectiles.length, serverState.current.projectiles);
+}
 
         (serverState.current.projectiles || []).forEach(p => {
           drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type);
@@ -324,7 +345,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             for (const u of serverState.current.units) {
               if (u.ownerId === 'player' && !u.isDestroyed) {
                 const unitMeta = UNIT_DB.find(item => item.id === u.type);
-                const visionRange = unitMeta?.visionRange || (u.type === 'recon_probe' ? 2500 : 2000);
+                const visionRange = unitMeta?.visionRange || (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
                 const dist = Math.hypot(u.pos.x - x, u.pos.y - y);
                 if (dist <= visionRange) {
                   return true;
@@ -334,13 +355,15 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             return false;
           };
 
-          // 1. Render Recon Probe 2,500m sensor bubbles and overlap zones[cite: 7]
+          // 1. Render Recon Probe sensor bubbles and overlap zones using data-driven vision ranges[cite: 7]
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed || u.ownerId !== 'player') return;
             if (u.type === 'recon_probe') {
               const rx = (u.id === activeId ? renderPos.current.x : u.pos.x) * scaleX;
               const ry = (u.id === activeId ? renderPos.current.y : u.pos.y) * scaleY;
-              const radiusPixels = 2500 * scaleX;
+              const unitMeta = UNIT_DB.find(item => item.id === u.type);
+              const probeVisionRange = unitMeta?.visionRange || RECON_PROBE_VISION_RANGE;
+              const radiusPixels = probeVisionRange * scaleX;
 
               radarCtx.beginPath();
               radarCtx.arc(rx, ry, radiusPixels, 0, Math.PI * 2);
@@ -374,7 +397,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed) return;
 
-            // Player's own units are always visible; enemy/other units require active recon telemetry
             if (u.ownerId !== 'player' && !isVisibleToPlayer(u.pos.x, u.pos.y)) {
               return;
             }
@@ -393,22 +415,18 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
             radarCtx.beginPath();
             if (weight === 1) {
-              // 1W: Triangle (Scouts / Interceptors / Probes)
               radarCtx.moveTo(rx, ry - 3.5);
               radarCtx.lineTo(rx - 3, ry + 3);
               radarCtx.lineTo(rx + 3, ry + 3);
               radarCtx.closePath();
               radarCtx.fill();
             } else if (weight === 2) {
-              // 2W: Circle (Light Utility / Harvesters / Gunships)
               radarCtx.arc(rx, ry, 2.5, 0, Math.PI * 2);
               radarCtx.fill();
             } else if (weight === 3) {
-              // 3W: Square (Frigates / Jammers / Minelayers)
               radarCtx.rect(rx - 2.5, ry - 2.5, 5, 5);
               radarCtx.fill();
             } else if (weight === 4) {
-              // 4W: Diamond (Heavy Support / Railguns / Bombers)
               radarCtx.moveTo(rx, ry - 4);
               radarCtx.lineTo(rx + 3.5, ry);
               radarCtx.lineTo(rx, ry + 4);
@@ -416,7 +434,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
               radarCtx.closePath();
               radarCtx.fill();
             } else {
-              // 5W+: Capital Frame (Flagships / Command Ships / Warp Anchors)
               radarCtx.rect(rx - 4, ry - 4, 8, 8);
               radarCtx.stroke();
             }
@@ -673,7 +690,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             isLeader: (u as any).isSquadLeader || false,
           }))}
           onAssignUnitToSquad={(unitId, squadId, battalionId, isLeader) => {
-            // Dispatch websocket payload to backend
             sendInput({
               type: 'UPDATE_GROUPING',
               unitGrouping: {

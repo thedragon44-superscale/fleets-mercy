@@ -1,8 +1,9 @@
 // Example Interpolation Loop Concept for Frontend
-const RENDER_DELAY = 35; // milliseconds behind server time
+import { useSettingsStore } from '../config/settingsStore';
 
 export function getInterpolatedUnits(serverHistory: ServerStateSnapshot[], renderTime: number) {
-  const targetTime = renderTime - RENDER_DELAY;
+  const renderDelay = useSettingsStore.getState().renderDelay;
+  const targetTime = renderTime - renderDelay;
   
   // Find the two snapshots surrounding targetTime
   let older = serverHistory[0];

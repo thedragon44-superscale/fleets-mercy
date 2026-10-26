@@ -1,9 +1,10 @@
 // src/services/gameSocketService.ts
-import { unpackServerBinaryMessage, serializeClientInput } from '../parsers/binaryCodec';
+import { unpackServerBinaryMessage, serializeClientInput, ServerStateSnapshot } from '../parsers/binaryCodec';
+import { useSettingsStore } from '../config/settingsStore';
 
 export class GameSocketService {
   private ws: WebSocket | null = null;
-  private serverState: any = null;
+  private serverState: ServerStateSnapshot | null = null;
   private listeners: Set<() => void> = new Set();
   private url: string;
 
@@ -52,7 +53,7 @@ export class GameSocketService {
     };
   };
 
-  public getSnapshot = () => {
+  public getSnapshot = (): ServerStateSnapshot | null => {
     return this.serverState;
   };
 

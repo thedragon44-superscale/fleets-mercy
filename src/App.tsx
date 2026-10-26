@@ -4,9 +4,10 @@ import { GarageDashboard, LoadoutData } from './components/GarageDashboard';
 import { GameViewport } from './components/GameViewport';
 import { PracticeViewport } from './components/PracticeViewport';
 import { MapEditorViewport } from './components/MapEditorViewport';
+import { DeveloperSettingsDashboard } from './components/DeveloperSettingsDashboard';
 import { fetchMaps, MapDefinition } from './services/mapService';
 
-export type AppView = 'login' | 'main-menu' | 'garage' | 'map-select' | 'standard-game' | 'sandbox-mode' | 'map-editor-select' | 'map-editor';
+export type AppView = 'login' | 'main-menu' | 'garage' | 'map-select' | 'standard-game' | 'sandbox-mode' | 'map-editor-select' | 'map-editor' | 'developer-settings';
 
 export default function App() {
   const [player, setPlayer] = useState<{ id: number; username: string } | null>(null);
@@ -117,6 +118,13 @@ export default function App() {
               className="w-full bg-[#161922] hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
               Map Creator Studio
+            </button>
+
+            <button 
+              onClick={() => setView('developer-settings')}
+              className="w-full bg-[#161922] hover:bg-slate-800 text-amber-400 border border-slate-800 hover:border-amber-500/50 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
+            >
+              Developer Settings & Tuning
             </button>
 
             <button 
@@ -292,6 +300,11 @@ export default function App() {
   // Map Creator Studio View
   if (view === 'map-editor') {
     return <MapEditorViewport mapId={editorTargetMapId} onExit={() => setView('main-menu')} />;
+  }
+
+  // Developer Settings Dashboard View
+  if (view === 'developer-settings') {
+    return <DeveloperSettingsDashboard onNavigateHome={() => setView('main-menu')} />;
   }
 
   return null;
