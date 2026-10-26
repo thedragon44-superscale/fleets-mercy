@@ -1,5 +1,5 @@
 // src/components/UnitConfig/tabs/LogisticsTab.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { UnitConfigConfigPayload } from '../types';
 
 interface LogisticsTabProps {
@@ -8,6 +8,20 @@ interface LogisticsTabProps {
 }
 
 export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) => {
+  const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
+
+  useEffect(() => {
+    setLocalValues(config);
+  }, [config]);
+
+  const handleSliderChange = (field: keyof UnitConfigConfigPayload, val: number) => {
+    setLocalValues((prev) => ({ ...prev, [field]: val }));
+  };
+
+  const handleCommitChange = (field: keyof UnitConfigConfigPayload, val: number) => {
+    onChange(field, val);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -19,12 +33,14 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Harvesting Type ID</span>
-            <span className="text-cyan-400 font-black">{config.resourceHarvestingType ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.resourceHarvestingType ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10" step="1"
-            value={config.resourceHarvestingType ?? 0}
-            onChange={(e) => onChange('resourceHarvestingType', parseInt(e.target.value, 10))}
+            value={localValues.resourceHarvestingType ?? 0}
+            onChange={(e) => handleSliderChange('resourceHarvestingType', parseInt(e.target.value, 10))}
+            onMouseUp={(e) => handleCommitChange('resourceHarvestingType', parseInt((e.target as HTMLInputElement).value, 10))}
+            onTouchEnd={(e) => handleCommitChange('resourceHarvestingType', parseInt((e.target as HTMLInputElement).value, 10))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -33,12 +49,14 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Warp Canister Capacity</span>
-            <span className="text-cyan-400 font-black">{config.warpCanisterCapacity ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.warpCanisterCapacity ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="50" step="1"
-            value={config.warpCanisterCapacity ?? 0}
-            onChange={(e) => onChange('warpCanisterCapacity', parseInt(e.target.value, 10))}
+            value={localValues.warpCanisterCapacity ?? 0}
+            onChange={(e) => handleSliderChange('warpCanisterCapacity', parseInt(e.target.value, 10))}
+            onMouseUp={(e) => handleCommitChange('warpCanisterCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
+            onTouchEnd={(e) => handleCommitChange('warpCanisterCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -47,12 +65,14 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Cryo Gas Radius</span>
-            <span className="text-cyan-400 font-black">{config.cryoGasRadius ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.cryoGasRadius ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="1000" step="50"
-            value={config.cryoGasRadius ?? 0}
-            onChange={(e) => onChange('cryoGasRadius', parseFloat(e.target.value))}
+            value={localValues.cryoGasRadius ?? 0}
+            onChange={(e) => handleSliderChange('cryoGasRadius', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('cryoGasRadius', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('cryoGasRadius', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -61,12 +81,14 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Cryo Effect Duration (s)</span>
-            <span className="text-cyan-400 font-black">{config.cryoEffectDuration ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.cryoEffectDuration ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="30" step="0.5"
-            value={config.cryoEffectDuration ?? 0}
-            onChange={(e) => onChange('cryoEffectDuration', parseFloat(e.target.value))}
+            value={localValues.cryoEffectDuration ?? 0}
+            onChange={(e) => handleSliderChange('cryoEffectDuration', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('cryoEffectDuration', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('cryoEffectDuration', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -75,12 +97,14 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Graviton Vortex Duration (s)</span>
-            <span className="text-cyan-400 font-black">{config.gravitonVortexDuration ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.gravitonVortexDuration ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="30" step="0.5"
-            value={config.gravitonVortexDuration ?? 0}
-            onChange={(e) => onChange('gravitonVortexDuration', parseFloat(e.target.value))}
+            value={localValues.gravitonVortexDuration ?? 0}
+            onChange={(e) => handleSliderChange('gravitonVortexDuration', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('gravitonVortexDuration', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('gravitonVortexDuration', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -90,8 +114,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.portDockingBayStatus}
-              onChange={(e) => onChange('portDockingBayStatus', e.target.checked)}
+              checked={!!localValues.portDockingBayStatus}
+              onChange={(e) => {
+                handleSliderChange('portDockingBayStatus', e.target.checked);
+                onChange('portDockingBayStatus', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Port Docking Bay Status
@@ -100,8 +127,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.starboardDeploymentBayStatus}
-              onChange={(e) => onChange('starboardDeploymentBayStatus', e.target.checked)}
+              checked={!!localValues.starboardDeploymentBayStatus}
+              onChange={(e) => {
+                handleSliderChange('starboardDeploymentBayStatus', e.target.checked);
+                onChange('starboardDeploymentBayStatus', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Starboard Deployment Bay Active
@@ -110,8 +140,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.salvageableUponDestruction}
-              onChange={(e) => onChange('salvageableUponDestruction', e.target.checked)}
+              checked={!!localValues.salvageableUponDestruction}
+              onChange={(e) => {
+                handleSliderChange('salvageableUponDestruction', e.target.checked);
+                onChange('salvageableUponDestruction', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Salvageable Upon Destruction
@@ -120,8 +153,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.requiresReconTelemetry}
-              onChange={(e) => onChange('requiresReconTelemetry', e.target.checked)}
+              checked={!!localValues.requiresReconTelemetry}
+              onChange={(e) => {
+                handleSliderChange('requiresReconTelemetry', e.target.checked);
+                onChange('requiresReconTelemetry', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Requires Recon Telemetry
@@ -130,8 +166,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.requiresAnchorDrone}
-              onChange={(e) => onChange('requiresAnchorDrone', e.target.checked)}
+              checked={!!localValues.requiresAnchorDrone}
+              onChange={(e) => {
+                handleSliderChange('requiresAnchorDrone', e.target.checked);
+                onChange('requiresAnchorDrone', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Requires Anchor Drone
@@ -140,8 +179,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.requiresReconAnchor}
-              onChange={(e) => onChange('requiresReconAnchor', e.target.checked)}
+              checked={!!localValues.requiresReconAnchor}
+              onChange={(e) => {
+                handleSliderChange('requiresReconAnchor', e.target.checked);
+                onChange('requiresReconAnchor', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Requires Recon Anchor
@@ -150,8 +192,11 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange }) 
           <label className="col-span-full flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
             <input
               type="checkbox"
-              checked={!!config.emergencyWarpEvacuationTarget}
-              onChange={(e) => onChange('emergencyWarpEvacuationTarget', e.target.checked)}
+              checked={!!localValues.emergencyWarpEvacuationTarget}
+              onChange={(e) => {
+                handleSliderChange('emergencyWarpEvacuationTarget', e.target.checked);
+                onChange('emergencyWarpEvacuationTarget', e.target.checked);
+              }}
               className="accent-cyan-400 w-3.5 h-3.5"
             />
             Emergency Warp Evacuation Target Active

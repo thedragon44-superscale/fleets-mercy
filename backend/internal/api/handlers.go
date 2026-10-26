@@ -511,6 +511,41 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Immediately sync the in-memory template cache so active rooms reflect changes without rebooting
+	if tmpl, exists := db.Templates[unitType]; exists {
+		tmpl.WeightClass = getInt("weightClass")
+		tmpl.VisionRange = getInt("visionRange")
+		tmpl.AggroRange = getFloat("aggroRange")
+		tmpl.RetreatMoraleThreshold = getFloat("retreatMoraleThreshold")
+		tmpl.SquadCohesionLeashRange = getFloat("squadCohesionLeashRange")
+		tmpl.ShieldBase = getFloat("shieldBase")
+		tmpl.HullBase = getFloat("hullBase")
+		tmpl.ShieldRegenRate = getFloat("shieldRegenRate")
+		tmpl.ShieldRechargeDelayTicks = getInt("shieldRechargeDelayTicks")
+		tmpl.ArmorMitigation = getFloat("armorMitigation")
+		tmpl.Speed = getFloat("speed")
+		tmpl.StrafingSpeed = getFloat("strafingSpeed")
+		tmpl.TurnRate = getFloat("turnRate")
+		tmpl.AngularVelocity = getFloat("angularVelocity")
+		tmpl.LateralThrustPower = getFloat("lateralThrustPower")
+		tmpl.ReverseThrustPower = getFloat("reverseThrustPower")
+		tmpl.DriftCoefficient = getFloat("driftCoefficient")
+		tmpl.AccelerationCurve = getFloat("accelerationCurve")
+		tmpl.DPS = getFloat("dps")
+		tmpl.MaxCooldown = getInt("maxCooldown")
+		tmpl.ProjectileRange = getFloat("projectileRange")
+		tmpl.ProjectileSpeed = getFloat("projectileSpeed")
+		tmpl.MaxThermalCapacity = getFloat("maxThermalCapacity")
+		tmpl.MaxAmmoCapacity = getInt("ammoCapacity")
+		tmpl.ResourceHarvestingType = getInt("resourceHarvestingType")
+		tmpl.WarpCanisterCapacity = getInt("warpCanisterCapacity")
+		tmpl.PortDockingBayStatus = getBool("portDockingBayStatus")
+		tmpl.StarboardDeploymentBayStatus = getBool("starboardDeploymentBayStatus")
+		tmpl.SalvageableUponDestruction = getBool("salvageableUponDestruction")
+		tmpl.RequiresReconTelemetry = getBool("requiresReconTelemetry")
+		db.Templates[unitType] = tmpl
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

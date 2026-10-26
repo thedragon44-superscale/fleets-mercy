@@ -1,5 +1,5 @@
 // src/components/UnitConfig/tabs/CombatTab.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { UnitConfigConfigPayload } from '../types';
 
 interface CombatTabProps {
@@ -8,6 +8,20 @@ interface CombatTabProps {
 }
 
 export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
+  const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
+
+  useEffect(() => {
+    setLocalValues(config);
+  }, [config]);
+
+  const handleSliderChange = (field: keyof UnitConfigConfigPayload, val: number) => {
+    setLocalValues((prev) => ({ ...prev, [field]: val }));
+  };
+
+  const handleCommitChange = (field: keyof UnitConfigConfigPayload, val: number) => {
+    onChange(field, val);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -19,12 +33,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Damage Per Second (DPS)</span>
-            <span className="text-cyan-400 font-black">{config.dps ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.dps ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="5000" step="50"
-            value={config.dps ?? 0}
-            onChange={(e) => onChange('dps', parseFloat(e.target.value))}
+            value={localValues.dps ?? 0}
+            onChange={(e) => handleSliderChange('dps', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('dps', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('dps', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -33,12 +49,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Max Cooldown (Ticks)</span>
-            <span className="text-cyan-400 font-black">{config.maxCooldown ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.maxCooldown ?? 0}</span>
           </div>
           <input
             type="range" min="1" max="120" step="1"
-            value={config.maxCooldown ?? 0}
-            onChange={(e) => onChange('maxCooldown', parseInt(e.target.value, 10))}
+            value={localValues.maxCooldown ?? 0}
+            onChange={(e) => handleSliderChange('maxCooldown', parseInt(e.target.value, 10))}
+            onMouseUp={(e) => handleCommitChange('maxCooldown', parseInt((e.target as HTMLInputElement).value, 10))}
+            onTouchEnd={(e) => handleCommitChange('maxCooldown', parseInt((e.target as HTMLInputElement).value, 10))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -47,12 +65,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Projectile Speed</span>
-            <span className="text-cyan-400 font-black">{config.projectileSpeed ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.projectileSpeed ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="100" step="1"
-            value={config.projectileSpeed ?? 0}
-            onChange={(e) => onChange('projectileSpeed', parseFloat(e.target.value))}
+            value={localValues.projectileSpeed ?? 0}
+            onChange={(e) => handleSliderChange('projectileSpeed', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('projectileSpeed', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('projectileSpeed', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -61,12 +81,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Projectile Range (m)</span>
-            <span className="text-cyan-400 font-black">{config.projectileRange ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.projectileRange ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10000" step="100"
-            value={config.projectileRange ?? 0}
-            onChange={(e) => onChange('projectileRange', parseFloat(e.target.value))}
+            value={localValues.projectileRange ?? 0}
+            onChange={(e) => handleSliderChange('projectileRange', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('projectileRange', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('projectileRange', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -75,12 +97,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Optimal Range (m)</span>
-            <span className="text-cyan-400 font-black">{config.optimalRange ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.optimalRange ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10000" step="100"
-            value={config.optimalRange ?? 0}
-            onChange={(e) => onChange('optimalRange', parseFloat(e.target.value))}
+            value={localValues.optimalRange ?? 0}
+            onChange={(e) => handleSliderChange('optimalRange', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('optimalRange', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('optimalRange', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -89,12 +113,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Max Range (m)</span>
-            <span className="text-cyan-400 font-black">{config.maxRange ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.maxRange ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10000" step="100"
-            value={config.maxRange ?? 0}
-            onChange={(e) => onChange('maxRange', parseFloat(e.target.value))}
+            value={localValues.maxRange ?? 0}
+            onChange={(e) => handleSliderChange('maxRange', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('maxRange', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('maxRange', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -103,12 +129,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Engagement Range Cap (m)</span>
-            <span className="text-cyan-400 font-black">{config.engagementRangeCap ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.engagementRangeCap ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10000" step="100"
-            value={config.engagementRangeCap ?? 0}
-            onChange={(e) => onChange('engagementRangeCap', parseFloat(e.target.value))}
+            value={localValues.engagementRangeCap ?? 0}
+            onChange={(e) => handleSliderChange('engagementRangeCap', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('engagementRangeCap', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('engagementRangeCap', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -117,12 +145,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Ammo Capacity (-1 = Infinite)</span>
-            <span className="text-cyan-400 font-black">{config.ammoCapacity ?? -1}</span>
+            <span className="text-cyan-400 font-black">{localValues.ammoCapacity ?? -1}</span>
           </div>
           <input
             type="range" min="-1" max="1000" step="10"
-            value={config.ammoCapacity ?? -1}
-            onChange={(e) => onChange('ammoCapacity', parseInt(e.target.value, 10))}
+            value={localValues.ammoCapacity ?? -1}
+            onChange={(e) => handleSliderChange('ammoCapacity', parseInt(e.target.value, 10))}
+            onMouseUp={(e) => handleCommitChange('ammoCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
+            onTouchEnd={(e) => handleCommitChange('ammoCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -131,12 +161,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Initial Ordnance Capacity</span>
-            <span className="text-cyan-400 font-black">{config.initialOrdnanceCapacity ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.initialOrdnanceCapacity ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="500" step="10"
-            value={config.initialOrdnanceCapacity ?? 0}
-            onChange={(e) => onChange('initialOrdnanceCapacity', parseInt(e.target.value, 10))}
+            value={localValues.initialOrdnanceCapacity ?? 0}
+            onChange={(e) => handleSliderChange('initialOrdnanceCapacity', parseInt(e.target.value, 10))}
+            onMouseUp={(e) => handleCommitChange('initialOrdnanceCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
+            onTouchEnd={(e) => handleCommitChange('initialOrdnanceCapacity', parseInt((e.target as HTMLInputElement).value, 10))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -145,12 +177,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Turret Traverse Speed</span>
-            <span className="text-cyan-400 font-black">{config.turretTraverseSpeed ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.turretTraverseSpeed ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10" step="0.1"
-            value={config.turretTraverseSpeed ?? 0}
-            onChange={(e) => onChange('turretTraverseSpeed', parseFloat(e.target.value))}
+            value={localValues.turretTraverseSpeed ?? 0}
+            onChange={(e) => handleSliderChange('turretTraverseSpeed', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('turretTraverseSpeed', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('turretTraverseSpeed', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -159,12 +193,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Weapon Dispersion Bloom</span>
-            <span className="text-cyan-400 font-black">{config.weaponDispersionBloom ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.weaponDispersionBloom ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="5.0" step="0.1"
-            value={config.weaponDispersionBloom ?? 0}
-            onChange={(e) => onChange('weaponDispersionBloom', parseFloat(e.target.value))}
+            value={localValues.weaponDispersionBloom ?? 0}
+            onChange={(e) => handleSliderChange('weaponDispersionBloom', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('weaponDispersionBloom', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('weaponDispersionBloom', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -173,12 +209,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Projectile Tracking Capability</span>
-            <span className="text-cyan-400 font-black">{config.projectileTrackingCapability ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.projectileTrackingCapability ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="5.0" step="0.1"
-            value={config.projectileTrackingCapability ?? 0}
-            onChange={(e) => onChange('projectileTrackingCapability', parseFloat(e.target.value))}
+            value={localValues.projectileTrackingCapability ?? 0}
+            onChange={(e) => handleSliderChange('projectileTrackingCapability', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('projectileTrackingCapability', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('projectileTrackingCapability', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -187,12 +225,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Shield Penetration Factor</span>
-            <span className="text-cyan-400 font-black">{config.shieldPenetrationFactor ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.shieldPenetrationFactor ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="1.0" step="0.05"
-            value={config.shieldPenetrationFactor ?? 0}
-            onChange={(e) => onChange('shieldPenetrationFactor', parseFloat(e.target.value))}
+            value={localValues.shieldPenetrationFactor ?? 0}
+            onChange={(e) => handleSliderChange('shieldPenetrationFactor', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('shieldPenetrationFactor', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('shieldPenetrationFactor', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -201,12 +241,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Sustained Fire Limit (s)</span>
-            <span className="text-cyan-400 font-black">{config.sustainedFireLimitSeconds ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.sustainedFireLimitSeconds ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="60" step="1"
-            value={config.sustainedFireLimitSeconds ?? 0}
-            onChange={(e) => onChange('sustainedFireLimitSeconds', parseFloat(e.target.value))}
+            value={localValues.sustainedFireLimitSeconds ?? 0}
+            onChange={(e) => handleSliderChange('sustainedFireLimitSeconds', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('sustainedFireLimitSeconds', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('sustainedFireLimitSeconds', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -215,12 +257,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Barrel Cooling Duration (s)</span>
-            <span className="text-cyan-400 font-black">{config.barrelCoolingDurationSeconds ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.barrelCoolingDurationSeconds ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="30" step="0.5"
-            value={config.barrelCoolingDurationSeconds ?? 0}
-            onChange={(e) => onChange('barrelCoolingDurationSeconds', parseFloat(e.target.value))}
+            value={localValues.barrelCoolingDurationSeconds ?? 0}
+            onChange={(e) => handleSliderChange('barrelCoolingDurationSeconds', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('barrelCoolingDurationSeconds', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('barrelCoolingDurationSeconds', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -229,12 +273,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Burst Salvo Cooldown</span>
-            <span className="text-cyan-400 font-black">{config.burstSalvoCooldown ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.burstSalvoCooldown ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="1000" step="10"
-            value={config.burstSalvoCooldown ?? 0}
-            onChange={(e) => onChange('burstSalvoCooldown', parseFloat(e.target.value))}
+            value={localValues.burstSalvoCooldown ?? 0}
+            onChange={(e) => handleSliderChange('burstSalvoCooldown', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('burstSalvoCooldown', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('burstSalvoCooldown', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -243,12 +289,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Beam Raycast Duration (s)</span>
-            <span className="text-cyan-400 font-black">{config.beamRaycastDuration ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.beamRaycastDuration ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10" step="0.1"
-            value={config.beamRaycastDuration ?? 0}
-            onChange={(e) => onChange('beamRaycastDuration', parseFloat(e.target.value))}
+            value={localValues.beamRaycastDuration ?? 0}
+            onChange={(e) => handleSliderChange('beamRaycastDuration', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('beamRaycastDuration', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('beamRaycastDuration', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -257,12 +305,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Max Thermal Capacity</span>
-            <span className="text-cyan-400 font-black">{config.maxThermalCapacity ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.maxThermalCapacity ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="5000" step="50"
-            value={config.maxThermalCapacity ?? 0}
-            onChange={(e) => onChange('maxThermalCapacity', parseFloat(e.target.value))}
+            value={localValues.maxThermalCapacity ?? 0}
+            onChange={(e) => handleSliderChange('maxThermalCapacity', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('maxThermalCapacity', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('maxThermalCapacity', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -271,12 +321,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Thermal Dissipation Rate</span>
-            <span className="text-cyan-400 font-black">{config.thermalDissipationRate ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.thermalDissipationRate ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="250" step="5"
-            value={config.thermalDissipationRate ?? 0}
-            onChange={(e) => onChange('thermalDissipationRate', parseFloat(e.target.value))}
+            value={localValues.thermalDissipationRate ?? 0}
+            onChange={(e) => handleSliderChange('thermalDissipationRate', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('thermalDissipationRate', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('thermalDissipationRate', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>
@@ -285,12 +337,14 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange }) => {
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
             <span>Power Grid Allocation Weight</span>
-            <span className="text-cyan-400 font-black">{config.powerGridAllocationWeight ?? 0}</span>
+            <span className="text-cyan-400 font-black">{localValues.powerGridAllocationWeight ?? 0}</span>
           </div>
           <input
             type="range" min="0" max="10" step="0.5"
-            value={config.powerGridAllocationWeight ?? 0}
-            onChange={(e) => onChange('powerGridAllocationWeight', parseFloat(e.target.value))}
+            value={localValues.powerGridAllocationWeight ?? 0}
+            onChange={(e) => handleSliderChange('powerGridAllocationWeight', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('powerGridAllocationWeight', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('powerGridAllocationWeight', parseFloat((e.target as HTMLInputElement).value))}
             className="accent-cyan-400 cursor-pointer"
           />
         </div>

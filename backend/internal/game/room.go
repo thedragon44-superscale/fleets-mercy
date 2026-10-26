@@ -431,7 +431,6 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					tmpl.RequiresReconTelemetry = configTable.RequiresReconTelemetry()
 
 					db.Templates[unitType] = tmpl
-					db.SaveTemplateOverride(unitType, tmpl)
 				}
 
 				// Hot-update any active unit instances currently alive in the room
