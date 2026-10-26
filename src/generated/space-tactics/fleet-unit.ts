@@ -91,8 +91,13 @@ squadId():number {
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
+visionRange():number {
+  const offset = this.bb!.__offset(this.bb_pos, 28);
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
+}
+
 static startFleetUnit(builder:flatbuffers.Builder) {
-  builder.startObject(12);
+  builder.startObject(13);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -141,6 +146,10 @@ static addBattalionId(builder:flatbuffers.Builder, battalionId:number) {
 
 static addSquadId(builder:flatbuffers.Builder, squadId:number) {
   builder.addFieldInt32(11, squadId, 0);
+}
+
+static addVisionRange(builder:flatbuffers.Builder, visionRange:number) {
+  builder.addFieldInt32(12, visionRange, 0);
 }
 
 static endFleetUnit(builder:flatbuffers.Builder):flatbuffers.Offset {

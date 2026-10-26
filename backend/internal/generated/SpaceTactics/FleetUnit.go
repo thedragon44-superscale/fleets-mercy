@@ -168,8 +168,20 @@ func (rcv *FleetUnit) MutateSquadId(n int32) bool {
 	return rcv._tab.MutateInt32Slot(26, n)
 }
 
+func (rcv *FleetUnit) VisionRange() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *FleetUnit) MutateVisionRange(n int32) bool {
+	return rcv._tab.MutateInt32Slot(28, n)
+}
+
 func FleetUnitStart(builder *flatbuffers.Builder) {
-	builder.StartObject(12)
+	builder.StartObject(13)
 }
 func FleetUnitAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -206,6 +218,9 @@ func FleetUnitAddBattalionId(builder *flatbuffers.Builder, battalionId int32) {
 }
 func FleetUnitAddSquadId(builder *flatbuffers.Builder, squadId int32) {
 	builder.PrependInt32Slot(11, squadId, 0)
+}
+func FleetUnitAddVisionRange(builder *flatbuffers.Builder, visionRange int32) {
+	builder.PrependInt32Slot(12, visionRange, 0)
 }
 func FleetUnitEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

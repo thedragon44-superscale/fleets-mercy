@@ -695,6 +695,7 @@ func (r *GameRoom) Run() {
 			SpaceTactics.FleetUnitAddIsFiring(builder, u.IsFiring)
 			SpaceTactics.FleetUnitAddBattalionId(builder, int32(u.BattalionID))
 			SpaceTactics.FleetUnitAddSquadId(builder, int32(u.SquadID))
+			SpaceTactics.FleetUnitAddVisionRange(builder, int32(u.VisionRange))
 			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 

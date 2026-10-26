@@ -36,6 +36,7 @@ table FleetUnit {
   is_firing: bool;
   battalion_id: int;
   squad_id: int;
+  vision_range: int;
 }
 
 table Projectile {
