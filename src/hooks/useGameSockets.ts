@@ -17,5 +17,6 @@ export const useGameSocket = (serverUrl: string) => {
     sendInput: service.sendInput,
     updateUnitCount: service.updateUnitCount,
     sendTemplateOverride: service.sendTemplateOverride,
+    sendUnitGrouping: service.sendUnitGrouping,
   };
 };

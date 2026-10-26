@@ -77,9 +77,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const [selectedCatalogUnitId, setSelectedCatalogUnitId] = useState<string>(UNIT_DB[0]?.id || 'viper_interceptor');
   const [spawnerFaction, setSpawnerFaction] = useState<'player' | 'enemy'>('player');
-  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
-  const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
-  const [isPilotOpen, setIsPilotOpen] = useState<boolean>(false);
 
   const [controlledUnitId, setControlledUnitId] = useState<string>('player-flagship');
   const controlledUnitIdRef = useRef<string>('player-flagship');
@@ -87,6 +84,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [simulationSpeed, setSimulationSpeed] = useState<number>(1.0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [isBootstrapping, setIsBootstrapping] = useState<boolean>(true);
+
+  // Studio Modal States
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
+  const [isDockingOpen, setIsDockingOpen] = useState<boolean>(false);
+  const [isPilotOpen, setIsPilotOpen] = useState<boolean>(false);
 
   // Preload PNG images on mount
   useEffect(() => {

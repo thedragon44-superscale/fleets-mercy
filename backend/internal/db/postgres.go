@@ -135,3 +135,32 @@ func InitDB() {
 	}
 	log.Printf("🗄️ PostgreSQL connected: Loaded %d unit blueprints into memory with full schema mapping.", len(Templates))
 }
+
+func SaveTemplateOverride(unitType string, t models.FleetUnit) {
+	if Conn == nil {
+		return
+	}
+	query := `UPDATE unit_templates SET 
+		speed = $1, strafing_speed = $2, turn_rate = $3, angular_velocity = $4, acceleration_curve = $5,
+		dps = $6, max_cooldown = $7, projectile_range = $8, projectile_speed = $9, max_thermal_capacity = $10,
+		shield_base = $11, hull_base = $12, shield_regen_rate = $13, shield_recharge_delay_ticks = $14, armor_mitigation = $15,
+		vision_range = $16, aggro_range = $17, retreat_morale_threshold = $18, squad_cohesion_leash_range = $19,
+		resource_harvesting_type = $20, warp_canister_capacity = $21, port_docking_bay_status = $22, starboard_deployment_bay_status = $23,
+		salvageable_upon_destruction = $24, requires_recon_telemetry = $25
+		WHERE unit_class = $26`
+	
+	_, err := Conn.Exec(query,
+		t.Speed, t.StrafingSpeed, t.TurnRate, t.AngularVelocity, t.AccelerationCurve,
+		t.DPS, t.MaxCooldown, t.ProjectileRange, t.ProjectileSpeed, t.MaxThermalCapacity,
+		t.ShieldBase, t.HullBase, t.ShieldRegenRate, t.ShieldRechargeDelayTicks, t.ArmorMitigation,
+		t.VisionRange, t.AggroRange, t.RetreatMoraleThreshold, t.SquadCohesionLeashRange,
+		t.ResourceHarvestingType, t.WarpCanisterCapacity, t.PortDockingBayStatus, t.StarboardDeploymentBayStatus,
+		t.SalvageableUponDestruction, t.RequiresReconTelemetry,
+		unitType,
+	)
+	if err != nil {
+		log.Printf("⚠️ Failed to persist template override for %s to PostgreSQL: %v", unitType, err)
+	} else {
+		log.Printf("💾 Persisted template override for %s to PostgreSQL", unitType)
+	}
+}

@@ -4,6 +4,7 @@ import { UNIT_DB } from '../GarageDashboard';
 
 interface UnitConfigHeaderProps {
   selectedUnitId: string;
+  onSelectUnit: (unitId: string) => void;
   onClose: () => void;
 }
 

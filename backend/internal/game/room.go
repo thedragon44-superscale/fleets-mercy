@@ -395,12 +395,12 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if clientInput.TemplateOverrideConfig(&configTable) != nil {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
-					// 1. Movement & Physics Dynamics
-					if val := configTable.Speed(); val != 0 { tmpl.Speed = float64(val) }
-					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = float64(val) }
-					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = float64(val) }
-					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = float64(val) }
-					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = float64(val) }
+					// 1. Movement & Physics Dynamics (with safety clamping)
+					if val := configTable.Speed(); val != 0 { tmpl.Speed = math.Min(float64(val), 50.0) }
+					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = math.Min(float64(val), 50.0) }
+					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = math.Min(float64(val), 15.0) }
+					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = math.Min(float64(val), 15.0) }
+					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = math.Min(float64(val), 10.0) }
 
 					// 2. Combat Output & Ballistics
 					if val := configTable.Dps(); val != 0 { tmpl.DPS = float64(val) }
@@ -431,16 +431,17 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					tmpl.RequiresReconTelemetry = configTable.RequiresReconTelemetry()
 
 					db.Templates[unitType] = tmpl
+					db.SaveTemplateOverride(unitType, tmpl)
 				}
 
 				// Hot-update any active unit instances currently alive in the room
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if val := configTable.Speed(); val != 0 { u.Speed = float64(val) }
-						if val := configTable.StrafingSpeed(); val != 0 { u.StrafingSpeed = float64(val) }
-						if val := configTable.TurnRate(); val != 0 { u.TurnRate = float64(val) }
-						if val := configTable.AngularVelocity(); val != 0 { u.AngularVelocity = float64(val) }
-						if val := configTable.AccelerationCurve(); val != 0 { u.AccelerationCurve = float64(val) }
+						if val := configTable.Speed(); val != 0 { u.Speed = math.Min(float64(val), 50.0) }
+						if val := configTable.StrafingSpeed(); val != 0 { u.StrafingSpeed = math.Min(float64(val), 50.0) }
+						if val := configTable.TurnRate(); val != 0 { u.TurnRate = math.Min(float64(val), 15.0) }
+						if val := configTable.AngularVelocity(); val != 0 { u.AngularVelocity = math.Min(float64(val), 15.0) }
+						if val := configTable.AccelerationCurve(); val != 0 { u.AccelerationCurve = math.Min(float64(val), 10.0) }
 
 						if val := configTable.Dps(); val != 0 { u.DPS = float64(val) }
 						if val := configTable.MaxCooldown(); val != 0 { u.MaxCooldown = int(val) }
@@ -643,10 +644,11 @@ func (r *GameRoom) Run() {
 				unit.IsFiring = r.lastInput.IsFiring
 				unit.Angle = float64(r.lastInput.Angle)
 			} else if unit.OwnerID == "player" && unit.Type == "flagship" {
-				// Player flagship should NEVER move or run AI when unpiloted; it holds position.
+				// Player flagship should NEVER move or run AI when unpiloted; it holds position and zeroes angular velocity.
 				unit.IsFiring = false
 				unit.Vel.X *= 0.95
 				unit.Vel.Y *= 0.95
+				unit.AngularVelocity = 0
 			} else {
 				// All other units (enemy units, spawned support drones, etc.) run their AI behavior
 				RunUnitAI(unit, r, flagship)
