@@ -62,7 +62,8 @@ func InitDB() {
 		var sustainedFireLimitSeconds, barrelCoolingDurationSeconds, burstSalvoCooldown, beamRaycastDuration float64
 		var thermalCap, thermalDiss, powerGridAllocationWeight float64
 		var radarCrossSection, sensorResolutionTier, jammingSusceptibility, targetLockTime float64
-		var radarImmune, shieldGatedStealthThresholdBool, decloakOnActionFlag bool
+		var radarImmune, decloakOnActionFlag bool
+		var shieldGatedStealthThreshold float64
 		var stealthDelay float64
 		var resourceHarvestingType int
 		var requiresReconTelemetry, requiresAnchorDrone, requiresReconAnchor, portDockingBayStatus, starboardDeploymentBayStatus, salvageableUponDestruction bool
@@ -79,7 +80,7 @@ func InitDB() {
 			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity, 
 			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds, 
 			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
-			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThresholdBool, 
+			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold, 
 			&decloakOnActionFlag, &stealthDelay,
 			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus, 
 			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration, 
