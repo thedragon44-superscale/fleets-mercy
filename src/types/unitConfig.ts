@@ -1,6 +1,7 @@
 export interface UnitConfigConfigPayload {
   weightClass?: number;
   visionRange?: number;
+  sensorRange?: number;
   aggroRange?: number;
   aggroThreatWeight?: number;
   retreatMoraleThreshold?: number;

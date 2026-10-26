@@ -112,6 +112,7 @@ table UnitConfigUpdate {
   power_grid_allocation_weight: double;
 
   // 5. Radar, Sensor & Stealth Systems
+  sensor_range: double;
   radar_cross_section: double;
   sensor_resolution_tier: int;
   jamming_susceptibility: double;

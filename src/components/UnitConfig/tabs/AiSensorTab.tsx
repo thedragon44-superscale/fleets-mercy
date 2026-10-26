@@ -62,6 +62,22 @@ export const AiSensorTab: React.FC<AiSensorTabProps> = ({ config, onChange }) =>
           />
         </div>
 
+        {/* Sensor Range (Bubble Radar) */}
+        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
+          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
+            <span>Sensor Range (Bubble) (m)</span>
+            <span className="text-cyan-400 font-black">{localValues.sensorRange ?? 0}</span>
+          </div>
+          <input
+            type="range" min="0" max="10000" step="100"
+            value={localValues.sensorRange ?? 0}
+            onChange={(e) => handleSliderChange('sensorRange', parseFloat(e.target.value))}
+            onMouseUp={(e) => handleCommitChange('sensorRange', parseFloat((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => handleCommitChange('sensorRange', parseFloat((e.target as HTMLInputElement).value))}
+            className="accent-cyan-400 cursor-pointer"
+          />
+        </div>
+
         {/* Aggro Range */}
         <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">

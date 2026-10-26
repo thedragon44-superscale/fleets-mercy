@@ -21,10 +21,10 @@ func (r *GameRoom) GetUnitVisibilityState(playerID string, target *models.FleetU
 			continue
 		}
 
-		// Determine sensor range dynamically from the database-backed VisionRange property
-		sensorRange := float64(unit.VisionRange)
+		// Determine sensor range dynamically from the database-backed SensorRange property (bubble radar)
+		sensorRange := unit.SensorRange
 		if sensorRange <= 0 {
-			sensorRange = 600.0 // Standard visual baseline default
+			sensorRange = 600.0 // Standard sensor baseline default
 		}
 
 		// Calculate distance from observer to the target

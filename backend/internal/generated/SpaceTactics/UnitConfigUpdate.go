@@ -573,7 +573,7 @@ func (rcv *UnitConfigUpdate) MutatePowerGridAllocationWeight(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(92, n)
 }
 
-func (rcv *UnitConfigUpdate) RadarCrossSection() float64 {
+func (rcv *UnitConfigUpdate) SensorRange() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(94))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
@@ -581,12 +581,24 @@ func (rcv *UnitConfigUpdate) RadarCrossSection() float64 {
 	return 0.0
 }
 
-func (rcv *UnitConfigUpdate) MutateRadarCrossSection(n float64) bool {
+func (rcv *UnitConfigUpdate) MutateSensorRange(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(94, n)
 }
 
-func (rcv *UnitConfigUpdate) SensorResolutionTier() int32 {
+func (rcv *UnitConfigUpdate) RadarCrossSection() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(96))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateRadarCrossSection(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(96, n)
+}
+
+func (rcv *UnitConfigUpdate) SensorResolutionTier() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(98))
 	if o != 0 {
 		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
@@ -594,22 +606,10 @@ func (rcv *UnitConfigUpdate) SensorResolutionTier() int32 {
 }
 
 func (rcv *UnitConfigUpdate) MutateSensorResolutionTier(n int32) bool {
-	return rcv._tab.MutateInt32Slot(96, n)
+	return rcv._tab.MutateInt32Slot(98, n)
 }
 
 func (rcv *UnitConfigUpdate) JammingSusceptibility() float64 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(98))
-	if o != 0 {
-		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
-	}
-	return 0.0
-}
-
-func (rcv *UnitConfigUpdate) MutateJammingSusceptibility(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(98, n)
-}
-
-func (rcv *UnitConfigUpdate) TargetLockTime() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(100))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
@@ -617,12 +617,24 @@ func (rcv *UnitConfigUpdate) TargetLockTime() float64 {
 	return 0.0
 }
 
-func (rcv *UnitConfigUpdate) MutateTargetLockTime(n float64) bool {
+func (rcv *UnitConfigUpdate) MutateJammingSusceptibility(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(100, n)
 }
 
-func (rcv *UnitConfigUpdate) RadarImmunityActive() bool {
+func (rcv *UnitConfigUpdate) TargetLockTime() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(102))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateTargetLockTime(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(102, n)
+}
+
+func (rcv *UnitConfigUpdate) RadarImmunityActive() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(104))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
 	}
@@ -630,11 +642,11 @@ func (rcv *UnitConfigUpdate) RadarImmunityActive() bool {
 }
 
 func (rcv *UnitConfigUpdate) MutateRadarImmunityActive(n bool) bool {
-	return rcv._tab.MutateBoolSlot(102, n)
+	return rcv._tab.MutateBoolSlot(104, n)
 }
 
 func (rcv *UnitConfigUpdate) ShieldGatedStealthThreshold() float64 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(104))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(106))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
 	}
@@ -642,11 +654,11 @@ func (rcv *UnitConfigUpdate) ShieldGatedStealthThreshold() float64 {
 }
 
 func (rcv *UnitConfigUpdate) MutateShieldGatedStealthThreshold(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(104, n)
+	return rcv._tab.MutateFloat64Slot(106, n)
 }
 
 func (rcv *UnitConfigUpdate) DecloakOnActionFlag() bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(106))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(108))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
 	}
@@ -654,11 +666,11 @@ func (rcv *UnitConfigUpdate) DecloakOnActionFlag() bool {
 }
 
 func (rcv *UnitConfigUpdate) MutateDecloakOnActionFlag(n bool) bool {
-	return rcv._tab.MutateBoolSlot(106, n)
+	return rcv._tab.MutateBoolSlot(108, n)
 }
 
 func (rcv *UnitConfigUpdate) StealthRecoveryDelaySeconds() float64 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(108))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(110))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
 	}
@@ -666,11 +678,11 @@ func (rcv *UnitConfigUpdate) StealthRecoveryDelaySeconds() float64 {
 }
 
 func (rcv *UnitConfigUpdate) MutateStealthRecoveryDelaySeconds(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(108, n)
+	return rcv._tab.MutateFloat64Slot(110, n)
 }
 
 func (rcv *UnitConfigUpdate) ResourceHarvestingType() int32 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(110))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(112))
 	if o != 0 {
 		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
@@ -678,22 +690,10 @@ func (rcv *UnitConfigUpdate) ResourceHarvestingType() int32 {
 }
 
 func (rcv *UnitConfigUpdate) MutateResourceHarvestingType(n int32) bool {
-	return rcv._tab.MutateInt32Slot(110, n)
+	return rcv._tab.MutateInt32Slot(112, n)
 }
 
 func (rcv *UnitConfigUpdate) RequiresReconTelemetry() bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(112))
-	if o != 0 {
-		return rcv._tab.GetBool(o + rcv._tab.Pos)
-	}
-	return false
-}
-
-func (rcv *UnitConfigUpdate) MutateRequiresReconTelemetry(n bool) bool {
-	return rcv._tab.MutateBoolSlot(112, n)
-}
-
-func (rcv *UnitConfigUpdate) RequiresAnchorDrone() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(114))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
@@ -701,11 +701,11 @@ func (rcv *UnitConfigUpdate) RequiresAnchorDrone() bool {
 	return false
 }
 
-func (rcv *UnitConfigUpdate) MutateRequiresAnchorDrone(n bool) bool {
+func (rcv *UnitConfigUpdate) MutateRequiresReconTelemetry(n bool) bool {
 	return rcv._tab.MutateBoolSlot(114, n)
 }
 
-func (rcv *UnitConfigUpdate) RequiresReconAnchor() bool {
+func (rcv *UnitConfigUpdate) RequiresAnchorDrone() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(116))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
@@ -713,11 +713,11 @@ func (rcv *UnitConfigUpdate) RequiresReconAnchor() bool {
 	return false
 }
 
-func (rcv *UnitConfigUpdate) MutateRequiresReconAnchor(n bool) bool {
+func (rcv *UnitConfigUpdate) MutateRequiresAnchorDrone(n bool) bool {
 	return rcv._tab.MutateBoolSlot(116, n)
 }
 
-func (rcv *UnitConfigUpdate) PortDockingBayStatus() bool {
+func (rcv *UnitConfigUpdate) RequiresReconAnchor() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(118))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
@@ -725,11 +725,11 @@ func (rcv *UnitConfigUpdate) PortDockingBayStatus() bool {
 	return false
 }
 
-func (rcv *UnitConfigUpdate) MutatePortDockingBayStatus(n bool) bool {
+func (rcv *UnitConfigUpdate) MutateRequiresReconAnchor(n bool) bool {
 	return rcv._tab.MutateBoolSlot(118, n)
 }
 
-func (rcv *UnitConfigUpdate) StarboardDeploymentBayStatus() bool {
+func (rcv *UnitConfigUpdate) PortDockingBayStatus() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(120))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
@@ -737,11 +737,11 @@ func (rcv *UnitConfigUpdate) StarboardDeploymentBayStatus() bool {
 	return false
 }
 
-func (rcv *UnitConfigUpdate) MutateStarboardDeploymentBayStatus(n bool) bool {
+func (rcv *UnitConfigUpdate) MutatePortDockingBayStatus(n bool) bool {
 	return rcv._tab.MutateBoolSlot(120, n)
 }
 
-func (rcv *UnitConfigUpdate) SalvageableUponDestruction() bool {
+func (rcv *UnitConfigUpdate) StarboardDeploymentBayStatus() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(122))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
@@ -749,23 +749,23 @@ func (rcv *UnitConfigUpdate) SalvageableUponDestruction() bool {
 	return false
 }
 
-func (rcv *UnitConfigUpdate) MutateSalvageableUponDestruction(n bool) bool {
+func (rcv *UnitConfigUpdate) MutateStarboardDeploymentBayStatus(n bool) bool {
 	return rcv._tab.MutateBoolSlot(122, n)
 }
 
-func (rcv *UnitConfigUpdate) CryoGasRadius() float64 {
+func (rcv *UnitConfigUpdate) SalvageableUponDestruction() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(124))
 	if o != 0 {
-		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
 	}
-	return 0.0
+	return false
 }
 
-func (rcv *UnitConfigUpdate) MutateCryoGasRadius(n float64) bool {
-	return rcv._tab.MutateFloat64Slot(124, n)
+func (rcv *UnitConfigUpdate) MutateSalvageableUponDestruction(n bool) bool {
+	return rcv._tab.MutateBoolSlot(124, n)
 }
 
-func (rcv *UnitConfigUpdate) CryoEffectDuration() float64 {
+func (rcv *UnitConfigUpdate) CryoGasRadius() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(126))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
@@ -773,11 +773,11 @@ func (rcv *UnitConfigUpdate) CryoEffectDuration() float64 {
 	return 0.0
 }
 
-func (rcv *UnitConfigUpdate) MutateCryoEffectDuration(n float64) bool {
+func (rcv *UnitConfigUpdate) MutateCryoGasRadius(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(126, n)
 }
 
-func (rcv *UnitConfigUpdate) GravitonVortexDuration() float64 {
+func (rcv *UnitConfigUpdate) CryoEffectDuration() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(128))
 	if o != 0 {
 		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
@@ -785,12 +785,24 @@ func (rcv *UnitConfigUpdate) GravitonVortexDuration() float64 {
 	return 0.0
 }
 
-func (rcv *UnitConfigUpdate) MutateGravitonVortexDuration(n float64) bool {
+func (rcv *UnitConfigUpdate) MutateCryoEffectDuration(n float64) bool {
 	return rcv._tab.MutateFloat64Slot(128, n)
 }
 
-func (rcv *UnitConfigUpdate) WarpCanisterCapacity() int32 {
+func (rcv *UnitConfigUpdate) GravitonVortexDuration() float64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(130))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateGravitonVortexDuration(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(130, n)
+}
+
+func (rcv *UnitConfigUpdate) WarpCanisterCapacity() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(132))
 	if o != 0 {
 		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
@@ -798,11 +810,11 @@ func (rcv *UnitConfigUpdate) WarpCanisterCapacity() int32 {
 }
 
 func (rcv *UnitConfigUpdate) MutateWarpCanisterCapacity(n int32) bool {
-	return rcv._tab.MutateInt32Slot(130, n)
+	return rcv._tab.MutateInt32Slot(132, n)
 }
 
 func (rcv *UnitConfigUpdate) EmergencyWarpEvacuationTarget() bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(132))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(134))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
 	}
@@ -810,11 +822,11 @@ func (rcv *UnitConfigUpdate) EmergencyWarpEvacuationTarget() bool {
 }
 
 func (rcv *UnitConfigUpdate) MutateEmergencyWarpEvacuationTarget(n bool) bool {
-	return rcv._tab.MutateBoolSlot(132, n)
+	return rcv._tab.MutateBoolSlot(134, n)
 }
 
 func UnitConfigUpdateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(65)
+	builder.StartObject(66)
 }
 func UnitConfigUpdateAddWeightClass(builder *flatbuffers.Builder, weightClass int32) {
 	builder.PrependInt32Slot(0, weightClass, 0)
@@ -951,65 +963,68 @@ func UnitConfigUpdateAddThermalDissipationRate(builder *flatbuffers.Builder, the
 func UnitConfigUpdateAddPowerGridAllocationWeight(builder *flatbuffers.Builder, powerGridAllocationWeight float64) {
 	builder.PrependFloat64Slot(44, powerGridAllocationWeight, 0.0)
 }
+func UnitConfigUpdateAddSensorRange(builder *flatbuffers.Builder, sensorRange float64) {
+	builder.PrependFloat64Slot(45, sensorRange, 0.0)
+}
 func UnitConfigUpdateAddRadarCrossSection(builder *flatbuffers.Builder, radarCrossSection float64) {
-	builder.PrependFloat64Slot(45, radarCrossSection, 0.0)
+	builder.PrependFloat64Slot(46, radarCrossSection, 0.0)
 }
 func UnitConfigUpdateAddSensorResolutionTier(builder *flatbuffers.Builder, sensorResolutionTier int32) {
-	builder.PrependInt32Slot(46, sensorResolutionTier, 0)
+	builder.PrependInt32Slot(47, sensorResolutionTier, 0)
 }
 func UnitConfigUpdateAddJammingSusceptibility(builder *flatbuffers.Builder, jammingSusceptibility float64) {
-	builder.PrependFloat64Slot(47, jammingSusceptibility, 0.0)
+	builder.PrependFloat64Slot(48, jammingSusceptibility, 0.0)
 }
 func UnitConfigUpdateAddTargetLockTime(builder *flatbuffers.Builder, targetLockTime float64) {
-	builder.PrependFloat64Slot(48, targetLockTime, 0.0)
+	builder.PrependFloat64Slot(49, targetLockTime, 0.0)
 }
 func UnitConfigUpdateAddRadarImmunityActive(builder *flatbuffers.Builder, radarImmunityActive bool) {
-	builder.PrependBoolSlot(49, radarImmunityActive, false)
+	builder.PrependBoolSlot(50, radarImmunityActive, false)
 }
 func UnitConfigUpdateAddShieldGatedStealthThreshold(builder *flatbuffers.Builder, shieldGatedStealthThreshold float64) {
-	builder.PrependFloat64Slot(50, shieldGatedStealthThreshold, 0.0)
+	builder.PrependFloat64Slot(51, shieldGatedStealthThreshold, 0.0)
 }
 func UnitConfigUpdateAddDecloakOnActionFlag(builder *flatbuffers.Builder, decloakOnActionFlag bool) {
-	builder.PrependBoolSlot(51, decloakOnActionFlag, false)
+	builder.PrependBoolSlot(52, decloakOnActionFlag, false)
 }
 func UnitConfigUpdateAddStealthRecoveryDelaySeconds(builder *flatbuffers.Builder, stealthRecoveryDelaySeconds float64) {
-	builder.PrependFloat64Slot(52, stealthRecoveryDelaySeconds, 0.0)
+	builder.PrependFloat64Slot(53, stealthRecoveryDelaySeconds, 0.0)
 }
 func UnitConfigUpdateAddResourceHarvestingType(builder *flatbuffers.Builder, resourceHarvestingType int32) {
-	builder.PrependInt32Slot(53, resourceHarvestingType, 0)
+	builder.PrependInt32Slot(54, resourceHarvestingType, 0)
 }
 func UnitConfigUpdateAddRequiresReconTelemetry(builder *flatbuffers.Builder, requiresReconTelemetry bool) {
-	builder.PrependBoolSlot(54, requiresReconTelemetry, false)
+	builder.PrependBoolSlot(55, requiresReconTelemetry, false)
 }
 func UnitConfigUpdateAddRequiresAnchorDrone(builder *flatbuffers.Builder, requiresAnchorDrone bool) {
-	builder.PrependBoolSlot(55, requiresAnchorDrone, false)
+	builder.PrependBoolSlot(56, requiresAnchorDrone, false)
 }
 func UnitConfigUpdateAddRequiresReconAnchor(builder *flatbuffers.Builder, requiresReconAnchor bool) {
-	builder.PrependBoolSlot(56, requiresReconAnchor, false)
+	builder.PrependBoolSlot(57, requiresReconAnchor, false)
 }
 func UnitConfigUpdateAddPortDockingBayStatus(builder *flatbuffers.Builder, portDockingBayStatus bool) {
-	builder.PrependBoolSlot(57, portDockingBayStatus, false)
+	builder.PrependBoolSlot(58, portDockingBayStatus, false)
 }
 func UnitConfigUpdateAddStarboardDeploymentBayStatus(builder *flatbuffers.Builder, starboardDeploymentBayStatus bool) {
-	builder.PrependBoolSlot(58, starboardDeploymentBayStatus, false)
+	builder.PrependBoolSlot(59, starboardDeploymentBayStatus, false)
 }
 func UnitConfigUpdateAddSalvageableUponDestruction(builder *flatbuffers.Builder, salvageableUponDestruction bool) {
-	builder.PrependBoolSlot(59, salvageableUponDestruction, false)
+	builder.PrependBoolSlot(60, salvageableUponDestruction, false)
 }
 func UnitConfigUpdateAddCryoGasRadius(builder *flatbuffers.Builder, cryoGasRadius float64) {
-	builder.PrependFloat64Slot(60, cryoGasRadius, 0.0)
+	builder.PrependFloat64Slot(61, cryoGasRadius, 0.0)
 }
 func UnitConfigUpdateAddCryoEffectDuration(builder *flatbuffers.Builder, cryoEffectDuration float64) {
-	builder.PrependFloat64Slot(61, cryoEffectDuration, 0.0)
+	builder.PrependFloat64Slot(62, cryoEffectDuration, 0.0)
 }
 func UnitConfigUpdateAddGravitonVortexDuration(builder *flatbuffers.Builder, gravitonVortexDuration float64) {
-	builder.PrependFloat64Slot(62, gravitonVortexDuration, 0.0)
+	builder.PrependFloat64Slot(63, gravitonVortexDuration, 0.0)
 }
 func UnitConfigUpdateAddWarpCanisterCapacity(builder *flatbuffers.Builder, warpCanisterCapacity int32) {
-	builder.PrependInt32Slot(63, warpCanisterCapacity, 0)
+	builder.PrependInt32Slot(64, warpCanisterCapacity, 0)
 }
 func UnitConfigUpdateAddEmergencyWarpEvacuationTarget(builder *flatbuffers.Builder, emergencyWarpEvacuationTarget bool) {
-	builder.PrependBoolSlot(64, emergencyWarpEvacuationTarget, false)
+	builder.PrependBoolSlot(65, emergencyWarpEvacuationTarget, false)
 }
 func UnitConfigUpdateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

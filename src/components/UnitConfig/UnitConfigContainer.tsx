@@ -36,7 +36,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }
   }, [initialUnitId]);
 
-  // Fetch templates from PostgreSQL on mount and establish DB baseline
+  // Fetch templates from PostgreSQL on mount and establish DB baseline using correct camelCase mapping
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/templates`)
       .then((res) => res.json())
@@ -46,27 +46,76 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
           Object.keys(data).forEach((key) => {
             const t = data[key];
             loadedConfigs[key] = {
+              weightClass: t.weightClass,
+              visionRange: t.visionRange,
+              aggroRange: t.aggroRange,
+              aggroThreatWeight: t.aggroThreatWeight,
+              retreatMoraleThreshold: t.retreatMoraleThreshold,
+              squadCohesionLeashRange: t.squadCohesionLeashRange,
+              
+              shieldBase: t.shieldBase,
+              hullBase: t.hullBase,
+              quadrantShieldingEnabled: t.quadrantShieldingEnabled,
+              quadrantShieldPoolsEnabled: t.quadrantShieldPoolsEnabled,
+              quadrantHullPoolsEnabled: t.quadrantHullPoolsEnabled,
+              shieldRegenRate: t.shieldRegenRate,
+              shieldRechargeDelayTicks: t.shieldRechargeDelayTicks,
+              directionalShieldArc: t.directionalShieldArc,
+              armorMitigation: t.armorMitigation,
+              armorHardnessRating: t.armorHardnessRating,
+              ablativePlatingDurability: t.ablativePlatingDurability,
+
               speed: t.speed,
-              strafingSpeed: t.strafing_speed,
-              turnRate: t.turn_rate,
-              angularVelocity: t.angular_velocity,
-              accelerationCurve: t.acceleration_curve,
+              strafingSpeed: t.strafingSpeed,
+              turnRate: t.turnRate,
+              angularVelocity: t.angularVelocity,
+              lateralThrustPower: t.lateralThrustPower,
+              reverseThrustPower: t.reverseThrustPower,
+              driftCoefficient: t.driftCoefficient,
+              accelerationCurve: t.accelerationCurve,
+
               dps: t.dps,
-              maxCooldown: t.max_cooldown,
-              projectileRange: t.projectile_range,
-              projectileSpeed: t.projectile_speed,
-              maxThermalCapacity: t.max_thermal_capacity,
-              shieldBase: t.shield_base,
-              hullBase: t.hull_base,
-              shieldRegenRate: t.shield_regen_rate,
-              shieldRechargeDelayTicks: t.shield_recharge_delay_ticks,
-              armorMitigation: t.armor_mitigation,
-              visionRange: t.vision_range,
-              aggroRange: t.aggro_range,
-              retreatMoraleThreshold: t.retreat_morale_threshold,
-              squadCohesionLeashRange: t.squad_cohesion_leash_range,
-              resourceHarvestingType: t.resource_harvesting_type,
-              warpCanisterCapacity: t.warp_canister_capacity,
+              maxCooldown: t.maxCooldown,
+              projectileRange: t.projectileRange,
+              projectileSpeed: t.projectileSpeed,
+              optimalRange: t.optimalRange,
+              maxRange: t.maxRange,
+              engagementRangeCap: t.engagementRangeCap,
+              ammoCapacity: t.ammoCapacity,
+              initialOrdnanceCapacity: t.initialOrdnanceCapacity,
+              turretTraverseSpeed: t.turretTraverseSpeed,
+              weaponDispersionBloom: t.weaponDispersionBloom,
+              projectileTrackingCapability: t.projectileTrackingCapability,
+              shieldPenetrationFactor: t.shieldPenetrationFactor,
+              sustainedFireLimitSeconds: t.sustainedFireLimitSeconds,
+              barrelCoolingDurationSeconds: t.barrelCoolingDurationSeconds,
+              burstSalvoCooldown: t.burstSalvoCooldown,
+              beamRaycastDuration: t.beamRaycastDuration,
+              maxThermalCapacity: t.maxThermalCapacity,
+              thermalDissipationRate: t.thermalDissipationRate,
+              powerGridAllocationWeight: t.powerGridAllocationWeight,
+
+              radarCrossSection: t.radarCrossSection,
+              sensorResolutionTier: t.sensorResolutionTier,
+              jammingSusceptibility: t.jammingSusceptibility,
+              targetLockTime: t.targetLockTime,
+              radarImmunityActive: t.radarImmunityActive,
+              shieldGatedStealthThreshold: t.shieldGatedStealthThreshold,
+              decloakOnActionFlag: t.decloakOnActionFlag,
+              stealthRecoveryDelaySeconds: t.stealthRecoveryDelaySeconds,
+
+              resourceHarvestingType: t.resourceHarvestingType,
+              requiresReconTelemetry: t.requiresReconTelemetry,
+              requiresAnchorDrone: t.requiresAnchorDrone,
+              requiresReconAnchor: t.requiresReconAnchor,
+              portDockingBayStatus: t.portDockingBayStatus,
+              starboardDeploymentBayStatus: t.starboardDeploymentBayStatus,
+              salvageableUponDestruction: t.salvageableUponDestruction,
+              cryoGasRadius: t.cryoGasRadius,
+              cryoEffectDuration: t.cryoEffectDuration,
+              gravitonVortexDuration: t.gravitonVortexDuration,
+              warpCanisterCapacity: t.warpCanisterCapacity,
+              emergencyWarpEvacuationTarget: t.emergencyWarpEvacuationTarget,
             };
           });
           setUnitConfigs(JSON.parse(JSON.stringify(loadedConfigs)));
@@ -89,8 +138,6 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       sendTemplateOverride(selectedUnitId, updatedConfig);
     }
   };
-
-  
 
   // Revert current unit back to its last database / saved configuration state
   const handleResetToDatabase = () => {

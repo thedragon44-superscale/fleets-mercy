@@ -301,7 +301,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Conn.Query(`
 		SELECT 
 			unit_class, ai_default_state,
-			weight_class, vision_range, aggro_range, aggro_threat_weight, retreat_morale_threshold, squad_cohesion_leash_range,
+			weight_class, vision_range, sensor_range, aggro_range, aggro_threat_weight, retreat_morale_threshold, squad_cohesion_leash_range,
 			shield_base, hull_base, quadrant_shielding_enabled, quadrant_shield_pools_enabled, quadrant_hull_pools_enabled, 
 			shield_regen_rate, shield_recharge_delay_ticks, directional_shield_arc, armor_mitigation, armor_hardness_rating, ablative_plating_durability,
 			speed, strafing_speed, turn_rate, angular_velocity, lateral_thrust_power, reverse_thrust_power, drift_coefficient, acceleration_curve,
@@ -325,6 +325,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var class, aiState string
 		var weightClass, visionRange int
+		var sensorRange float64
 		var aggroRange, aggroThreatWeight, retreatMoraleThreshold, squadCohesionLeashRange float64
 		var shieldBase, hullBase, shieldRegenRate, armorMitigation, armorHardnessRating, ablativePlatingDurability float64
 		var quadrantShieldingEnabled, quadrantShieldPoolsEnabled, quadrantHullPoolsEnabled bool
@@ -347,7 +348,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 
 		if err := rows.Scan(
 			&class, &aiState,
-			&weightClass, &visionRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
+			&weightClass, &visionRange, &sensorRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
 			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled, 
 			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
 			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
@@ -368,6 +369,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 			"aiDefaultState":              aiState,
 			"weightClass":                 weightClass,
 			"visionRange":                 visionRange,
+			"sensorRange":                 sensorRange,
 			"aggroRange":                  aggroRange,
 			"aggroThreatWeight":           aggroThreatWeight,
 			"retreatMoraleThreshold":      retreatMoraleThreshold,
@@ -485,8 +487,8 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 			decloak_on_action_flag = $52, stealth_recovery_delay_seconds = $53,
 			resource_harvesting_type = $54, requires_recon_telemetry = $55, requires_anchor_drone = $56, requires_recon_anchor = $57, port_docking_bay_status = $58, 
 			starboard_deployment_bay_status = $59, salvageable_upon_destruction = $60, cryo_gas_radius = $61, cryo_effect_duration = $62, graviton_vortex_duration = $63, 
-			warp_canister_capacity = $64, emergency_warp_evacuation_target = $65
-		WHERE unit_class = $66
+			warp_canister_capacity = $64, emergency_warp_evacuation_target = $65, sensor_range = $66
+		WHERE unit_class = $67
 	`
 
 	_, err := db.Conn.Exec(query,
@@ -501,7 +503,7 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		getBool("decloakOnActionFlag"), getFloat("stealthRecoveryDelaySeconds"),
 		getInt("resourceHarvestingType"), getBool("requiresReconTelemetry"), getBool("requiresAnchorDrone"), getBool("requiresReconAnchor"), getBool("portDockingBayStatus"),
 		getBool("starboardDeploymentBayStatus"), getBool("salvageableUponDestruction"), getFloat("cryoGasRadius"), getFloat("cryoEffectDuration"), getFloat("gravitonVortexDuration"),
-		getInt("warpCanisterCapacity"), getBool("emergencyWarpEvacuationTarget"),
+		getInt("warpCanisterCapacity"), getBool("emergencyWarpEvacuationTarget"), getFloat("sensorRange"),
 		unitType,
 	)
 
@@ -515,6 +517,7 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	if tmpl, exists := db.Templates[unitType]; exists {
 		tmpl.WeightClass = getInt("weightClass")
 		tmpl.VisionRange = getInt("visionRange")
+		tmpl.SensorRange = getFloat("sensorRange")
 		tmpl.AggroRange = getFloat("aggroRange")
 		tmpl.RetreatMoraleThreshold = getFloat("retreatMoraleThreshold")
 		tmpl.SquadCohesionLeashRange = getFloat("squadCohesionLeashRange")

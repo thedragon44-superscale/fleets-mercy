@@ -212,6 +212,7 @@ export function serializeClientInput(actionParams: {
       maxThermalCapacity?: number;
       thermalDissipationRate?: number;
       powerGridAllocationWeight?: number;
+      sensorRange?: number;
       radarCrossSection?: number;
       sensorResolutionTier?: number;
       jammingSusceptibility?: number;
@@ -312,6 +313,7 @@ export function serializeClientInput(actionParams: {
     if (cfg.powerGridAllocationWeight !== undefined) UnitConfigUpdate.addPowerGridAllocationWeight(builder, cfg.powerGridAllocationWeight);
 
     // Radar & Stealth
+    if (cfg.sensorRange !== undefined) UnitConfigUpdate.addSensorRange(builder, cfg.sensorRange);
     if (cfg.radarCrossSection !== undefined) UnitConfigUpdate.addRadarCrossSection(builder, cfg.radarCrossSection);
     if (cfg.sensorResolutionTier !== undefined) UnitConfigUpdate.addSensorResolutionTier(builder, cfg.sensorResolutionTier);
     if (cfg.jammingSusceptibility !== undefined) UnitConfigUpdate.addJammingSusceptibility(builder, cfg.jammingSusceptibility);

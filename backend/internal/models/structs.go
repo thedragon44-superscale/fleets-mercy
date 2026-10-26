@@ -60,6 +60,7 @@ type UnitTemplate struct {
 	AggroRange                       float64         `db:"aggro_range" json:"aggro_range"`
 	WeightClass                      int             `db:"weight_class" json:"weight_class"`
 	VisionRange                      int             `db:"vision_range" json:"vision_range"`
+	SensorRange                      float64         `db:"sensor_range" json:"sensor_range"`
 	DPS                              float64         `db:"dps" json:"dps"`
 	StrafingSpeed                    float64         `db:"strafing_speed" json:"strafing_speed"`
 	TurnRate                         float64         `db:"turn_rate" json:"turn_rate"`
@@ -145,9 +146,10 @@ type FleetUnit struct {
 	MaxCooldown int           `json:"-"`
 	Speed       float64       `json:"-"`
 	AIState     string        `json:"aiState"`
-	WeightClass int           `json:"weightClass"`
-	VisionRange int           `json:"visionRange"`
-	DPS         float64       `json:"dps"`
+	WeightClass int     `json:"weightClass"`
+	VisionRange int     `json:"visionRange"`
+	SensorRange float64 `json:"sensorRange"`
+	DPS         float64 `json:"dps"`
 
 	// --- Tactical & Hierarchical Extensions ---
 	BattalionID          int    `json:"battalionId"`

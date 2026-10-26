@@ -249,6 +249,7 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		DriftCoefficient:             template.DriftCoefficient,
 		WeightClass:                  template.WeightClass,
 		VisionRange:                  template.VisionRange,
+		SensorRange:                  template.SensorRange,
 		DPS:                          template.DPS,
 		ShieldBase:                   template.ShieldBase,
 		HullBase:                     template.HullBase,
@@ -418,6 +419,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 					// 4. AI & Sensors
 					if val := configTable.VisionRange(); val != 0 { tmpl.VisionRange = int(val) }
+					if val := configTable.SensorRange(); val != 0 { tmpl.SensorRange = float64(val) }
 					if val := configTable.AggroRange(); val != 0 { tmpl.AggroRange = float64(val) }
 					if val := configTable.RetreatMoraleThreshold(); val != 0 { tmpl.RetreatMoraleThreshold = float64(val) }
 					if val := configTable.SquadCohesionLeashRange(); val != 0 { tmpl.SquadCohesionLeashRange = float64(val) }
@@ -467,6 +469,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 						if val := configTable.ArmorMitigation(); val != 0 { u.ArmorMitigation = float64(val) }
 
 						if val := configTable.VisionRange(); val != 0 { u.VisionRange = int(val) }
+						if val := configTable.SensorRange(); val != 0 { u.SensorRange = float64(val) }
 						if val := configTable.AggroRange(); val != 0 { u.AggroRange = float64(val) }
 						if val := configTable.RetreatMoraleThreshold(); val != 0 { u.RetreatMoraleThreshold = float64(val) }
 						if val := configTable.SquadCohesionLeashRange(); val != 0 { u.SquadCohesionLeashRange = float64(val) }
