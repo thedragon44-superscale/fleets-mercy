@@ -300,10 +300,19 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Conn.Query(`
 		SELECT 
-			unit_class, speed, max_cooldown, shield_base, hull_base, 
-			ai_default_state, weight_class, vision_range, dps,
-			max_thermal_capacity, thermal_dissipation_rate, ammo_capacity,
-			radar_immunity_active, stealth_recovery_delay_seconds
+			unit_class, ai_default_state,
+			weight_class, vision_range, aggro_range, aggro_threat_weight, retreat_morale_threshold, squad_cohesion_leash_range,
+			shield_base, hull_base, quadrant_shielding_enabled, quadrant_shield_pools_enabled, quadrant_hull_pools_enabled, 
+			shield_regen_rate, shield_recharge_delay_ticks, directional_shield_arc, armor_mitigation, armor_hardness_rating, ablative_plating_durability,
+			speed, strafing_speed, turn_rate, angular_velocity, lateral_thrust_power, reverse_thrust_power, drift_coefficient, acceleration_curve,
+			dps, max_cooldown, projectile_range, projectile_speed, optimal_range, max_range, engagement_range_cap, ammo_capacity, initial_ordnance_capacity, 
+			turret_traverse_speed, weapon_dispersion_bloom, projectile_tracking_capability, shield_penetration_factor, sustained_fire_limit_seconds, 
+			barrel_cooling_duration_seconds, burst_salvo_cooldown, beam_raycast_duration, max_thermal_capacity, thermal_dissipation_rate, power_grid_allocation_weight,
+			radar_cross_section, sensor_resolution_tier, jamming_susceptibility, target_lock_time, radar_immunity_active, shield_gated_stealth_threshold, 
+			decloak_on_action_flag, stealth_recovery_delay_seconds,
+			resource_harvesting_type, requires_recon_telemetry, requires_anchor_drone, requires_recon_anchor, port_docking_bay_status, 
+			starboard_deployment_bay_status, salvageable_upon_destruction, cryo_gas_radius, cryo_effect_duration, graviton_vortex_duration, 
+			warp_canister_capacity, emergency_warp_evacuation_target
 		FROM unit_templates
 	`)
 	if err != nil {
@@ -315,34 +324,113 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 	templatesMap := make(map[string]map[string]interface{})
 	for rows.Next() {
 		var class, aiState string
-		var speed, shieldBase, hullBase, dps, thermalCap, thermalDiss, stealthDelay float64
-		var maxCooldown, weightClass, visionRange, ammoCap int
-		var radarImmune bool
+		var weightClass, visionRange int
+		var aggroRange, aggroThreatWeight, retreatMoraleThreshold, squadCohesionLeashRange float64
+		var shieldBase, hullBase, shieldRegenRate, armorMitigation, armorHardnessRating, ablativePlatingDurability float64
+		var quadrantShieldingEnabled, quadrantShieldPoolsEnabled, quadrantHullPoolsEnabled bool
+		var shieldRechargeDelayTicks int
+		var directionalShieldArc float64
+		var speed, strafingSpeed, turnRate, angularVelocity, lateralThrustPower, reverseThrustPower, driftCoefficient, accelerationCurve float64
+		var dps, projectileRange, projectileSpeed, optimalRange, maxRange, engagementRangeCap float64
+		var maxCooldown, ammoCap, initialOrdnanceCapacity int
+		var turretTraverseSpeed, weaponDispersionBloom, projectileTrackingCapability, shieldPenetrationFactor float64
+		var sustainedFireLimitSeconds, barrelCoolingDurationSeconds, burstSalvoCooldown, beamRaycastDuration float64
+		var thermalCap, thermalDiss, powerGridAllocationWeight float64
+		var radarCrossSection, sensorResolutionTier, jammingSusceptibility, targetLockTime float64
+		var radarImmune, decloakOnActionFlag, emergencyWarpEvacuationTarget bool
+		var shieldGatedStealthThreshold float64
+		var stealthDelay float64
+		var resourceHarvestingType int
+		var requiresReconTelemetry, requiresAnchorDrone, requiresReconAnchor, portDockingBayStatus, starboardDeploymentBayStatus, salvageableUponDestruction bool
+		var cryoGasRadius, cryoEffectDuration, gravitonVortexDuration float64
+		var warpCanisterCapacity int
 
 		if err := rows.Scan(
-			&class, &speed, &maxCooldown, &shieldBase, &hullBase, 
-			&aiState, &weightClass, &visionRange, &dps,
-			&thermalCap, &thermalDiss, &ammoCap,
-			&radarImmune, &stealthDelay,
+			&class, &aiState,
+			&weightClass, &visionRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
+			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled, 
+			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
+			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
+			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity, 
+			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds, 
+			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
+			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold, 
+			&decloakOnActionFlag, &stealthDelay,
+			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus, 
+			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration, 
+			&warpCanisterCapacity, &emergencyWarpEvacuationTarget,
 		); err != nil {
 			continue
 		}
 
 		templatesMap[class] = map[string]interface{}{
-			"unit_class":                   class,
-			"speed":                        speed,
-			"max_cooldown":                 maxCooldown,
-			"shield_base":                  shieldBase,
-			"hull_base":                    hullBase,
-			"ai_default_state":             aiState,
-			"weight_class":                 weightClass,
-			"vision_range":                 visionRange,
-			"dps":                          dps,
-			"max_thermal_capacity":         thermalCap,
-			"thermal_dissipation_rate":     thermalDiss,
-			"ammo_capacity":                ammoCap,
-			"radar_immunity_active":        radarImmune,
-			"stealth_recovery_delay_seconds": stealthDelay,
+			"unitClass":                   class,
+			"aiDefaultState":              aiState,
+			"weightClass":                 weightClass,
+			"visionRange":                 visionRange,
+			"aggroRange":                  aggroRange,
+			"aggroThreatWeight":           aggroThreatWeight,
+			"retreatMoraleThreshold":      retreatMoraleThreshold,
+			"squadCohesionLeashRange":     squadCohesionLeashRange,
+			"shieldBase":                  shieldBase,
+			"hullBase":                    hullBase,
+			"quadrantShieldingEnabled":    quadrantShieldingEnabled,
+			"quadrantShieldPoolsEnabled":  quadrantShieldPoolsEnabled,
+			"quadrantHullPoolsEnabled":    quadrantHullPoolsEnabled,
+			"shieldRegenRate":             shieldRegenRate,
+			"shieldRechargeDelayTicks":    shieldRechargeDelayTicks,
+			"directionalShieldArc":        directionalShieldArc,
+			"armorMitigation":             armorMitigation,
+			"armorHardnessRating":         armorHardnessRating,
+			"ablativePlatingDurability":   ablativePlatingDurability,
+			"speed":                       speed,
+			"strafingSpeed":               strafingSpeed,
+			"turnRate":                    turnRate,
+			"angularVelocity":             angularVelocity,
+			"lateralThrustPower":          lateralThrustPower,
+			"reverseThrustPower":          reverseThrustPower,
+			"driftCoefficient":            driftCoefficient,
+			"accelerationCurve":           accelerationCurve,
+			"dps":                         dps,
+			"maxCooldown":                 maxCooldown,
+			"projectileRange":             projectileRange,
+			"projectileSpeed":             projectileSpeed,
+			"optimalRange":                optimalRange,
+			"maxRange":                    maxRange,
+			"engagementRangeCap":          engagementRangeCap,
+			"ammoCapacity":                ammoCap,
+			"initialOrdnanceCapacity":     initialOrdnanceCapacity,
+			"turretTraverseSpeed":         turretTraverseSpeed,
+			"weaponDispersionBloom":       weaponDispersionBloom,
+			"projectileTrackingCapability": projectileTrackingCapability,
+			"shieldPenetrationFactor":     shieldPenetrationFactor,
+			"sustainedFireLimitSeconds":   sustainedFireLimitSeconds,
+			"barrelCoolingDurationSeconds": barrelCoolingDurationSeconds,
+			"burstSalvoCooldown":          burstSalvoCooldown,
+			"beamRaycastDuration":         beamRaycastDuration,
+			"maxThermalCapacity":          thermalCap,
+			"thermalDissipationRate":      thermalDiss,
+			"powerGridAllocationWeight":   powerGridAllocationWeight,
+			"radarCrossSection":           radarCrossSection,
+			"sensorResolutionTier":        sensorResolutionTier,
+			"jammingSusceptibility":       jammingSusceptibility,
+			"targetLockTime":              targetLockTime,
+			"radarImmunityActive":         radarImmune,
+			"shieldGatedStealthThreshold": shieldGatedStealthThreshold,
+			"decloakOnActionFlag":         decloakOnActionFlag,
+			"stealthRecoveryDelaySeconds": stealthDelay,
+			"resourceHarvestingType":      resourceHarvestingType,
+			"requiresReconTelemetry":      requiresReconTelemetry,
+			"requiresAnchorDrone":         requiresAnchorDrone,
+			"requiresReconAnchor":         requiresReconAnchor,
+			"portDockingBayStatus":        portDockingBayStatus,
+			"starboardDeploymentBayStatus": starboardDeploymentBayStatus,
+			"salvageableUponDestruction":  salvageableUponDestruction,
+			"cryoGasRadius":               cryoGasRadius,
+			"cryoEffectDuration":          cryoEffectDuration,
+			"gravitonVortexDuration":      gravitonVortexDuration,
+			"warpCanisterCapacity":        warpCanisterCapacity,
+			"emergencyWarpEvacuationTarget": emergencyWarpEvacuationTarget,
 		}
 	}
 
@@ -371,35 +459,56 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	speed, _ := req["speed"].(float64)
-	dps, _ := req["dps"].(float64)
-	shieldBase, _ := req["shieldBase"].(float64)
-	hullBase, _ := req["hullBase"].(float64)
-	maxCooldown, _ := req["maxCooldown"].(float64)
-
-	_, err := db.Conn.Exec(
-		`UPDATE unit_templates SET speed = $1, dps = $2, shield_base = $3, hull_base = $4, max_cooldown = $5 WHERE unit_class = $6`,
-		speed, dps, shieldBase, hullBase, int(maxCooldown), unitType,
-	)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	getFloat := func(key string) float64 {
+		if v, ok := req[key].(float64); ok { return v }
+		return 0
+	}
+	getInt := func(key string) int {
+		if v, ok := req[key].(float64); ok { return int(v) }
+		return 0
+	}
+	getBool := func(key string) bool {
+		if v, ok := req[key].(bool); ok { return v }
+		return false
 	}
 
-	// Update in-memory cache instantly
-	if unit, exists := db.Templates[unitType]; exists {
-		unit.Speed = speed
-		unit.DPS = dps
-		unit.Shields.Front = shieldBase
-		unit.Shields.Rear = shieldBase
-		unit.Shields.Port = shieldBase
-		unit.Shields.Starboard = shieldBase
-		unit.Hull.Front = hullBase
-		unit.Hull.Rear = hullBase
-		unit.Hull.Port = hullBase
-		unit.Hull.Starboard = hullBase
-		unit.MaxCooldown = int(maxCooldown)
-		db.Templates[unitType] = unit
+	query := `
+		UPDATE unit_templates SET 
+			weight_class = $1, vision_range = $2, aggro_range = $3, aggro_threat_weight = $4, retreat_morale_threshold = $5, squad_cohesion_leash_range = $6,
+			shield_base = $7, hull_base = $8, quadrant_shielding_enabled = $9, quadrant_shield_pools_enabled = $10, quadrant_hull_pools_enabled = $11, 
+			shield_regen_rate = $12, shield_recharge_delay_ticks = $13, directional_shield_arc = $14, armor_mitigation = $15, armor_hardness_rating = $16, ablative_plating_durability = $17,
+			speed = $18, strafing_speed = $19, turn_rate = $20, angular_velocity = $21, lateral_thrust_power = $22, reverse_thrust_power = $23, drift_coefficient = $24, acceleration_curve = $25,
+			dps = $26, max_cooldown = $27, projectile_range = $28, projectile_speed = $29, optimal_range = $30, max_range = $31, engagement_range_cap = $32, ammo_capacity = $33, initial_ordnance_capacity = $34, 
+			turret_traverse_speed = $35, weapon_dispersion_bloom = $36, projectile_tracking_capability = $37, shield_penetration_factor = $38, sustained_fire_limit_seconds = $39, 
+			barrel_cooling_duration_seconds = $40, burst_salvo_cooldown = $41, beam_raycast_duration = $42, max_thermal_capacity = $43, thermal_dissipation_rate = $44, power_grid_allocation_weight = $45,
+			radar_cross_section = $46, sensor_resolution_tier = $47, jamming_susceptibility = $48, target_lock_time = $49, radar_immunity_active = $50, shield_gated_stealth_threshold = $51, 
+			decloak_on_action_flag = $52, stealth_recovery_delay_seconds = $53,
+			resource_harvesting_type = $54, requires_recon_telemetry = $55, requires_anchor_drone = $56, requires_recon_anchor = $57, port_docking_bay_status = $58, 
+			starboard_deployment_bay_status = $59, salvageable_upon_destruction = $60, cryo_gas_radius = $61, cryo_effect_duration = $62, graviton_vortex_duration = $63, 
+			warp_canister_capacity = $64, emergency_warp_evacuation_target = $65
+		WHERE unit_class = $66
+	`
+
+	_, err := db.Conn.Exec(query,
+		getInt("weightClass"), getInt("visionRange"), getFloat("aggroRange"), getFloat("aggroThreatWeight"), getFloat("retreatMoraleThreshold"), getFloat("squadCohesionLeashRange"),
+		getFloat("shieldBase"), getFloat("hullBase"), getBool("quadrantShieldingEnabled"), getBool("quadrantShieldPoolsEnabled"), getBool("quadrantHullPoolsEnabled"),
+		getFloat("shieldRegenRate"), getInt("shieldRechargeDelayTicks"), getFloat("directionalShieldArc"), getFloat("armorMitigation"), getFloat("armorHardnessRating"), getFloat("ablativePlatingDurability"),
+		getFloat("speed"), getFloat("strafingSpeed"), getFloat("turnRate"), getFloat("angularVelocity"), getFloat("lateralThrustPower"), getFloat("reverseThrustPower"), getFloat("driftCoefficient"), getFloat("accelerationCurve"),
+		getFloat("dps"), getInt("maxCooldown"), getFloat("projectileRange"), getFloat("projectileSpeed"), getFloat("optimalRange"), getFloat("maxRange"), getFloat("engagementRangeCap"), getInt("ammoCapacity"), getInt("initialOrdnanceCapacity"),
+		getFloat("turretTraverseSpeed"), getFloat("weaponDispersionBloom"), getFloat("projectileTrackingCapability"), getFloat("shieldPenetrationFactor"), getFloat("sustainedFireLimitSeconds"),
+		getFloat("barrelCoolingDurationSeconds"), getFloat("burstSalvoCooldown"), getFloat("beamRaycastDuration"), getFloat("maxThermalCapacity"), getFloat("thermalDissipationRate"), getFloat("powerGridAllocationWeight"),
+		getFloat("radarCrossSection"), getFloat("sensorResolutionTier"), getFloat("jammingSusceptibility"), getFloat("targetLockTime"), getBool("radarImmunityActive"), getFloat("shieldGatedStealthThreshold"),
+		getBool("decloakOnActionFlag"), getFloat("stealthRecoveryDelaySeconds"),
+		getInt("resourceHarvestingType"), getBool("requiresReconTelemetry"), getBool("requiresAnchorDrone"), getBool("requiresReconAnchor"), getBool("portDockingBayStatus"),
+		getBool("starboardDeploymentBayStatus"), getBool("salvageableUponDestruction"), getFloat("cryoGasRadius"), getFloat("cryoEffectDuration"), getFloat("gravitonVortexDuration"),
+		getInt("warpCanisterCapacity"), getBool("emergencyWarpEvacuationTarget"),
+		unitType,
+	)
+
+	if err != nil {
+		log.Printf("❌ SaveTemplateHandler Error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
