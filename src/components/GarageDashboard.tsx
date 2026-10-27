@@ -11,7 +11,7 @@ export interface UnitBlueprint {
   role: string;
   aiState: string;
   doctrine: string;
-  // Comprehensive Template Variables from DB[cite: 3, 8]
+  // Comprehensive Template Variables from DB
   speed: string;
   strafingSpeed: string;
   turnRate: string;
@@ -29,6 +29,7 @@ export interface UnitBlueprint {
   maxRange: string;
   engagementRangeCap: string;
   visionRange: string;
+  sensorRange: string;
   aggroRange: string;
   retreatMoraleThreshold: string;
   squadCohesionLeashRange: string;
@@ -73,31 +74,32 @@ const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'strafingSpeed' | 'tu
 
 export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map(m => ({
   ...m,
-  speed: 'LOADING...',
-  strafingSpeed: 'LOADING...',
-  turnRate: 'LOADING...',
-  angularVelocity: 'LOADING...',
-  accelerationCurve: 'LOADING...',
-  shields: 'LOADING...',
-  hull: 'LOADING...',
-  shieldRegenRate: 'LOADING...',
-  armorMitigation: 'LOADING...',
-  dps: 'LOADING...',
-  maxCooldown: 'LOADING...',
-  projectileRange: 'LOADING...',
-  projectileSpeed: 'LOADING...',
-  optimalRange: 'LOADING...',
-  maxRange: 'LOADING...',
-  engagementRangeCap: 'LOADING...',
-  visionRange: 'LOADING...',
-  aggroRange: 'LOADING...',
-  retreatMoraleThreshold: 'LOADING...',
-  squadCohesionLeashRange: 'LOADING...',
-  maxThermalCapacity: 'LOADING...',
-  lateralThrustPower: 'LOADING...',
-  reverseThrustPower: 'LOADING...',
-  driftCoefficient: 'LOADING...',
-  ammoCapacity: 'LOADING...'
+  speed: '0.00',
+  strafingSpeed: '0.00',
+  turnRate: '0.00',
+  angularVelocity: '0.00',
+  accelerationCurve: '0.00',
+  shields: '0',
+  hull: '0',
+  shieldRegenRate: '0.00',
+  armorMitigation: '0.00',
+  dps: '0.00',
+  maxCooldown: '0 Ticks',
+  projectileRange: '0px',
+  projectileSpeed: '0.00',
+  optimalRange: '0px',
+  maxRange: '0px',
+  engagementRangeCap: '0px',
+  visionRange: '0px',
+  sensorRange: '0px',
+  aggroRange: '0px',
+  retreatMoraleThreshold: '0.00',
+  squadCohesionLeashRange: '0px',
+  maxThermalCapacity: '0',
+  lateralThrustPower: '0.00',
+  reverseThrustPower: '0.00',
+  driftCoefficient: '0.00',
+  ammoCapacity: '0'
 }));
 
 export interface LoadoutData {
@@ -160,33 +162,45 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
         if (dbTemplates) {
           const dynamicallyBuiltCatalog: UnitBlueprint[] = BASE_CATALOG_METADATA.map((meta) => {
             const t = dbTemplates[meta.id] || {};
+            
+            // Robust accessor checking both camelCase and snake_case properties while supporting numeric 0 correctly
+            const getVal = (camel: string, snake: string, suffix: string = '') => {
+              const val = t[camel] !== undefined && t[camel] !== null ? t[camel] : (t[snake] !== undefined && t[snake] !== null ? t[snake] : undefined);
+              if (val === undefined || val === null) return `0${suffix.includes('px') || suffix.includes('Ticks') ? suffix : ''}`;
+              if (typeof val === 'number') {
+                return Number.isInteger(val) ? `${val}${suffix}` : `${val.toFixed(2)}${suffix}`;
+              }
+              return `${val}${suffix}`;
+            };
+
             return {
               ...meta,
-              speed: t.speed !== undefined ? `${t.speed.toFixed(2)}` : 'N/A',
-              strafingSpeed: t.strafing_speed !== undefined ? `${t.strafing_speed.toFixed(2)}` : 'N/A',
-              turnRate: t.turn_rate !== undefined ? `${t.turn_rate.toFixed(2)}` : 'N/A',
-              angularVelocity: t.angular_velocity !== undefined ? `${t.angular_velocity.toFixed(2)}` : 'N/A',
-              accelerationCurve: t.acceleration_curve !== undefined ? `${t.acceleration_curve.toFixed(2)}` : 'N/A',
-              shields: t.shield_base !== undefined ? `${t.shield_base.toFixed(2)}` : 'N/A',
-              hull: t.hull_base !== undefined ? `${t.hull_base.toFixed(2)}` : 'N/A',
-              shieldRegenRate: t.shield_regen_rate !== undefined ? `${t.shield_regen_rate.toFixed(2)}` : 'N/A',
-              armorMitigation: t.armor_mitigation !== undefined ? `${t.armor_mitigation.toFixed(2)}` : 'N/A',
-              dps: t.dps !== undefined ? `${t.dps.toFixed(2)}` : 'N/A',
-              maxCooldown: t.max_cooldown !== undefined ? `${t.max_cooldown} Ticks` : 'N/A',
-              projectileRange: t.projectile_range !== undefined ? `${t.projectile_range}px` : 'N/A',
-              projectileSpeed: t.projectile_speed !== undefined ? `${t.projectile_speed.toFixed(2)}` : 'N/A',
-              optimalRange: t.optimal_range !== undefined ? `${t.optimal_range}px` : 'N/A',
-              maxRange: t.max_range !== undefined ? `${t.max_range}px` : 'N/A',
-              engagementRangeCap: t.engagement_range_cap !== undefined ? `${t.engagement_range_cap}px` : 'N/A',
-              visionRange: t.vision_range !== undefined ? `${t.vision_range}px` : 'N/A',
-              aggroRange: t.aggro_range !== undefined ? `${t.aggro_range}px` : 'N/A',
-              retreatMoraleThreshold: t.retreat_morale_threshold !== undefined ? `${t.retreat_morale_threshold}` : 'N/A',
-              squadCohesionLeashRange: t.squad_cohesion_leash_range !== undefined ? `${t.squad_cohesion_leash_range}px` : 'N/A',
-              maxThermalCapacity: t.max_thermal_capacity !== undefined ? `${t.max_thermal_capacity}` : 'N/A',
-              lateralThrustPower: t.lateral_thrust_power !== undefined ? `${t.lateral_thrust_power}` : 'N/A',
-              reverseThrustPower: t.reverse_thrust_power !== undefined ? `${t.reverse_thrust_power}` : 'N/A',
-              driftCoefficient: t.drift_coefficient !== undefined ? `${t.drift_coefficient}` : 'N/A',
-              ammoCapacity: t.ammo_capacity !== undefined ? `${t.ammo_capacity}` : 'N/A',
+              speed: getVal('speed', 'speed'),
+              strafingSpeed: getVal('strafingSpeed', 'strafing_speed'),
+              turnRate: getVal('turnRate', 'turn_rate'),
+              angularVelocity: getVal('angularVelocity', 'angular_velocity'),
+              accelerationCurve: getVal('accelerationCurve', 'acceleration_curve'),
+              shields: getVal('shieldBase', 'shield_base'),
+              hull: getVal('hullBase', 'hull_base'),
+              shieldRegenRate: getVal('shieldRegenRate', 'shield_regen_rate'),
+              armorMitigation: getVal('armorMitigation', 'armor_mitigation'),
+              dps: getVal('dps', 'dps'),
+              maxCooldown: getVal('maxCooldown', 'max_cooldown', ' Ticks'),
+              projectileRange: getVal('projectileRange', 'projectile_range', 'px'),
+              projectileSpeed: getVal('projectileSpeed', 'projectile_speed'),
+              optimalRange: getVal('optimalRange', 'optimal_range', 'px'),
+              maxRange: getVal('maxRange', 'max_range', 'px'),
+              engagementRangeCap: getVal('engagementRangeCap', 'engagement_range_cap', 'px'),
+              visionRange: getVal('visionRange', 'vision_range', 'px'),
+              sensorRange: getVal('sensorRange', 'sensor_range', 'px'),
+              aggroRange: getVal('aggroRange', 'aggro_range', 'px'),
+              retreatMoraleThreshold: getVal('retreatMoraleThreshold', 'retreat_morale_threshold'),
+              squadCohesionLeashRange: getVal('squadCohesionLeashRange', 'squad_cohesion_leash_range', 'px'),
+              maxThermalCapacity: getVal('maxThermalCapacity', 'max_thermal_capacity'),
+              lateralThrustPower: getVal('lateralThrustPower', 'lateral_thrust_power'),
+              reverseThrustPower: getVal('reverseThrustPower', 'reverse_thrust_power'),
+              driftCoefficient: getVal('driftCoefficient', 'drift_coefficient'),
+              ammoCapacity: getVal('ammoCapacity', 'ammo_capacity'),
             };
           });
 
@@ -680,6 +694,10 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
                 <div className="text-[8px] font-bold text-slate-500 uppercase">Vision Range</div>
                 <div className="text-[10px] font-black text-cyan-300">{inspectedUnit.visionRange}</div>
+              </div>
+              <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
+                <div className="text-[8px] font-bold text-slate-500 uppercase">Sensor Range</div>
+                <div className="text-[10px] font-black text-cyan-300">{inspectedUnit.sensorRange}</div>
               </div>
               <div className="bg-[#161922] border border-slate-800 rounded-lg p-1.5">
                 <div className="text-[8px] font-bold text-slate-500 uppercase">Aggro Range</div>

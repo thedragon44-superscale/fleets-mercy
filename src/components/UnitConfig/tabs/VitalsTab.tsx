@@ -1,13 +1,15 @@
 // src/components/UnitConfig/tabs/VitalsTab.tsx
 import React, { useState, useEffect } from 'react';
 import { UnitConfigConfigPayload } from '../types';
+import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
 
 interface VitalsTabProps {
   config: UnitConfigConfigPayload;
   onChange: (field: keyof UnitConfigConfigPayload, value: number | boolean) => void;
+  onOpenDoc: (doc: VariableDoc) => void;
 }
 
-export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange }) => {
+export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange, onOpenDoc }) => {
   const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
 
   useEffect(() => {
@@ -22,6 +24,81 @@ export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange }) => {
     onChange(field, val);
   };
 
+  const renderSliderCard = (
+    field: keyof UnitConfigConfigPayload,
+    label: string,
+    min: string,
+    max: string,
+    step: string
+  ) => {
+    const doc = VARIABLE_DOCS[field];
+    const val = (localValues[field] as number) ?? 0;
+
+    return (
+      <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
+        <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
+          <div className="flex items-center gap-1.5">
+            <span>{label}</span>
+            {doc && (
+              <button
+                type="button"
+                onClick={() => onOpenDoc(doc)}
+                className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
+                title="Click for variable documentation"
+              >
+                ?
+              </button>
+            )}
+          </div>
+          <span className="text-cyan-400 font-black">{val}</span>
+        </div>
+        <input
+          type="range" min={min} max={max} step={step}
+          value={val}
+          onChange={(e) => handleSliderChange(field, parseFloat(e.target.value))}
+          onMouseUp={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
+          onTouchEnd={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
+          className="accent-cyan-400 cursor-pointer"
+        />
+      </div>
+    );
+  };
+
+  const renderCheckboxRow = (field: keyof UnitConfigConfigPayload, label: string) => {
+    const doc = VARIABLE_DOCS[field];
+    const checked = !!localValues[field];
+
+    return (
+      <label className="flex items-center justify-between cursor-pointer text-[9px] font-bold text-slate-300 uppercase bg-[#161922] p-2.5 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => {
+              handleSliderChange(field, e.target.checked as any);
+              onChange(field, e.target.checked);
+            }}
+            className="accent-cyan-400 w-3.5 h-3.5 cursor-pointer"
+          />
+          <span>{label}</span>
+        </div>
+        {doc && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              onOpenDoc(doc);
+            }}
+            className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
+            title="Click for variable documentation"
+          >
+            ?
+          </button>
+        )}
+      </label>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -29,174 +106,20 @@ export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Shield Base */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Base Shields (HP)</span>
-            <span className="text-cyan-400 font-black">{localValues.shieldBase ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="25000" step="100"
-            value={localValues.shieldBase ?? 0}
-            onChange={(e) => handleSliderChange('shieldBase', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('shieldBase', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('shieldBase', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
+        {renderSliderCard('shieldBase', 'Base Shields (HP)', '0', '25000', '100')}
+        {renderSliderCard('hullBase', 'Base Hull (HP)', '0', '25000', '100')}
+        {renderSliderCard('shieldRegenRate', 'Shield Regen Rate (HP/s)', '0', '200', '1')}
+        {renderSliderCard('shieldRechargeDelayTicks', 'Recharge Delay (Ticks)', '0', '600', '10')}
+        {renderSliderCard('armorMitigation', 'Armor Mitigation', '0', '1.0', '0.05')}
+        {renderSliderCard('armorHardnessRating', 'Armor Hardness Rating', '0', '50', '1')}
+        {renderSliderCard('ablativePlatingDurability', 'Ablative Plating Durability', '0', '2000', '50')}
+        {renderSliderCard('directionalShieldArc', 'Shield Arc (Degrees)', '45', '360', '45')}
 
-        {/* Hull Base */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Base Hull (HP)</span>
-            <span className="text-cyan-400 font-black">{localValues.hullBase ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="25000" step="100"
-            value={localValues.hullBase ?? 0}
-            onChange={(e) => handleSliderChange('hullBase', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('hullBase', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('hullBase', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Shield Regen Rate */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Shield Regen Rate (HP/s)</span>
-            <span className="text-cyan-400 font-black">{localValues.shieldRegenRate ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="200" step="1"
-            value={localValues.shieldRegenRate ?? 0}
-            onChange={(e) => handleSliderChange('shieldRegenRate', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('shieldRegenRate', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('shieldRegenRate', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Shield Recharge Delay Ticks */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Recharge Delay (Ticks)</span>
-            <span className="text-cyan-400 font-black">{localValues.shieldRechargeDelayTicks ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="600" step="10"
-            value={localValues.shieldRechargeDelayTicks ?? 0}
-            onChange={(e) => handleSliderChange('shieldRechargeDelayTicks', parseInt(e.target.value, 10))}
-            onMouseUp={(e) => handleCommitChange('shieldRechargeDelayTicks', parseInt((e.target as HTMLInputElement).value, 10))}
-            onTouchEnd={(e) => handleCommitChange('shieldRechargeDelayTicks', parseInt((e.target as HTMLInputElement).value, 10))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Armor Mitigation */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Armor Mitigation</span>
-            <span className="text-cyan-400 font-black">{localValues.armorMitigation ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="1.0" step="0.05"
-            value={localValues.armorMitigation ?? 0}
-            onChange={(e) => handleSliderChange('armorMitigation', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('armorMitigation', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('armorMitigation', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Armor Hardness Rating */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Armor Hardness Rating</span>
-            <span className="text-cyan-400 font-black">{localValues.armorHardnessRating ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="50" step="1"
-            value={localValues.armorHardnessRating ?? 0}
-            onChange={(e) => handleSliderChange('armorHardnessRating', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('armorHardnessRating', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('armorHardnessRating', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Ablative Plating Durability */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Ablative Plating Durability</span>
-            <span className="text-cyan-400 font-black">{localValues.ablativePlatingDurability ?? 0}</span>
-          </div>
-          <input
-            type="range" min="0" max="2000" step="50"
-            value={localValues.ablativePlatingDurability ?? 0}
-            onChange={(e) => handleSliderChange('ablativePlatingDurability', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('ablativePlatingDurability', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('ablativePlatingDurability', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Directional Shield Arc */}
-        <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-          <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-            <span>Shield Arc (Degrees)</span>
-            <span className="text-cyan-400 font-black">{localValues.directionalShieldArc ?? 0}</span>
-          </div>
-          <input
-            type="range" min="45" max="360" step="45"
-            value={localValues.directionalShieldArc ?? 0}
-            onChange={(e) => handleSliderChange('directionalShieldArc', parseFloat(e.target.value))}
-            onMouseUp={(e) => handleCommitChange('directionalShieldArc', parseFloat((e.target as HTMLInputElement).value))}
-            onTouchEnd={(e) => handleCommitChange('directionalShieldArc', parseFloat((e.target as HTMLInputElement).value))}
-            className="accent-cyan-400 cursor-pointer"
-          />
-        </div>
-
-        {/* Toggles */}
-        <div className="col-span-full grid grid-cols-3 gap-2 bg-[#161922] p-3 rounded-xl border border-slate-800">
-          <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
-            <input
-              type="checkbox"
-              checked={!!localValues.quadrantShieldingEnabled}
-              onChange={(e) => {
-                handleSliderChange('quadrantShieldingEnabled', e.target.checked);
-                onChange('quadrantShieldingEnabled', e.target.checked);
-              }}
-              className="accent-cyan-400 w-3.5 h-3.5"
-            />
-            Quad Shielding
-          </label>
-
-          <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
-            <input
-              type="checkbox"
-              checked={!!localValues.quadrantShieldPoolsEnabled}
-              onChange={(e) => {
-                handleSliderChange('quadrantShieldPoolsEnabled', e.target.checked);
-                onChange('quadrantShieldPoolsEnabled', e.target.checked);
-              }}
-              className="accent-cyan-400 w-3.5 h-3.5"
-            />
-            Quad Shield Pools
-          </label>
-
-          <label className="flex items-center gap-2 cursor-pointer text-[9px] font-bold text-slate-300 uppercase">
-            <input
-              type="checkbox"
-              checked={!!localValues.quadrantHullPoolsEnabled}
-              onChange={(e) => {
-                handleSliderChange('quadrantHullPoolsEnabled', e.target.checked);
-                onChange('quadrantHullPoolsEnabled', e.target.checked);
-              }}
-              className="accent-cyan-400 w-3.5 h-3.5"
-            />
-            Quad Hull Pools
-          </label>
+        {/* Toggles Grid */}
+        <div className="col-span-full grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {renderCheckboxRow('quadrantShieldingEnabled', 'Quad Shielding')}
+          {renderCheckboxRow('quadrantShieldPoolsEnabled', 'Quad Shield Pools')}
+          {renderCheckboxRow('quadrantHullPoolsEnabled', 'Quad Hull Pools')}
         </div>
       </div>
     </div>

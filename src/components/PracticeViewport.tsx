@@ -304,6 +304,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const isControlled = u.id === activeId;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
+
+          // Query database-backed sensor/vision range dynamically
+          const unitMeta = UNIT_DB.find(item => item.id === u.type);
+          const sensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
+
+          // Draw world-space sensor bubble if range is active
+          if (sensorRange > 0 && !u.isDestroyed) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(rx, ry, sensorRange, 0, Math.PI * 2);
+            ctx.strokeStyle = u.ownerId === 'player' ? 'rgba(0, 243, 255, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+            ctx.fillStyle = u.ownerId === 'player' ? 'rgba(0, 243, 255, 0.025)' : 'rgba(239, 68, 68, 0.025)';
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 6]);
+            ctx.stroke();
+            ctx.restore();
+          }
+
           const isAccelerating = isControlled && !!keys.current['w'];
 
           if (u.type === 'flagship' || u.type === 'battalion_command_ship') {
@@ -347,9 +366,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             for (const u of serverState.current.units) {
               if (u.ownerId === 'player' && !u.isDestroyed) {
                 const unitMeta = UNIT_DB.find(item => item.id === u.type);
-                const visionRange = unitMeta?.visionRange || (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
+                const sensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
                 const dist = Math.hypot(u.pos.x - x, u.pos.y - y);
-                if (dist <= visionRange) {
+                if (dist <= sensorRange) {
                   return true;
                 }
               }
@@ -357,15 +376,15 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             return false;
           };
 
-          // 1. Render Recon Probe sensor bubbles and overlap zones using data-driven vision ranges[cite: 7]
+          // 1. Render Recon Probe sensor bubbles and overlap zones using database-backed sensor ranges
           (serverState.current.units || []).forEach((u: any) => {
             if (u.isDestroyed || u.ownerId !== 'player') return;
             if (u.type === 'recon_probe') {
               const rx = (u.id === activeId ? renderPos.current.x : u.pos.x) * scaleX;
               const ry = (u.id === activeId ? renderPos.current.y : u.pos.y) * scaleY;
               const unitMeta = UNIT_DB.find(item => item.id === u.type);
-              const probeVisionRange = unitMeta?.visionRange || RECON_PROBE_VISION_RANGE;
-              const radiusPixels = probeVisionRange * scaleX;
+              const probeSensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : RECON_PROBE_VISION_RANGE;
+              const radiusPixels = probeSensorRange * scaleX;
 
               radarCtx.beginPath();
               radarCtx.arc(rx, ry, radiusPixels, 0, Math.PI * 2);

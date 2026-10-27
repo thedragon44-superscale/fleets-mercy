@@ -9,6 +9,8 @@ import { AiSensorTab } from './tabs/AiSensorTab';
 import { LogisticsTab } from './tabs/LogisticsTab';
 import { ConfigTabType, UnitConfigConfigPayload } from './types';
 import { API_BASE_URL } from '../../config';
+import { VariableDoc } from '../../constants/variableDocs';
+import { VariableInfoModal } from '../VariableInfoModal';
 
 interface UnitConfigContainerProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
   const [unitConfigs, setUnitConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
   const [originalConfigs, setOriginalConfigs] = useState<{ [unitId: string]: UnitConfigConfigPayload }>({});
   const [statusMsg, setStatusMsg] = useState<string>('');
+  const [activeDoc, setActiveDoc] = useState<VariableDoc | null>(null);
 
   useEffect(() => {
     if (initialUnitId) {
@@ -36,7 +39,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }
   }, [initialUnitId]);
 
-  // Fetch templates from PostgreSQL on mount and establish DB baseline using correct camelCase mapping
+  // Robust template fetch supporting both camelCase and snake_case backend payloads
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/templates`)
       .then((res) => res.json())
@@ -45,77 +48,86 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
           const loadedConfigs: { [key: string]: UnitConfigConfigPayload } = {};
           Object.keys(data).forEach((key) => {
             const t = data[key];
+            
+            // Safe accessor checking both camelCase and snake_case with fallback defaults
+            const pick = (camel: string, snake: string, fallback: any = 0) => {
+              if (t[camel] !== undefined && t[camel] !== null) return t[camel];
+              if (t[snake] !== undefined && t[snake] !== null) return t[snake];
+              return fallback;
+            };
+
             loadedConfigs[key] = {
-              weightClass: t.weightClass,
-              visionRange: t.visionRange,
-              aggroRange: t.aggroRange,
-              aggroThreatWeight: t.aggroThreatWeight,
-              retreatMoraleThreshold: t.retreatMoraleThreshold,
-              squadCohesionLeashRange: t.squadCohesionLeashRange,
+              weightClass: pick('weightClass', 'weight_class', 1),
+              visionRange: pick('visionRange', 'vision_range', 1000),
+              sensorRange: pick('sensorRange', 'sensor_range', 2500),
+              aggroRange: pick('aggroRange', 'aggro_range', 1000),
+              aggroThreatWeight: pick('aggroThreatWeight', 'aggro_threat_weight', 1.0),
+              retreatMoraleThreshold: pick('retreatMoraleThreshold', 'retreat_morale_threshold', 0.25),
+              squadCohesionLeashRange: pick('squadCohesionLeashRange', 'squad_cohesion_leash_range', 500),
               
-              shieldBase: t.shieldBase,
-              hullBase: t.hullBase,
-              quadrantShieldingEnabled: t.quadrantShieldingEnabled,
-              quadrantShieldPoolsEnabled: t.quadrantShieldPoolsEnabled,
-              quadrantHullPoolsEnabled: t.quadrantHullPoolsEnabled,
-              shieldRegenRate: t.shieldRegenRate,
-              shieldRechargeDelayTicks: t.shieldRechargeDelayTicks,
-              directionalShieldArc: t.directionalShieldArc,
-              armorMitigation: t.armorMitigation,
-              armorHardnessRating: t.armorHardnessRating,
-              ablativePlatingDurability: t.ablativePlatingDurability,
+              shieldBase: pick('shieldBase', 'shield_base', 100),
+              hullBase: pick('hullBase', 'hull_base', 100),
+              quadrantShieldingEnabled: !!pick('quadrantShieldingEnabled', 'quadrant_shielding_enabled', false),
+              quadrantShieldPoolsEnabled: !!pick('quadrantShieldPoolsEnabled', 'quadrant_shield_pools_enabled', false),
+              quadrantHullPoolsEnabled: !!pick('quadrantHullPoolsEnabled', 'quadrant_hull_pools_enabled', false),
+              shieldRegenRate: pick('shieldRegenRate', 'shield_regen_rate', 1.0),
+              shieldRechargeDelayTicks: pick('shieldRechargeDelayTicks', 'shield_recharge_delay_ticks', 60),
+              directionalShieldArc: pick('directionalShieldArc', 'directional_shield_arc', 180),
+              armorMitigation: pick('armorMitigation', 'armor_mitigation', 0),
+              armorHardnessRating: pick('armorHardnessRating', 'armor_hardness_rating', 1),
+              ablativePlatingDurability: pick('ablativePlatingDurability', 'ablative_plating_durability', 0),
 
-              speed: t.speed,
-              strafingSpeed: t.strafingSpeed,
-              turnRate: t.turnRate,
-              angularVelocity: t.angularVelocity,
-              lateralThrustPower: t.lateralThrustPower,
-              reverseThrustPower: t.reverseThrustPower,
-              driftCoefficient: t.driftCoefficient,
-              accelerationCurve: t.accelerationCurve,
+              speed: pick('speed', 'speed', 5),
+              strafingSpeed: pick('strafingSpeed', 'strafing_speed', 2),
+              turnRate: pick('turnRate', 'turn_rate', 0.1),
+              angularVelocity: pick('angularVelocity', 'angular_velocity', 0.5),
+              lateralThrustPower: pick('lateralThrustPower', 'lateral_thrust_power', 1),
+              reverseThrustPower: pick('reverseThrustPower', 'reverse_thrust_power', 1),
+              driftCoefficient: pick('driftCoefficient', 'drift_coefficient', 0.1),
+              accelerationCurve: pick('accelerationCurve', 'acceleration_curve', 1),
 
-              dps: t.dps,
-              maxCooldown: t.maxCooldown,
-              projectileRange: t.projectileRange,
-              projectileSpeed: t.projectileSpeed,
-              optimalRange: t.optimalRange,
-              maxRange: t.maxRange,
-              engagementRangeCap: t.engagementRangeCap,
-              ammoCapacity: t.ammoCapacity,
-              initialOrdnanceCapacity: t.initialOrdnanceCapacity,
-              turretTraverseSpeed: t.turretTraverseSpeed,
-              weaponDispersionBloom: t.weaponDispersionBloom,
-              projectileTrackingCapability: t.projectileTrackingCapability,
-              shieldPenetrationFactor: t.shieldPenetrationFactor,
-              sustainedFireLimitSeconds: t.sustainedFireLimitSeconds,
-              barrelCoolingDurationSeconds: t.barrelCoolingDurationSeconds,
-              burstSalvoCooldown: t.burstSalvoCooldown,
-              beamRaycastDuration: t.beamRaycastDuration,
-              maxThermalCapacity: t.maxThermalCapacity,
-              thermalDissipationRate: t.thermalDissipationRate,
-              powerGridAllocationWeight: t.powerGridAllocationWeight,
+              dps: pick('dps', 'dps', 10),
+              maxCooldown: pick('maxCooldown', 'max_cooldown', 30),
+              projectileRange: pick('projectileRange', 'projectile_range', 1000),
+              projectileSpeed: pick('projectileSpeed', 'projectile_speed', 20),
+              optimalRange: pick('optimalRange', 'optimal_range', 500),
+              maxRange: pick('maxRange', 'max_range', 1500),
+              engagementRangeCap: pick('engagementRangeCap', 'engagement_range_cap', 1500),
+              ammoCapacity: pick('ammoCapacity', 'ammo_capacity', -1),
+              initialOrdnanceCapacity: pick('initialOrdnanceCapacity', 'initial_ordnance_capacity', 100),
+              turretTraverseSpeed: pick('turretTraverseSpeed', 'turret_traverse_speed', 1),
+              weaponDispersionBloom: pick('weaponDispersionBloom', 'weapon_dispersion_bloom', 0),
+              projectileTrackingCapability: pick('projectileTrackingCapability', 'projectile_tracking_capability', 0),
+              shieldPenetrationFactor: pick('shieldPenetrationFactor', 'shield_penetration_factor', 0),
+              sustainedFireLimitSeconds: pick('sustainedFireLimitSeconds', 'sustained_fire_limit_seconds', 10),
+              barrelCoolingDurationSeconds: pick('barrelCoolingDurationSeconds', 'barrel_cooling_duration_seconds', 3),
+              burstSalvoCooldown: pick('burstSalvoCooldown', 'burst_salvo_cooldown', 0),
+              beamRaycastDuration: pick('beamRaycastDuration', 'beam_raycast_duration', 0),
+              maxThermalCapacity: pick('maxThermalCapacity', 'max_thermal_capacity', 100),
+              thermalDissipationRate: pick('thermalDissipationRate', 'thermal_dissipation_rate', 10),
+              powerGridAllocationWeight: pick('powerGridAllocationWeight', 'power_grid_allocation_weight', 1),
 
-              radarCrossSection: t.radarCrossSection,
-              sensorResolutionTier: t.sensorResolutionTier,
-              jammingSusceptibility: t.jammingSusceptibility,
-              targetLockTime: t.targetLockTime,
-              radarImmunityActive: t.radarImmunityActive,
-              shieldGatedStealthThreshold: t.shieldGatedStealthThreshold,
-              decloakOnActionFlag: t.decloakOnActionFlag,
-              stealthRecoveryDelaySeconds: t.stealthRecoveryDelaySeconds,
+              radarCrossSection: pick('radarCrossSection', 'radar_cross_section', 1),
+              sensorResolutionTier: pick('sensorResolutionTier', 'sensor_resolution_tier', 1),
+              jammingSusceptibility: pick('jammingSusceptibility', 'jamming_susceptibility', 0),
+              targetLockTime: pick('targetLockTime', 'target_lock_time', 1),
+              radarImmunityActive: !!pick('radarImmunityActive', 'radar_immunity_active', false),
+              shieldGatedStealthThreshold: pick('shieldGatedStealthThreshold', 'shield_gated_stealth_threshold', 0),
+              decloakOnActionFlag: !!pick('decloakOnActionFlag', 'decloak_on_action_flag', true),
+              stealthRecoveryDelaySeconds: pick('stealthRecoveryDelaySeconds', 'stealth_recovery_delay_seconds', 5),
 
-              resourceHarvestingType: t.resourceHarvestingType,
-              requiresReconTelemetry: t.requiresReconTelemetry,
-              requiresAnchorDrone: t.requiresAnchorDrone,
-              requiresReconAnchor: t.requiresReconAnchor,
-              portDockingBayStatus: t.portDockingBayStatus,
-              starboardDeploymentBayStatus: t.starboardDeploymentBayStatus,
-              salvageableUponDestruction: t.salvageableUponDestruction,
-              cryoGasRadius: t.cryoGasRadius,
-              cryoEffectDuration: t.cryoEffectDuration,
-              gravitonVortexDuration: t.gravitonVortexDuration,
-              warpCanisterCapacity: t.warpCanisterCapacity,
-              emergencyWarpEvacuationTarget: t.emergencyWarpEvacuationTarget,
+              resourceHarvestingType: pick('resourceHarvestingType', 'resource_harvesting_type', 0),
+              requiresReconTelemetry: !!pick('requiresReconTelemetry', 'requires_recon_telemetry', false),
+              requiresAnchorDrone: !!pick('requiresAnchorDrone', 'requires_anchor_drone', false),
+              requiresReconAnchor: !!pick('requiresReconAnchor', 'requires_recon_anchor', false),
+              portDockingBayStatus: !!pick('portDockingBayStatus', 'port_docking_bay_status', false),
+              starboardDeploymentBayStatus: !!pick('starboardDeploymentBayStatus', 'starboard_deployment_bay_status', false),
+              salvageableUponDestruction: !!pick('salvageableUponDestruction', 'salvageable_upon_destruction', true),
+              cryoGasRadius: pick('cryoGasRadius', 'cryo_gas_radius', 0),
+              cryoEffectDuration: pick('cryoEffectDuration', 'cryo_effect_duration', 0),
+              gravitonVortexDuration: pick('gravitonVortexDuration', 'graviton_vortex_duration', 0),
+              warpCanisterCapacity: pick('warpCanisterCapacity', 'warp_canister_capacity', 0),
+              emergencyWarpEvacuationTarget: !!pick('emergencyWarpEvacuationTarget', 'emergency_warp_evacuation_target', false),
             };
           });
           setUnitConfigs(JSON.parse(JSON.stringify(loadedConfigs)));
@@ -197,19 +209,19 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
 
       <div className="flex-1 overflow-y-auto pr-1 mb-2">
         {activeTab === 'movement' && (
-          <MovementTab config={currentConfig} onChange={handleConfigChange} />
+          <MovementTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
         )}
         {activeTab === 'vitals' && (
-          <VitalsTab config={currentConfig} onChange={handleConfigChange} />
+          <VitalsTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
         )}
         {activeTab === 'combat' && (
-          <CombatTab config={currentConfig} onChange={handleConfigChange} />
+          <CombatTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
         )}
         {activeTab === 'ai' && (
-          <AiSensorTab config={currentConfig} onChange={handleConfigChange} />
+          <AiSensorTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
         )}
         {activeTab === 'logistics' && (
-          <LogisticsTab config={currentConfig} onChange={handleConfigChange} />
+          <LogisticsTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
         )}
       </div>
 
@@ -236,6 +248,8 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
           </button>
         </div>
       </div>
+
+      <VariableInfoModal doc={activeDoc} onClose={() => setActiveDoc(null)} />
     </div>
   );
 };
