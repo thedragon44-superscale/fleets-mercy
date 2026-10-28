@@ -5,15 +5,10 @@ import (
 	"space-tactics-server/internal/models"
 )
 
-// getUnitRadius calculates the physical footprint radius dynamically from database weight class
+// getUnitRadius returns a uniform, sprite-accurate physical footprint radius decoupled from weight class
 func getUnitRadius(unit *models.FleetUnit) float64 {
-	wc := unit.WeightClass
-	if wc < 1 {
-		wc = 1
-	}
-	
-	// Scale physical radius proportionally based on database weight class (e.g., Weight 1 = 25m, Weight 3 = 75m)
-	return float64(wc) * 25.0
+	// Uniform base radius matching the visual asset boundaries for close formation packing
+	return 30.0
 }
 
 // ResolveUnitCollisions checks and resolves physics-based overlapping collisions between individual fleet units
@@ -44,15 +39,26 @@ func ResolveUnitCollisions(units map[string]*models.FleetUnit, isSandbox bool) {
 					nx := dx / dist
 					ny := dy / dist
 					
-					// Weight-based displacement (lighter units get pushed more)
+					// Asymmetric mass dominance: Lighter units absorb 100% of displacement against heavier hulls
 					weightA := float64(unit.WeightClass)
 					if weightA < 1 { weightA = 1 }
 					weightB := float64(other.WeightClass)
 					if weightB < 1 { weightB = 1 }
 					
-					totalWeight := weightA + weightB
-					ratioA := weightB / totalWeight
-					ratioB := weightA / totalWeight
+					var ratioA, ratioB float64
+					if weightA > weightB {
+						// Unit is heavier than other: Unit is immovable, other absorbs full displacement
+						ratioA = 0.0
+						ratioB = 1.0
+					} else if weightB > weightA {
+						// Other is heavier than unit: Other is immovable, unit absorbs full displacement
+						ratioA = 1.0
+						ratioB = 0.0
+					} else {
+						// Equal weight classes: Split displacement 50/50
+						ratioA = 0.5
+						ratioB = 0.5
+					}
 
 					unit.Pos.X -= nx * overlap * ratioA
 					unit.Pos.Y -= ny * overlap * ratioA

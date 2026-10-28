@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { drawFlagship, drawUnitAsset, drawProjectile, drawHUDDiagnostics, renderEnvironmentVector } from '../renderer/vectorAssets';
 import { getInterpolatedUnits } from '../renderer/interpolation';
 import { UNIT_DB } from './GarageDashboard';
-import { WS_BASE_URL } from '../config';
+import { WS_BASE_URL, API_BASE_URL } from '../config';
 import { fetchMapDetail, MapDefinition } from '../services/mapService';
 import { UnitConfigModal } from './UnitConfig';
 import { DockingModal } from './DockingModal';
@@ -14,11 +14,7 @@ import { LoadingIndicator } from './common/LoadingIndicator';
 const localAssets = import.meta.glob('../assets/*.png', { eager: true }) as Record<string, { default: string }>;
 
 // Data-Driven Configuration Constants
-const DEFAULT_MAP_SIZE = 12000;
 const GRID_SPACING = 200;
-const DEFAULT_VISION_RANGE = 2000;
-const RECON_PROBE_VISION_RANGE = 2500;
-const INITIAL_CAMERA_POS = { x: DEFAULT_MAP_SIZE / 2, y: DEFAULT_MAP_SIZE / 2 };
 
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
@@ -61,9 +57,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const serverState = useRef<ServerState | null>(null);
   const serverHistoryRef = useRef<{ timestamp: number; units: FleetUnit[] }[]>([]);
   
-  // Data-driven dynamic camera and render positions initialized at map center
-  const cameraPos = useRef({ ...INITIAL_CAMERA_POS });
-  const renderPos = useRef({ ...INITIAL_CAMERA_POS });
+  // Dynamic camera and render positions initialized at center upon map service resolution
+  const cameraPos = useRef({ x: 0, y: 0 });
+  const renderPos = useRef({ x: 0, y: 0 });
 
   const keys = useRef<{ [key: string]: boolean }>({});
   const mousePos = useRef({ x: 0, y: 0 });
@@ -84,6 +80,27 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   const [simulationSpeed, setSimulationSpeed] = useState<number>(1.0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [isBootstrapping, setIsBootstrapping] = useState<boolean>(true);
+  const [liveTemplates, setLiveTemplates] = useState<{ [key: string]: any }>({});
+  const liveTemplatesRef = useRef<{ [key: string]: any }>({});
+
+  // Fetch live templates on mount and poll periodically, updating both state and ref for the render loop
+  useEffect(() => {
+    const fetchTemplates = () => {
+      fetch(`${API_BASE_URL}/api/templates`)
+        .then(res => res.json())
+        .then(data => {
+          if (data) {
+            setLiveTemplates(data);
+            liveTemplatesRef.current = data;
+          }
+        })
+        .catch(err => console.log('⚠️ Failed to load live templates for viewport:', err));
+    };
+
+    fetchTemplates();
+    const interval = setInterval(fetchTemplates, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Studio Modal States
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
@@ -277,8 +294,14 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         ctx.save();
         ctx.translate(canvas.width / 2 - cameraPos.current.x, canvas.height / 2 - cameraPos.current.y);
 
-        const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? DEFAULT_MAP_SIZE;
-        const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? DEFAULT_MAP_SIZE;
+        const mapW = mapDetails?.width ?? serverState.current?.mapBounds?.width ?? 0;
+        const mapH = mapDetails?.height ?? serverState.current?.mapBounds?.height ?? 0;
+
+        // Skip rendering world grid and radar if map dimensions have not resolved from telemetry or mapService
+        if (mapW === 0 || mapH === 0) {
+          animId = requestAnimationFrame(render);
+          return;
+        }
 
         ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
         for (let i = 0; i <= mapW; i += GRID_SPACING) { ctx.moveTo(i, 0); ctx.lineTo(i, mapH); }
@@ -304,24 +327,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const isControlled = u.id === activeId;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
-
-          // Query database-backed sensor/vision range dynamically
-          const unitMeta = UNIT_DB.find(item => item.id === u.type);
-          const sensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
-
-          // Draw world-space sensor bubble if range is active
-          if (sensorRange > 0 && !u.isDestroyed) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(rx, ry, sensorRange, 0, Math.PI * 2);
-            ctx.strokeStyle = u.ownerId === 'player' ? 'rgba(0, 243, 255, 0.18)' : 'rgba(239, 68, 68, 0.18)';
-            ctx.fillStyle = u.ownerId === 'player' ? 'rgba(0, 243, 255, 0.025)' : 'rgba(239, 68, 68, 0.025)';
-            ctx.fill();
-            ctx.lineWidth = 1;
-            ctx.setLineDash([6, 6]);
-            ctx.stroke();
-            ctx.restore();
-          }
 
           const isAccelerating = isControlled && !!keys.current['w'];
 
@@ -360,13 +365,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
           const scaleX = rw / mapW;
           const scaleY = rh / mapH;
 
-          // Helper: Check if a world coordinate is within active player sensor/recon telemetry range
+          // Helper: Check if a world coordinate is within active player sensor/recon telemetry range using liveTemplatesRef
           const isVisibleToPlayer = (x: number, y: number): boolean => {
             if (!serverState.current?.units) return false;
             for (const u of serverState.current.units) {
               if (u.ownerId === 'player' && !u.isDestroyed) {
-                const unitMeta = UNIT_DB.find(item => item.id === u.type);
-                const sensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : (u.type === 'recon_probe' ? RECON_PROBE_VISION_RANGE : DEFAULT_VISION_RANGE);
+                const tmpl = liveTemplatesRef.current[u.type] || {};
+                const sensorRange = tmpl.sensorRange ?? tmpl.sensor_range ?? 0;
                 const dist = Math.hypot(u.pos.x - x, u.pos.y - y);
                 if (dist <= sensorRange) {
                   return true;
@@ -382,8 +387,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
             if (u.type === 'recon_probe') {
               const rx = (u.id === activeId ? renderPos.current.x : u.pos.x) * scaleX;
               const ry = (u.id === activeId ? renderPos.current.y : u.pos.y) * scaleY;
-              const unitMeta = UNIT_DB.find(item => item.id === u.type);
-              const probeSensorRange = unitMeta?.sensorRange ? parseFloat(unitMeta.sensorRange) : RECON_PROBE_VISION_RANGE;
+              const tmpl = liveTemplatesRef.current[u.type] || {};
+              const probeSensorRange = tmpl.sensorRange ?? tmpl.sensor_range ?? 0;
               const radiusPixels = probeSensorRange * scaleX;
 
               radarCtx.beginPath();

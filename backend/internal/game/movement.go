@@ -18,7 +18,6 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 		unit.Vel.Y += math.Sin(unit.Angle) * accel 
 	}
 	if input.S { 
-		// Use database-backed ReverseThrustPower with fallback
 		revPower := unit.ReverseThrustPower
 		if revPower <= 0 {
 			revPower = 0.5
@@ -52,18 +51,39 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 	}
 }
 
-// ApplyUnitPhysics handles positional displacement, database-driven friction/damping, and dynamic map boundary clamping
+// ApplyUnitPhysics handles positional displacement, enhanced quadratic braking curves, and dynamic map boundary clamping
 func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 	unit.Pos.X += unit.Vel.X
 	unit.Pos.Y += unit.Vel.Y
 	
-	// Derive friction damping dynamically from database drift_coefficient
-	damping := 0.95
-	if unit.DriftCoefficient > 0 {
-		damping = math.Max(0.85, 0.98 - (unit.DriftCoefficient * 0.05))
+	// Derive natural braking resistance from database drift_coefficient
+	// Lower drift coefficient = tighter braking response; higher drift = smooth glide
+	drift := unit.DriftCoefficient
+	if drift <= 0 {
+		drift = 0.5
 	}
-	unit.Vel.X *= damping
-	unit.Vel.Y *= damping
+
+	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+	if currentSpeed > 0.001 {
+		// Combine linear baseline damping with a velocity-squared (quadratic) braking curve
+		linearDamp := 0.96 - (drift * 0.04)
+		quadraticDragFactor := 0.0008 * (1.0 - (drift * 0.5))
+		
+		// Apply velocity reduction factoring in speed squared resistance
+		effectiveDamp := linearDamp - (currentSpeed * quadraticDragFactor)
+		if effectiveDamp < 0.80 {
+			effectiveDamp = 0.80 // Safety floor to prevent over-braking distortion
+		}
+		if effectiveDamp > 0.99 {
+			effectiveDamp = 0.99
+		}
+
+		unit.Vel.X *= effectiveDamp
+		unit.Vel.Y *= effectiveDamp
+	} else {
+		unit.Vel.X = 0
+		unit.Vel.Y = 0
+	}
 
 	// Dynamic map boundary clamping using actual room dimensions with a 50 unit buffer
 	minBound := 50.0
