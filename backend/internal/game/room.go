@@ -644,7 +644,6 @@ func (r *GameRoom) Run() {
 				// Unit currently under direct player control
 				HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
 				unit.IsFiring = r.lastInput.IsFiring
-				unit.Angle = float64(r.lastInput.Angle)
 			} else if unit.OwnerID == "player" && unit.Type == "flagship" {
 				// Player flagship should NEVER move or run AI when unpiloted; it holds position and zeroes angular velocity.
 				unit.IsFiring = false
