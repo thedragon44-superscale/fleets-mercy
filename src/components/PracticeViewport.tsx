@@ -181,11 +181,18 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
         : (playerUnits[0]?.id || controlledUnitIdRef.current);
 
       const controlledUnit = serverState.current.units?.find(u => u.id === currentId);
-      let angle = 0;
+      let angle = controlledUnit?.angle || 0;
       if (controlledUnit) {
         const worldMouseX = mousePos.current.x - canvasRef.current.width / 2 + cameraPos.current.x;
         const worldMouseY = mousePos.current.y - canvasRef.current.height / 2 + cameraPos.current.y;
-        angle = Math.atan2(worldMouseY - controlledUnit.pos.y, worldMouseX - controlledUnit.pos.x);
+        const dx = worldMouseX - controlledUnit.pos.x;
+        const dy = worldMouseY - controlledUnit.pos.y;
+        const distToCursor = Math.hypot(dx, dy);
+        const DEADZONE_RADIUS = 35.0; // pixels
+
+        if (distToCursor > DEADZONE_RADIUS) {
+          angle = Math.atan2(dy, dx);
+        }
       }
       sendInput({
         keys: keys.current,

@@ -5,11 +5,33 @@ import (
 	"space-tactics-server/internal/models"
 )
 
-// HandlePlayerMovement processes user throttle, strafing, and velocity vector clamping using database template fields
+// HandlePlayerMovement processes user throttle, strafing, turn-rate clamping, and velocity vector updates
 func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, roomWidth, roomHeight float64) {
-	unit.Angle = float64(input.Angle)
+	targetAngle := float64(input.Angle)
 	unit.IsFiring = input.IsFiring
 	
+	// Enforce database-driven turn rate limits (radians per second converted to per-tick max delta at 60Hz)
+	turnRate := unit.TurnRate
+	if turnRate <= 0 {
+		turnRate = 4.0 // Fallback turn rate if unconfigured
+	}
+	maxDelta := turnRate * (1.0 / 60.0)
+
+	// Calculate shortest angular distance (-Pi to Pi) to prevent wrapping snap-arounds
+	angleDiff := math.Mod(targetAngle - unit.Angle + math.Pi*3, math.Pi*2) - math.Pi
+
+	if math.Abs(angleDiff) <= maxDelta {
+		unit.Angle = targetAngle
+	} else {
+		if angleDiff > 0 {
+			unit.Angle += maxDelta
+		} else {
+			unit.Angle -= maxDelta
+		}
+	}
+	// Normalize angle within [0, 2*Pi)
+	unit.Angle = math.Mod(unit.Angle + math.Pi*2, math.Pi*2)
+
 	accel := unit.Speed * 3.5
 	maxSpeed := unit.Speed * 6.0
 
@@ -56,8 +78,6 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 	unit.Pos.X += unit.Vel.X
 	unit.Pos.Y += unit.Vel.Y
 	
-	// Derive natural braking resistance from database drift_coefficient
-	// Lower drift coefficient = tighter braking response; higher drift = smooth glide
 	drift := unit.DriftCoefficient
 	if drift <= 0 {
 		drift = 0.5
@@ -65,14 +85,12 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 
 	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
 	if currentSpeed > 0.001 {
-		// Combine linear baseline damping with a velocity-squared (quadratic) braking curve
 		linearDamp := 0.96 - (drift * 0.04)
 		quadraticDragFactor := 0.0008 * (1.0 - (drift * 0.5))
 		
-		// Apply velocity reduction factoring in speed squared resistance
 		effectiveDamp := linearDamp - (currentSpeed * quadraticDragFactor)
 		if effectiveDamp < 0.80 {
-			effectiveDamp = 0.80 // Safety floor to prevent over-braking distortion
+			effectiveDamp = 0.80
 		}
 		if effectiveDamp > 0.99 {
 			effectiveDamp = 0.99
@@ -85,7 +103,6 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 		unit.Vel.Y = 0
 	}
 
-	// Dynamic map boundary clamping using actual room dimensions with a 50 unit buffer
 	minBound := 50.0
 	maxW := roomWidth
 	if maxW <= 0 {
