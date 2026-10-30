@@ -73,7 +73,7 @@ export const MovementTab: React.FC<MovementTabProps> = ({ config, onChange, onOp
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {renderSliderCard('speed', 'Base Speed', '0', '25', '0.5')}
         {renderSliderCard('strafingSpeed', 'Strafing Speed', '0', '20', '0.5')}
-        {renderSliderCard('turnRate', 'Turn Rate', '0', '1.0', '0.01')}
+        {renderSliderCard('turnRate', 'Turn Rate', '1', '60', '1.0')}
         {renderSliderCard('angularVelocity', 'Angular Velocity', '0', '2.0', '0.02')}
         {renderSliderCard('lateralThrustPower', 'Lateral Thrust Power', '0', '10', '0.2')}
         {renderSliderCard('reverseThrustPower', 'Reverse Thrust Power', '0', '10', '0.2')}

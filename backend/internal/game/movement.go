@@ -89,8 +89,17 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 		quadraticDragFactor := 0.0008 * (1.0 - (drift * 0.5))
 		
 		effectiveDamp := linearDamp - (currentSpeed * quadraticDragFactor)
-		if effectiveDamp < 0.80 {
-			effectiveDamp = 0.80
+		
+		// Anti-skid: If the ship's heading opposes its velocity vector, apply extra turn-braking grip
+		velAngle := math.Atan2(unit.Vel.Y, unit.Vel.X)
+		headingDiff := math.Abs(math.Mod(unit.Angle - velAngle + math.Pi*3, math.Pi*2) - math.Pi)
+		if headingDiff > (math.Pi * 0.6) {
+			// Increase drag slightly when sliding sideways or backwards to tighten maneuverability
+			effectiveDamp -= 0.02 * (1.0 - (drift * 0.3))
+		}
+
+		if effectiveDamp < 0.75 {
+			effectiveDamp = 0.75
 		}
 		if effectiveDamp > 0.99 {
 			effectiveDamp = 0.99

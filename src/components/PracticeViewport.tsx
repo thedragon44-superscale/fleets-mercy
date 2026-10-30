@@ -175,10 +175,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
 
   const sendAction = (actionParams: any = {}) => {
     if (canvasRef.current && serverState.current) {
-      const playerUnits = serverState.current.units?.filter((u: FleetUnit) => u.ownerId === 'player' && !u.isDestroyed) || [];
-      const currentId = playerUnits.some(u => u.id === controlledUnitIdRef.current)
-        ? controlledUnitIdRef.current
-        : (playerUnits[0]?.id || controlledUnitIdRef.current);
+      // Strictly respect the user's selected pilot unit ID without overriding to flagship
+      const currentId = controlledUnitIdRef.current;
 
       const controlledUnit = serverState.current.units?.find(u => u.id === currentId);
       let angle = controlledUnit?.angle || 0;
