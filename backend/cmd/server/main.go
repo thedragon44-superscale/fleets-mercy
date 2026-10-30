@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
+
 	"space-tactics-server/internal/api"
 	"space-tactics-server/internal/db"
 	"space-tactics-server/internal/game"
+	"space-tactics-server/internal/game/teamDeathMatch"
 )
 
 var (
@@ -48,6 +51,31 @@ func main() {
 		room.HandleWS(w, r)
 	})
 
+	// Dedicated WebSocket route for 20v20 Team Deathmatch Mode
+	http.HandleFunc("/ws/tdm", func(w http.ResponseWriter, r *http.Request) {
+		mapIDStr := r.URL.Query().Get("mapId")
+		mapID := 1
+		if mapIDStr != "" {
+			fmt.Sscanf(mapIDStr, "%d", &mapID)
+		}
+
+		pilotedUnit := r.URL.Query().Get("unit")
+		if pilotedUnit == "" {
+			pilotedUnit = "viper_interceptor"
+		}
+
+		poolStr := r.URL.Query().Get("pool")
+		var customPool []string
+		if poolStr != "" {
+			customPool = strings.Split(poolStr, ",")
+		}
+
+		// Instantiate a fresh Team Deathmatch room instance and start its 60Hz ticker loop
+		room := teamDeathMatch.NewTDMRoom(mapID, pilotedUnit, customPool)
+		go room.Run()
+		room.HandleWS(w, r)
+	})
+
 	http.HandleFunc("/api/login", api.LoginHandler)
 	http.HandleFunc("/api/loadouts", api.GetLoadoutsHandler)
 	http.HandleFunc("/api/loadouts/save", api.SaveLoadoutHandler)
@@ -70,6 +98,6 @@ func main() {
 		}
 	})
 
-	log.Println("🚀 Space Tactics Server running on :8080 (Dynamic Map WS & Template Inspector enabled)")
+	log.Println("Fleet's Mercy Server running on :8080 (Dynamic Map WS, TDM Mode & Template Inspector enabled)")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

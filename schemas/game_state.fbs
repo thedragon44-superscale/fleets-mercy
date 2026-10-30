@@ -44,7 +44,7 @@ table Projectile {
   owner_id: string;
   type: string;
   pos: Vector2D;
-  vel: Vector2D; // <--- Added velocity vector
+  vel: Vector2D;
 }
 
 table ServerState {
@@ -53,6 +53,8 @@ table ServerState {
   projectiles: [Projectile];
   map_width: float;
   map_height: float;
+  is_game_over: bool;      // <--- Added for TDM match state tracking
+  winning_faction: string; // <--- Added for victory/defeat modal trigger
 }
 
 // --- UPSTREAM: CLIENT INPUT & INSPECTOR TUNING PAYLOADS ---
@@ -149,7 +151,7 @@ table BehaviorConfigUpdate {
 table SandboxCountPair {
   unit_type: string;
   count: int;
-  owner_id: string; // Added to distinguish "player" vs "enemy" spawner counts
+  owner_id: string;
 }
 
 table UnitGroupingPayload {

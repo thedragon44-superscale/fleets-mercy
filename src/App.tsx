@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { GarageDashboard, LoadoutData } from './components/GarageDashboard';
@@ -5,9 +6,24 @@ import { GameViewport } from './components/GameViewport';
 import { PracticeViewport } from './components/PracticeViewport';
 import { MapEditorViewport } from './components/MapEditorViewport';
 import { DeveloperSettingsDashboard } from './components/DeveloperSettingsDashboard';
+import { TdmUnitSelectionScreen } from './components/teamDeathMatch/unitSelection';
+import { TdmMapSelectionScreen } from './components/teamDeathMatch/mapSelection';
+import { TdmViewport } from './components/teamDeathMatch/tdmViewport';
 import { fetchMaps, MapDefinition } from './services/mapService';
 
-export type AppView = 'login' | 'main-menu' | 'garage' | 'map-select' | 'standard-game' | 'sandbox-mode' | 'map-editor-select' | 'map-editor' | 'developer-settings';
+export type AppView = 
+  | 'login' 
+  | 'main-menu' 
+  | 'garage' 
+  | 'map-select' 
+  | 'standard-game' 
+  | 'sandbox-mode' 
+  | 'map-editor-select' 
+  | 'map-editor' 
+  | 'developer-settings'
+  | 'tdm-unit-select'
+  | 'tdm-map-select'
+  | 'tdm-viewport';
 
 export default function App() {
   const [player, setPlayer] = useState<{ id: number; username: string } | null>(null);
@@ -17,6 +33,10 @@ export default function App() {
   const [editorTargetMapId, setEditorTargetMapId] = useState<number | null>(null);
   const [maps, setMaps] = useState<MapDefinition[]>([]);
   const [isSandboxLaunch, setIsSandboxLaunch] = useState<boolean>(false);
+
+  // TDM State Management
+  const [tdmPilotedUnit, setTdmPilotedUnit] = useState<string>('viper_interceptor');
+  const [tdmCustomPool, setTdmCustomPool] = useState<string[]>([]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('spacetactics_user');
@@ -77,6 +97,14 @@ export default function App() {
           </p>
 
           <div className="flex flex-col gap-2.5 w-full">
+            {/* TDM Matchmaking Entry */}
+            <button 
+              onClick={() => setView('tdm-unit-select')}
+              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black py-3 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg shadow-cyan-900/30"
+            >
+              ⚔️ 20v20 Team Deathmatch
+            </button>
+
             <button 
               onClick={() => setView('garage')}
               className="w-full bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg"
@@ -136,6 +164,48 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // TDM Flow: 1. Unit Selection & Spawn Pool Config
+  if (view === 'tdm-unit-select') {
+    return (
+      <TdmUnitSelectionScreen 
+        onBack={() => setView('main-menu')}
+        onProceedToMapSelect={(pilotedUnit, customPool) => {
+          setTdmPilotedUnit(pilotedUnit);
+          setTdmCustomPool(customPool);
+          setView('tdm-map-select');
+        }}
+      />
+    );
+  }
+
+  // TDM Flow: 2. Map Selection Theater
+  if (view === 'tdm-map-select') {
+    return (
+      <TdmMapSelectionScreen 
+        pilotedUnit={tdmPilotedUnit}
+        customPool={tdmCustomPool}
+        onBack={() => setView('tdm-unit-select')}
+        onLaunchMatch={(mapId) => {
+          setSelectedMapId(mapId);
+          setView('tdm-viewport');
+        }}
+      />
+    );
+  }
+
+  // TDM Flow: 3. 60 FPS Viewport & End-of-Match Modal
+  if (view === 'tdm-viewport') {
+    return (
+      <TdmViewport 
+        mapId={selectedMapId}
+        pilotedUnit={tdmPilotedUnit}
+        customPool={tdmCustomPool}
+        onBackToMenu={() => setView('main-menu')}
+        onChangeLoadout={() => setView('tdm-unit-select')}
+      />
     );
   }
 

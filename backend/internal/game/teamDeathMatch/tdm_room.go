@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ type TDMRoom struct {
 	idCounter            uint64
 	pilotedUnitType      string
 	pilotedUnitID        string
+	customUnitPool       []string
 	isGameOver           bool
 	winningFaction       string
 	lastInput            ClientStateInput
@@ -46,13 +49,14 @@ type ClientStateInput struct {
 	Reset    bool
 }
 
-func NewTDMRoom(mapID int, pilotedUnitType string) *TDMRoom {
+func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
 	room := &TDMRoom{
 		clients:         make(map[*websocket.Conn]bool),
 		units:           make(map[string]*models.FleetUnit),
 		projectiles:     []models.Projectile{},
 		mapID:           mapID,
 		pilotedUnitType: pilotedUnitType,
+		customUnitPool:  customPool,
 	}
 	room.loadMapStructures()
 	room.ResetMatch()
@@ -94,12 +98,33 @@ func (r *TDMRoom) ResetMatch() {
 	r.isGameOver = false
 	r.winningFaction = ""
 
-	// Initialize 20v20 Teams via tdm_spawner (to be implemented next)
-	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType)
+	// Initialize 20v20 Teams via tdm_spawner using the custom unit pool
+	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType, r.customUnitPool)
 	log.Printf("⚔️ TDM Match Initialized: 20v20 Skirmish spawned. Piloted unit locked to ID: %s", r.pilotedUnitID)
 }
 
 func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
+	// Parse connection query parameters for custom configuration (unit selection, map, and checked spawn pool)
+	query := req.URL.Query()
+	if unitType := query.Get("unit"); unitType != "" {
+		r.pilotedUnitType = unitType
+	}
+	if mapStr := query.Get("map"); mapStr != "" {
+		if parsedMap, err := strconv.Atoi(mapStr); err == nil && parsedMap > 0 {
+			r.mapID = parsedMap
+			r.loadMapStructures()
+		}
+	}
+	if poolStr := query.Get("pool"); poolStr != "" {
+		r.customUnitPool = strings.Split(poolStr, ",")
+	}
+
+	r.mu.Lock()
+	if len(r.units) == 0 {
+		r.ResetMatch()
+	}
+	r.mu.Unlock()
+
 	conn, _ := upgrader.Upgrade(w, req, nil)
 	clientAddr := conn.RemoteAddr().String()
 	log.Printf("🔌 Player connected to TDM Room: %s", clientAddr)
@@ -146,50 +171,49 @@ func (r *TDMRoom) Run() {
 		r.mu.Lock()
 		r.tick++
 
-		if r.isGameOver {
-			r.mu.Unlock()
-			continue
-		}
-
 		// 1. Check Win Conditions (via tdm_rules.go)
-		if winner := CheckWinConditions(r); winner != "" {
-			r.isGameOver = true
-			r.winningFaction = winner
-			log.Printf("🏆 TDM Match Over! Winning Faction: %s", winner)
+		if !r.isGameOver {
+			if winner := CheckWinConditions(r); winner != "" {
+				r.isGameOver = true
+				r.winningFaction = winner
+				log.Printf("🏆 TDM Match Over! Winning Faction: %s", winner)
+			}
 		}
 
-		// 2. Run Game Physics & AI Simulation Loops
-		for id, unit := range r.units {
-			if unit.IsDestroyed {
-				delete(r.units, id)
-				continue
+		// 2. Run Game Physics & AI Simulation Loops (skip physics updates if game is over, but keep broadcasting final state)
+		if !r.isGameOver {
+			for id, unit := range r.units {
+				if unit.IsDestroyed {
+					delete(r.units, id)
+					continue
+				}
+
+				// Player control handling for the designated piloted unit
+				if unit.ID == r.pilotedUnitID {
+					HandlePlayerMovement(unit, struct {
+						W, S, A, D bool
+						Angle      float32
+						IsFiring   bool
+					}{
+						W: r.lastInput.W, S: r.lastInput.S, A: r.lastInput.A, D: r.lastInput.D,
+						Angle: r.lastInput.Angle, IsFiring: r.lastInput.IsFiring,
+					}, 12000.0, 12000.0)
+					unit.IsFiring = r.lastInput.IsFiring
+					unit.Angle = float64(r.lastInput.Angle)
+				} else {
+					// Autonomous squad AI execution
+					RunUnitAI(unit, r, nil)
+				}
+
+				ApplyUnitPhysics(unit, 12000.0, 12000.0)
+				ApplyEnvironmentalCollisions(unit, r.structures)
+				ApplyMajorWorldGravity(unit, r.structures)
+				HandleWeaponFiring(unit, r)
 			}
 
-			// Player control handling for the designated piloted unit
-			if unit.ID == r.pilotedUnitID {
-				HandlePlayerMovement(unit, struct {
-					W, S, A, D bool
-					Angle      float32
-					IsFiring   bool
-				}{
-					W: r.lastInput.W, S: r.lastInput.S, A: r.lastInput.A, D: r.lastInput.D,
-					Angle: r.lastInput.Angle, IsFiring: r.lastInput.IsFiring,
-				}, 12000.0, 12000.0)
-				unit.IsFiring = r.lastInput.IsFiring
-				unit.Angle = float64(r.lastInput.Angle)
-			} else {
-				// Autonomous squad AI execution
-				RunUnitAI(unit, r, nil)
-			}
-
-			ApplyUnitPhysics(unit, 12000.0, 12000.0)
-			ApplyEnvironmentalCollisions(unit, r.structures)
-			ApplyMajorWorldGravity(unit, r.structures)
-			HandleWeaponFiring(unit, r)
+			ResolveUnitCollisions(r.units, false)
+			UpdateProjectiles(r)
 		}
-
-		ResolveUnitCollisions(r.units, false)
-		UpdateProjectiles(r)
 
 		// 3. Build & Broadcast Binary FlatBuffers State
 		builder := flatbuffers.NewBuilder(1024)
@@ -257,12 +281,17 @@ func (r *TDMRoom) Run() {
 		}
 		projVector := builder.EndVector(len(projOffsets))
 
+		// Create string offset for the winning faction if present
+		winningFactionOffset := builder.CreateString(r.winningFaction)
+
 		SpaceTactics.ServerStateStart(builder)
 		SpaceTactics.ServerStateAddTick(builder, r.tick)
 		SpaceTactics.ServerStateAddUnits(builder, unitsVector)
 		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
 		SpaceTactics.ServerStateAddMapWidth(builder, 12000.0)
 		SpaceTactics.ServerStateAddMapHeight(builder, 12000.0)
+		SpaceTactics.ServerStateAddIsGameOver(builder, r.isGameOver)
+		SpaceTactics.ServerStateAddWinningFaction(builder, winningFactionOffset)
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)

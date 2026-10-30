@@ -45,6 +45,8 @@ export interface ServerStateSnapshot {
     width: number;
     height: number;
   };
+  isGameOver: boolean;
+  winningFaction: string;
 }
 import { ClientInput } from "../generated/space-tactics/client-input";
 import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
@@ -72,6 +74,8 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
     const tick = Number(serverState.tick());
     const mapWidth = serverState.mapWidth();
     const mapHeight = serverState.mapHeight();
+    const isGameOver = serverState.isGameOver();
+    const winningFaction = serverState.winningFaction() || '';
 
     // Parse Fleet Units
     const unitsLength = serverState.unitsLength();
@@ -133,9 +137,11 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
       units,
       projectiles,
       mapBounds: {
-        width: serverState.mapWidth(),
-        height: serverState.mapHeight()
-      }
+        width: mapWidth,
+        height: mapHeight
+      },
+      isGameOver,
+      winningFaction
     };
   } catch (error) {
     console.error('[BINARY CODEC] Failed to unpack FlatBuffers message:', error);

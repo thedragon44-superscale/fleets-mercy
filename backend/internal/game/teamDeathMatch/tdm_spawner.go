@@ -8,7 +8,7 @@ import (
 	"space-tactics-server/internal/models"
 )
 
-// Standard pool of unit types available for random team composition generation
+// Standard fallback pool of unit types available if no custom pool is provided
 var tdmUnitPool = []string{
 	"viper_interceptor",
 	"recon_probe",
@@ -22,15 +22,22 @@ var tdmUnitPool = []string{
 
 // InitializeTDMRoster builds the 20v20 match roster, dividing units into 4 squads of 5 per team,
 // assigning random squad leaders, and scattering them across decentralized map sectors.
+// Pulls randomly from the custom spawn pool if provided.
 // Returns the unique ID of the human player's piloted unit.
-func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string) string {
+func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string) string {
 	if pilotedUnitType == "" {
 		pilotedUnitType = "viper_interceptor"
 	}
 
+	// Use custom spawn pool if available and non-empty, otherwise fallback to default tdmUnitPool
+	activePool := customPool
+	if len(activePool) == 0 {
+		activePool = tdmUnitPool
+	}
+
 	var pilotedID string
 
-	// Spawn Factions: 0 = Player, 1 = Enemy
+	// Spawn Factions: player, enemy
 	factions := []string{"player", "enemy"}
 
 	for _, faction := range factions {
@@ -51,8 +58,8 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string) string {
 				if faction == "player" && unitIndex == 1 {
 					unitType = pilotedUnitType
 				} else {
-					// Pick a random unit type from the pool
-					unitType = tdmUnitPool[rand.Intn(len(tdmUnitPool))]
+					// Pick a random unit type from the active custom spawn pool
+					unitType = activePool[rand.Intn(len(activePool))]
 				}
 
 				template, exists := db.Templates[unitType]

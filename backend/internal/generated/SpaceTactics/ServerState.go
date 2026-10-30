@@ -109,8 +109,28 @@ func (rcv *ServerState) MutateMapHeight(n float32) bool {
 	return rcv._tab.MutateFloat32Slot(12, n)
 }
 
+func (rcv *ServerState) IsGameOver() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *ServerState) MutateIsGameOver(n bool) bool {
+	return rcv._tab.MutateBoolSlot(14, n)
+}
+
+func (rcv *ServerState) WinningFaction() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
 func ServerStateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(5)
+	builder.StartObject(7)
 }
 func ServerStateAddTick(builder *flatbuffers.Builder, tick uint64) {
 	builder.PrependUint64Slot(0, tick, 0)
@@ -132,6 +152,12 @@ func ServerStateAddMapWidth(builder *flatbuffers.Builder, mapWidth float32) {
 }
 func ServerStateAddMapHeight(builder *flatbuffers.Builder, mapHeight float32) {
 	builder.PrependFloat32Slot(4, mapHeight, 0.0)
+}
+func ServerStateAddIsGameOver(builder *flatbuffers.Builder, isGameOver bool) {
+	builder.PrependBoolSlot(5, isGameOver, false)
+}
+func ServerStateAddWinningFaction(builder *flatbuffers.Builder, winningFaction flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(winningFaction), 0)
 }
 func ServerStateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

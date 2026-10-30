@@ -59,8 +59,20 @@ mapHeight():number {
   return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
 }
 
+isGameOver():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 14);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+winningFaction():string|null
+winningFaction(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+winningFaction(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 16);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
 static startServerState(builder:flatbuffers.Builder) {
-  builder.startObject(5);
+  builder.startObject(7);
 }
 
 static addTick(builder:flatbuffers.Builder, tick:bigint) {
@@ -107,6 +119,14 @@ static addMapHeight(builder:flatbuffers.Builder, mapHeight:number) {
   builder.addFieldFloat32(4, mapHeight, 0.0);
 }
 
+static addIsGameOver(builder:flatbuffers.Builder, isGameOver:boolean) {
+  builder.addFieldInt8(5, +isGameOver, +false);
+}
+
+static addWinningFaction(builder:flatbuffers.Builder, winningFactionOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(6, winningFactionOffset, 0);
+}
+
 static endServerState(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
@@ -120,13 +140,15 @@ static finishSizePrefixedServerStateBuffer(builder:flatbuffers.Builder, offset:f
   builder.finish(offset, undefined, true);
 }
 
-static createServerState(builder:flatbuffers.Builder, tick:bigint, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, mapWidth:number, mapHeight:number):flatbuffers.Offset {
+static createServerState(builder:flatbuffers.Builder, tick:bigint, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, mapWidth:number, mapHeight:number, isGameOver:boolean, winningFactionOffset:flatbuffers.Offset):flatbuffers.Offset {
   ServerState.startServerState(builder);
   ServerState.addTick(builder, tick);
   ServerState.addUnits(builder, unitsOffset);
   ServerState.addProjectiles(builder, projectilesOffset);
   ServerState.addMapWidth(builder, mapWidth);
   ServerState.addMapHeight(builder, mapHeight);
+  ServerState.addIsGameOver(builder, isGameOver);
+  ServerState.addWinningFaction(builder, winningFactionOffset);
   return ServerState.endServerState(builder);
 }
 }
