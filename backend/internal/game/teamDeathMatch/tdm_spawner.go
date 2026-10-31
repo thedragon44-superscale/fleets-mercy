@@ -1,7 +1,6 @@
 package teamDeathMatch
 
 import (
-	"fmt"
 	"math/rand"
 
 	"space-tactics-server/internal/db"
@@ -70,7 +69,7 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 				}
 
 				r.idCounter++
-				id := fmt.Sprintf("tdm-%s-%s-%d", faction, unitType, r.idCounter)
+				id := "tdm-" + faction + "-" + unitType + "-" + string(rune(r.idCounter))
 
 				if faction == "player" && unitIndex == 1 {
 					pilotedID = id

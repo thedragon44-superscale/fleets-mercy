@@ -1,9 +1,7 @@
 package teamDeathMatch
 
 import (
-	"fmt"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"space-tactics-server/internal/db"
+	"space-tactics-server/internal/game"
 	SpaceTactics "space-tactics-server/internal/generated/SpaceTactics"
 	"space-tactics-server/internal/models"
 
@@ -190,7 +189,7 @@ func (r *TDMRoom) Run() {
 
 				// Player control handling for the designated piloted unit
 				if unit.ID == r.pilotedUnitID {
-					HandlePlayerMovement(unit, struct {
+					game.HandlePlayerMovement(unit, struct {
 						W, S, A, D bool
 						Angle      float32
 						IsFiring   bool
@@ -202,17 +201,17 @@ func (r *TDMRoom) Run() {
 					unit.Angle = float64(r.lastInput.Angle)
 				} else {
 					// Autonomous squad AI execution
-					RunUnitAI(unit, r, nil)
+					game.RunUnitAI(unit, r, nil)
 				}
 
-				ApplyUnitPhysics(unit, 12000.0, 12000.0)
-				ApplyEnvironmentalCollisions(unit, r.structures)
-				ApplyMajorWorldGravity(unit, r.structures)
-				HandleWeaponFiring(unit, r)
+				game.ApplyUnitPhysics(unit, 12000.0, 12000.0)
+				game.ApplyEnvironmentalCollisions(unit, r.structures)
+				game.ApplyMajorWorldGravity(unit, r.structures)
+				game.HandleWeaponFiring(unit, r)
 			}
 
-			ResolveUnitCollisions(r.units, false)
-			UpdateProjectiles(r)
+			game.ResolveUnitCollisions(r.units, false)
+			game.UpdateProjectiles(r)
 		}
 
 		// 3. Build & Broadcast Binary FlatBuffers State
