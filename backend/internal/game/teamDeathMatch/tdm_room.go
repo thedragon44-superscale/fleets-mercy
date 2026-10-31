@@ -1,4 +1,4 @@
-package tdm
+package teamDeathMatch
 
 import (
 	"log"
