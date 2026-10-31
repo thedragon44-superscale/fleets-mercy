@@ -32,8 +32,8 @@ type TDMRoom struct {
 }
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
-	// Initialize underlying base GameRoom
-	baseRoom := game.NewGameRoom(mapID)
+	// Initialize underlying base GameRoom (passing mapID and standard mode flag)
+	baseRoom := game.NewGameRoom(mapID, false)
 	
 	room := &TDMRoom{
 		GameRoom:        baseRoom,
@@ -48,7 +48,7 @@ func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom
 
 func (r *TDMRoom) LoadMapStructures() {
 	r.Structures = []models.MapStructure{}
-	if r.MapID == 0 { r.MapID = 1 }
+	if r.MapID == { r.MapID = 1 }
 
 	rows, err := db.Conn.Query(
 		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
@@ -238,7 +238,7 @@ func (r *TDMRoom) Run() {
 		unitsVector := builder.EndVector(len(unitOffsets))
 
 		projOffsets := make([]flatbuffers.UOffsetT, 0, len(r.Projectiles))
-		for _, p := range r.Projectiles {
+		for _, p :=range r.Projectiles {
 			pIdOffset := builder.CreateString(p.ID)
 			ownerOffset := builder.CreateString(p.OwnerID)
 			typeOffset := builder.CreateString(p.Type)

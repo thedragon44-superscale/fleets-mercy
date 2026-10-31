@@ -86,6 +86,27 @@ func NewGameRoom(mapID int, isSandbox bool) *GameRoom {
 	return room
 }
 
+// Exported getters so sub-packages (like teamDeathMatch) can read room state safely
+func (r *GameRoom) GetUnits() map[string]*models.FleetUnit {
+	return r.units
+}
+
+func (r *GameRoom) GetStructures() []models.MapStructure {
+	return r.structures
+}
+
+func (r *GameRoom) GetMapID() int {
+	return r.mapID
+}
+
+func (r *GameRoom) GetTick() uint64 {
+	return r.tick
+}
+
+func (r *GameRoom) GetProjectiles() []models.Projectile {
+	return r.projectiles
+}
+
 func (r *GameRoom) loadMapStructures() {
 	r.structures = []models.MapStructure{}
 	if r.mapID == 0 { r.mapID = 1 }
