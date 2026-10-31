@@ -6,7 +6,7 @@ func CheckWinConditions(r *TDMRoom) string {
 	playerAliveCount := 0
 	enemyAliveCount := 0
 
-	for _, unit := range r.units {
+	for _, unit := range r.GetUnits() {
 		if unit.IsDestroyed {
 			continue
 		}

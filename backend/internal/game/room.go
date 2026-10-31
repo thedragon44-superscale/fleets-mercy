@@ -772,3 +772,41 @@ func (r *GameRoom) Run() {
 		r.mu.Unlock()
 	}
 }
+
+// Exported getters and setters so sub-packages (like teamDeathMatch) can manage room state safely
+func (r *GameRoom) GetUnits() map[string]*models.FleetUnit {
+	return r.units
+}
+
+func (r *GameRoom) SetUnits(u map[string]*models.FleetUnit) {
+	r.units = u
+}
+
+func (r *GameRoom) GetStructures() []models.MapStructure {
+	return r.structures
+}
+
+func (r *GameRoom) GetMapID() int {
+	return r.mapID
+}
+
+func (r *GameRoom) SetMapID(id int) {
+	r.mapID = id
+	r.loadMapStructures()
+}
+
+func (r *GameRoom) GetTick() uint64 {
+	return r.tick
+}
+
+func (r *GameRoom) SetTick(t uint64) {
+	r.tick = t
+}
+
+func (r *GameRoom) GetProjectiles() []models.Projectile {
+	return r.projectiles
+}
+
+func (r *GameRoom) SetProjectiles(p []models.Projectile) {
+	r.projectiles = p
+}

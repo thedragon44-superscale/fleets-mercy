@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"space-tactics-server/internal/db"
 	"space-tactics-server/internal/game"
 	SpaceTactics "space-tactics-server/internal/generated/SpaceTactics"
 	"space-tactics-server/internal/models"
@@ -32,7 +31,6 @@ type TDMRoom struct {
 }
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
-	// Initialize underlying base GameRoom (passing mapID and standard mode flag)
 	baseRoom := game.NewGameRoom(mapID, false)
 	
 	room := &TDMRoom{
@@ -47,41 +45,19 @@ func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom
 }
 
 func (r *TDMRoom) LoadMapStructures() {
-	r.Structures = []models.MapStructure{}
-	if r.MapID == { r.MapID = 1 }
-
-	rows, err := db.Conn.Query(
-		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
-		 FROM map_structures ms 
-		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
-		 WHERE ms.map_id = $1`, 
-		r.MapID,
-	)
-	if err != nil {
-		log.Printf("⚠️ TDM Warning: Failed to load structures for map %d: %v", r.MapID, err)
-		return
+	targetMapID := r.GetMapID()
+	if targetMapID == 0 {
+		r.SetMapID(1)
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var s models.MapStructure
-		var props []byte
-		if err := rows.Scan(&s.ID, &s.MapID, &s.StructureType, &s.PosX, &s.PosY, &s.Radius, &props); err == nil {
-			s.CustomProps = props
-			r.Structures = append(r.Structures, s)
-		}
-	}
-	log.Printf("🗺️ TDM Loaded %d environmental structures for map ID %d", len(r.Structures), r.MapID)
 }
 
 func (r *TDMRoom) ResetMatch() {
-	r.Units = make(map[string]*models.FleetUnit)
-	r.Projectiles = []models.Projectile{}
-	r.Tick = 0
+	r.SetUnits(make(map[string]*models.FleetUnit))
+	r.SetProjectiles([]models.Projectile{})
+	r.SetTick(0)
 	r.isGameOver = false
 	r.winningFaction = ""
 
-	// Initialize 20v20 Teams via tdm_spawner using the custom unit pool
 	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType, r.customUnitPool)
 	log.Printf("⚔️ TDM Match Initialized: 20v20 Skirmish spawned. Piloted unit locked to ID: %s", r.pilotedUnitID)
 }
@@ -93,8 +69,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	}
 	if mapStr := query.Get("map"); mapStr != "" {
 		if parsedMap, err := strconv.Atoi(mapStr); err == nil && parsedMap > 0 {
-			r.MapID = parsedMap
-			r.LoadMapStructures()
+			r.SetMapID(parsedMap)
 		}
 	}
 	if poolStr := query.Get("pool"); poolStr != "" {
@@ -102,7 +77,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r.mu.Lock()
-	if len(r.Units) == 0 {
+	if len(r.GetUnits()) == 0 {
 		r.ResetMatch()
 	}
 	r.mu.Unlock()
@@ -151,7 +126,7 @@ func (r *TDMRoom) Run() {
 
 	for range ticker.C {
 		r.mu.Lock()
-		r.Tick++
+		r.SetTick(r.GetTick() + 1)
 
 		// 1. Check Win Conditions
 		if !r.isGameOver {
@@ -164,9 +139,10 @@ func (r *TDMRoom) Run() {
 
 		// 2. Run Game Physics & AI Simulation Loops
 		if !r.isGameOver {
-			for id, unit := range r.Units {
+			units := r.GetUnits()
+			for id, unit := range units {
 				if unit.IsDestroyed {
-					delete(r.Units, id)
+					delete(units, id)
 					continue
 				}
 
@@ -188,20 +164,21 @@ func (r *TDMRoom) Run() {
 				}
 
 				game.ApplyUnitPhysics(unit, 12000.0, 12000.0)
-				game.ApplyEnvironmentalCollisions(unit, r.Structures)
-				game.ApplyMajorWorldGravity(unit, r.Structures)
+				game.ApplyEnvironmentalCollisions(unit, r.GetStructures())
+				game.ApplyMajorWorldGravity(unit, r.GetStructures())
 				game.HandleWeaponFiring(unit, r.GameRoom)
 			}
 
-			game.ResolveUnitCollisions(r.Units, false)
+			game.ResolveUnitCollisions(units, false)
 			game.UpdateProjectiles(r.GameRoom)
 		}
 
 		// 3. Build & Broadcast Binary FlatBuffers State
 		builder := flatbuffers.NewBuilder(1024)
-		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.Units))
+		units := r.GetUnits()
+		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(units))
 
-		for _, u := range r.Units {
+		for _, u := range units {
 			if u.IsDestroyed { continue }
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
@@ -237,8 +214,9 @@ func (r *TDMRoom) Run() {
 		}
 		unitsVector := builder.EndVector(len(unitOffsets))
 
-		projOffsets := make([]flatbuffers.UOffsetT, 0, len(r.Projectiles))
-		for _, p :=range r.Projectiles {
+		projectiles := r.GetProjectiles()
+		projOffsets := make([]flatbuffers.UOffsetT, 0, len(projectiles))
+		for _, p := range projectiles {
 			pIdOffset := builder.CreateString(p.ID)
 			ownerOffset := builder.CreateString(p.OwnerID)
 			typeOffset := builder.CreateString(p.Type)
@@ -266,7 +244,7 @@ func (r *TDMRoom) Run() {
 		winningFactionOffset := builder.CreateString(r.winningFaction)
 
 		SpaceTactics.ServerStateStart(builder)
-		SpaceTactics.ServerStateAddTick(builder, r.Tick)
+		SpaceTactics.ServerStateAddTick(builder, r.GetTick())
 		SpaceTactics.ServerStateAddUnits(builder, unitsVector)
 		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
 		SpaceTactics.ServerStateAddMapWidth(builder, 12000.0)
