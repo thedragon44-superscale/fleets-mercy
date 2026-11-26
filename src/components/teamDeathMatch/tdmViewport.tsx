@@ -1,4 +1,5 @@
 // src/components/teamDeathMatch/tdmViewport.tsx
+import { WS_BASE_URL } from '../../config';
 import React, { useEffect, useRef, useState } from 'react';
 import { unpackServerBinaryMessage, serializeClientInput, ServerStateSnapshot } from '../../parsers/binaryCodec';
 
@@ -37,7 +38,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   // Connect to WebSocket on mount
   useEffect(() => {
     const poolQuery = customPool.join(',');
-    const wsUrl = `ws://localhost:8080/ws/tdm?map=${mapId}&unit=${pilotedUnit}&pool=${encodeURIComponent(poolQuery)}`;
+    const wsUrl = `${WS_BASE_URL}/ws/tdm?map=${mapId}&unit=${pilotedUnit}&pool=${encodeURIComponent(poolQuery)}`;
     
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';

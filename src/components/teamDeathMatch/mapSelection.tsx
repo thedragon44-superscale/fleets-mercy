@@ -1,6 +1,6 @@
 // src/components/teamDeathMatch/mapSelection.tsx
 import React, { useEffect, useState } from 'react';
-import { mapService } from '../../services/mapService';
+import { fetchMaps } from '../../services/mapService';
 
 interface MapPreset {
   id: number;
@@ -28,7 +28,7 @@ export const TdmMapSelectionScreen: React.FC<TdmMapSelectionProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    mapService.getMaps()
+    fetchMaps()
       .then((data) => {
         if (data && data.length > 0) {
           setMaps(data);

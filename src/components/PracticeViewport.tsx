@@ -144,10 +144,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({ mapId = 1, o
   if (socketState) {
     serverState.current = socketState;
 
+    if (isBootstrapping) {
+      setIsBootstrapping(false);
+    }
+
     if (socketState.units && socketState.units.length > 0) {
-      if (isBootstrapping) {
-        setIsBootstrapping(false);
-      }
 
       const now = performance.now();
       serverHistoryRef.current.push({ timestamp: now, units: socketState.units });
