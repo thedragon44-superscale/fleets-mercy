@@ -1,5 +1,5 @@
 // src/components/DockingModal.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SQUAD_COLORS, BATTALION_BORDERS } from '../utils/groupingColors';
 
 interface FleetUnitSimple {
@@ -18,7 +18,6 @@ interface DockingModalProps {
   onAssignUnitToSquad?: (unitId: string, squadId: number, battalionId: number, isLeader?: boolean) => void;
 }
 
-// Data-Driven Configuration Constants
 const BATTALION_TIERS = [
   { id: 0, name: 'Main Flagship', color: 'border-slate-800 text-slate-300' },
   { id: 1, name: 'Alpha Cmd (Gold)', color: 'border-amber-400 text-amber-400' },
@@ -45,21 +44,38 @@ export const DockingModal: React.FC<DockingModalProps> = ({
   const [activeBattalionTab, setActiveBattalionTab] = useState<number>(0);
   const [pickerSlot, setPickerSlot] = useState<{ squadId: number; slotIdx: number } | null>(null);
 
+  // Determine unlocked battalion tiers from actual spawned battalion_command_ship units
+  const unlockedBattalions = useMemo(() => {
+    const unlocked = new Set<number>([0]);
+    const cmdShips = spawnedUnits.filter((u) => u.type === 'battalion_command_ship');
+
+    cmdShips.forEach((ship, idx) => {
+      if (ship.battalionId && ship.battalionId > 0) {
+        unlocked.add(ship.battalionId);
+      } else {
+        // Fallback: first command ship unlocks Alpha (1), second unlocks Beta (2)
+        unlocked.add(idx + 1);
+      }
+    });
+
+    if (cmdShips.length === 0 && hasCommandShip) {
+      unlocked.add(1);
+    }
+    return unlocked;
+  }, [spawnedUnits, hasCommandShip]);
+
   if (!isOpen) return null;
 
   const handleSelectBattalion = (batId: number) => {
-    if (batId > 0 && !hasCommandShip) return;
+    if (!unlockedBattalions.has(batId)) return;
     setActiveBattalionTab(batId);
   };
 
   const activeBattalionBorderClass = BATTALION_BORDER_CLASSES[activeBattalionTab] || BATTALION_BORDER_CLASSES[0];
+  const activeBattalionUnits = spawnedUnits.filter((u) => (u.battalionId || 0) === activeBattalionTab);
 
-  const activeBattalionUnits = spawnedUnits.filter(u => (u.battalionId || 0) === activeBattalionTab);
-  
-  // Filter for unassigned units, excluding foundational capital command ships using data-driven Set lookup
-  const unassignedUnits = spawnedUnits.filter(u => 
-    (u.squadId || 0) === 0 && 
-    !CAPITAL_UNIT_TYPES.has(u.type)
+  const unassignedUnits = spawnedUnits.filter(
+    (u) => (u.squadId || 0) === 0 && !CAPITAL_UNIT_TYPES.has(u.type)
   );
 
   const handleDockUnit = (unitId: string, squadId: number) => {
@@ -67,6 +83,23 @@ export const DockingModal: React.FC<DockingModalProps> = ({
       onAssignUnitToSquad(unitId, squadId, activeBattalionTab, false);
     }
     setPickerSlot(null);
+  };
+
+  const handleToggleLeader = (unit: FleetUnitSimple, sqId: number) => {
+    if (!onAssignUnitToSquad) return;
+
+    const promoting = !unit.isLeader;
+    if (promoting) {
+      // Demote any existing leader in the same (battalionId, squadId)
+      const currentLeaders = activeBattalionUnits.filter(
+        (u) => u.squadId === sqId && u.isLeader && u.id !== unit.id
+      );
+      currentLeaders.forEach((prevLeader) => {
+        onAssignUnitToSquad(prevLeader.id, sqId, activeBattalionTab, false);
+      });
+    }
+
+    onAssignUnitToSquad(unit.id, sqId, activeBattalionTab, promoting);
   };
 
   return (
@@ -100,7 +133,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
-        {/* 1. Battalion Selector (Data-Driven mapping from BATTALION_TIERS) */}
+        {/* 1. Battalion Selector */}
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
             Command Echelon Tier (Select Detachment)
@@ -108,7 +141,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           <div className="grid grid-cols-3 gap-1.5">
             {BATTALION_TIERS.map((bat) => {
               const isSelected = activeBattalionTab === bat.id;
-              const isLocked = bat.id > 0 && !hasCommandShip;
+              const isLocked = !unlockedBattalions.has(bat.id);
 
               return (
                 <button
@@ -116,8 +149,8 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                   onClick={() => handleSelectBattalion(bat.id)}
                   disabled={isLocked}
                   className={`py-1.5 px-2 rounded-lg border-2 text-[9px] font-black uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${
-                    isSelected 
-                      ? 'bg-slate-800 shadow-md scale-[1.02]' 
+                    isSelected
+                      ? 'bg-slate-800 shadow-md scale-[1.02]'
                       : 'bg-[#161922] opacity-60 hover:opacity-100'
                   } ${isLocked ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-600' : bat.color}`}
                 >
@@ -129,7 +162,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Squad Docking Bays (Data-Driven from FORMATION_SQUAD_IDS and FORMATION_SLOTS) */}
+        {/* 2. Squad Docking Bays */}
         <div className={`flex flex-col gap-2 p-3 bg-[#161922] rounded-xl border-2 transition-all ${activeBattalionBorderClass}`}>
           <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-white">
@@ -143,7 +176,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           <div className="grid grid-cols-1 gap-2">
             {FORMATION_SQUAD_IDS.map((sqId) => {
               const sqStyle = SQUAD_COLORS[sqId];
-              const squadUnits = activeBattalionUnits.filter(u => u.squadId === sqId);
+              const squadUnits = activeBattalionUnits.filter((u) => u.squadId === sqId);
 
               return (
                 <div
@@ -180,14 +213,12 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (onAssignUnitToSquad) {
-                                      onAssignUnitToSquad(unit.id, sqId, activeBattalionTab, !unit.isLeader);
-                                    }
+                                    handleToggleLeader(unit, sqId);
                                   }}
                                   className={`text-[7px] font-black px-1 rounded transition-all ${
                                     unit.isLeader ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
                                   }`}
-                                  title="Toggle Squad Leader status"
+                                  title="Toggle Squad Leader status (auto-demotes previous leader)"
                                 >
                                   {unit.isLeader ? 'LDR' : 'SET'}
                                 </button>

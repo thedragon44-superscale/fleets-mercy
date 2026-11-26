@@ -1,5 +1,6 @@
 // src/components/PilotSwitcherModal.tsx
 import React from 'react';
+import { SQUAD_COLORS, BATTALION_BORDERS } from '../utils/groupingColors';
 
 interface FleetUnitSimple {
   id: string;
@@ -16,21 +17,7 @@ interface PilotSwitcherModalProps {
   onSelectUnit: (unitId: string) => void;
 }
 
-// Data-Driven Configuration Maps
-const SQUAD_COLOR_MAP: { [key: number]: string } = {
-  1: '#ef444422',
-  2: '#3b82f622',
-  3: '#22c55e22',
-  4: '#a855f722',
-};
-const DEFAULT_SQUAD_COLOR = '#161922';
-
-const BATTALION_NAME_MAP: { [key: number]: string } = {
-  1: 'Alpha',
-  2: 'Beta',
-  3: 'Gamma',
-  4: 'Delta',
-};
+const DEFAULT_SQUAD_BG = '#161922';
 
 const BATTALION_BORDER_MAP: { [key: number]: string } = {
   1: 'border-amber-400/60',
@@ -82,7 +69,7 @@ export const PilotSwitcherModal: React.FC<PilotSwitcherModalProps> = ({
       {/* Unit Selection Roster */}
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
         <p className="text-[9px] text-slate-400 font-medium">
-          Select an active sandbox unit below to take direct manual control of its flight path and weapon systems[cite: 10].
+          Select an active sandbox unit below to take direct manual control of its flight path and weapon systems.
         </p>
 
         <div className="grid grid-cols-1 gap-1.5 mt-2">
@@ -90,11 +77,11 @@ export const PilotSwitcherModal: React.FC<PilotSwitcherModalProps> = ({
             const isControlled = controlledUnitId === unit.id;
             const squadId = unit.squadId || 0;
             const battalionId = unit.battalionId || 0;
-            
-            // Resolve styles dynamically via data-driven maps instead of ternary cascades
-            const bgHex = SQUAD_COLOR_MAP[squadId] || DEFAULT_SQUAD_COLOR;
+
+            const squadStyle = SQUAD_COLORS[squadId];
+            const bgHex = squadStyle?.hex ? `${squadStyle.hex}22` : DEFAULT_SQUAD_BG;
             const borderCol = BATTALION_BORDER_MAP[battalionId] || DEFAULT_BORDER_COLOR;
-            const battalionName = BATTALION_NAME_MAP[battalionId] || `Battalion-${battalionId}`;
+            const battalionName = BATTALION_BORDERS[battalionId]?.name || `Battalion-${battalionId}`;
 
             return (
               <button
@@ -102,8 +89,8 @@ export const PilotSwitcherModal: React.FC<PilotSwitcherModalProps> = ({
                 onClick={() => onSelectUnit(unit.id)}
                 style={{ backgroundColor: isControlled ? '#38bdf8' : bgHex }}
                 className={`p-2.5 rounded-lg border text-left flex items-center justify-between transition-all ${borderCol} ${
-                  isControlled 
-                    ? 'text-slate-950 border-white shadow-lg font-black scale-[1.01]' 
+                  isControlled
+                    ? 'text-slate-950 border-white shadow-lg font-black scale-[1.01]'
                     : 'text-slate-200 hover:bg-slate-800/60'
                 }`}
               >

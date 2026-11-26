@@ -112,7 +112,11 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
         onClose={onClose}
       />
 
-      <UnitConfigTabs activeTab={activeTab} onSelectTab={setActiveTab} />
+      <UnitConfigTabs
+        activeTab={activeTab}
+        modifiedFields={modifiedFieldSet}
+        onSelectTab={setActiveTab}
+      />
 
       {hasUnsavedChanges && (
         <div className="flex items-center justify-between gap-2 px-2.5 py-1 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[9px] text-amber-300 shrink-0">

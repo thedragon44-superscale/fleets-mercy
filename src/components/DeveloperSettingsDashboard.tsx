@@ -6,6 +6,12 @@ interface DeveloperSettingsProps {
   onNavigateHome: () => void;
 }
 
+const WipBadge: React.FC = () => (
+  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[8px] font-black uppercase tracking-wider">
+    WIP
+  </span>
+);
+
 export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ onNavigateHome }) => {
   const {
     renderDelay,
@@ -20,7 +26,6 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
 
   return (
     <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-3 gap-3 font-mono select-none">
-      
       {/* Header */}
       <header className="bg-[#0f1115] border border-slate-800/80 rounded-xl px-4 py-2.5 flex items-center justify-between shadow-lg shrink-0">
         <div className="flex items-center gap-3">
@@ -51,7 +56,6 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
 
       {/* Main Settings Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
-        
         {/* Card 1: Network & Interpolation */}
         <div className="bg-[#0f1115] border border-slate-800/80 rounded-xl p-4 flex flex-col gap-4 shadow-xl">
           <div className="border-b border-slate-800 pb-2">
@@ -77,9 +81,12 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
               <span className="text-[8px] text-slate-500">Buffers client rendering behind server time to smooth jitter.</span>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-slate-300">Simulated Network Latency</span>
+            <div className="flex flex-col gap-1 opacity-75">
+              <div className="flex justify-between text-[10px] font-bold items-center">
+                <span className="text-slate-300 flex items-center">
+                  Simulated Network Latency
+                  <WipBadge />
+                </span>
                 <span className="text-cyan-400">{netSimulatedLatency} ms</span>
               </div>
               <input
@@ -138,10 +145,13 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
             <p className="text-[9px] text-slate-400">Manage particle emitters and AI tick scaling.</p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 opacity-75">
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-slate-300">Particle Density Multiplier</span>
+              <div className="flex justify-between text-[10px] font-bold items-center">
+                <span className="text-slate-300 flex items-center">
+                  Particle Density Multiplier
+                  <WipBadge />
+                </span>
                 <span className="text-purple-400">{particleDensityMultiplier}x</span>
               </div>
               <input
@@ -156,8 +166,11 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
             </div>
 
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-slate-300">AI Tick Interval Skip</span>
+              <div className="flex justify-between text-[10px] font-bold items-center">
+                <span className="text-slate-300 flex items-center">
+                  AI Tick Interval Skip
+                  <WipBadge />
+                </span>
                 <span className="text-purple-400">{aiUpdateIntervalTicks} tick(s)</span>
               </div>
               <input
@@ -172,7 +185,6 @@ export const DeveloperSettingsDashboard: React.FC<DeveloperSettingsProps> = ({ o
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
