@@ -1,12 +1,48 @@
 // src/services/gameSocketService.ts
-import { unpackServerBinaryMessage, serializeClientInput, ServerStateSnapshot } from '../parsers/binaryCodec';
-import { useSettingsStore } from '../config/settingsStore';
+import {
+  unpackServerBinaryMessage,
+  serializeClientInput,
+  ServerStateSnapshot,
+} from '../parsers/binaryCodec';
+
+export interface SandboxCountItem {
+  unitType: string;
+  count: number;
+  ownerId: string;
+}
+
+export interface ClientInputParams {
+  keys?: { w?: boolean; s?: boolean; a?: boolean; d?: boolean };
+  angle?: number;
+  isFiring?: boolean;
+  currentId?: string | null;
+  reset?: boolean;
+  deploy?: string;
+  sandboxSpawn?: string;
+  sandboxSpawnOwner?: string;
+  sandboxRemove?: string;
+  spawnX?: number;
+  spawnY?: number;
+  isPaused?: boolean;
+  timeScale?: number;
+  sandboxCounts?: SandboxCountItem[];
+  unitGrouping?: {
+    unitId: string;
+    battalionId: number;
+    squadId: number;
+    isSquadLeader: boolean;
+  };
+}
 
 export class GameSocketService {
   private ws: WebSocket | null = null;
   private serverState: ServerStateSnapshot | null = null;
   private listeners: Set<() => void> = new Set();
   private url: string;
+
+  // Rolling average server tick interval (ms)
+  private lastMessageTime: number = 0;
+  private avgTickMs: number = 16.0;
 
   constructor(url: string) {
     this.url = url;
@@ -19,14 +55,24 @@ export class GameSocketService {
 
     this.ws.onopen = () => {
       console.log(`[NETWORK] Connected to Go Server (Binary Mode) at ${this.url}`);
+      this.lastMessageTime = 0;
     };
 
     this.ws.onmessage = (event: MessageEvent) => {
-      let parsedData = null;
+      let parsedData: ServerStateSnapshot | null = null;
       if (event.data instanceof ArrayBuffer) {
         parsedData = unpackServerBinaryMessage(event.data);
       }
       if (parsedData !== null) {
+        const now = performance.now();
+        if (this.lastMessageTime > 0) {
+          const delta = now - this.lastMessageTime;
+          if (delta > 0 && delta < 1000) {
+            this.avgTickMs = this.avgTickMs * 0.9 + delta * 0.1;
+          }
+        }
+        this.lastMessageTime = now;
+
         this.serverState = parsedData;
         this.notifyListeners();
       }
@@ -43,7 +89,7 @@ export class GameSocketService {
   }
 
   private notifyListeners() {
-    this.listeners.forEach(listener => listener());
+    this.listeners.forEach((listener) => listener());
   }
 
   public subscribe = (listener: () => void) => {
@@ -57,28 +103,20 @@ export class GameSocketService {
     return this.serverState;
   };
 
+  public getTickMs = (): number => {
+    return this.avgTickMs;
+  };
+
   // --- PURE BINARY UPSTREAM SENDERS ---
 
-  public sendInput = (actionParams: {
-    keys?: { w?: boolean; s?: boolean; a?: boolean; d?: boolean };
-    angle?: number;
-    isFiring?: boolean;
-    currentId?: string | null;
-    reset?: boolean;
-    deploy?: string;
-    sandboxSpawn?: string;
-    sandboxRemove?: string;
-    spawnX?: number;
-    spawnY?: number;
-    sandboxCounts?: Record<string, number>;
-  }) => {
+  public sendInput = (actionParams: ClientInputParams) => {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const binaryPayload = serializeClientInput(actionParams);
       this.ws.send(binaryPayload);
     }
   };
 
-  public updateUnitCount = (counts: Record<string, number>) => {
+  public updateUnitCount = (counts: SandboxCountItem[]) => {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const binaryPayload = serializeClientInput({ sandboxCounts: counts });
       this.ws.send(binaryPayload);

@@ -1,6 +1,5 @@
 // src/hooks/useGameSockets.ts
-import { useMemo } from 'react';
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { getGameSocketService } from '../services/gameSocketService';
 
 export const useGameSocket = (serverUrl: string) => {
@@ -14,6 +13,7 @@ export const useGameSocket = (serverUrl: string) => {
 
   return {
     state,
+    tickMs: service.getTickMs(),
     sendInput: service.sendInput,
     updateUnitCount: service.updateUnitCount,
     sendTemplateOverride: service.sendTemplateOverride,

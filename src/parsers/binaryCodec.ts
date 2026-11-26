@@ -1,6 +1,11 @@
 // src/parsers/binaryCodec.ts
 import * as flatbuffersNS from "flatbuffers";
 import { ServerState } from "../generated/space-tactics/server-state";
+import { ClientInput } from "../generated/space-tactics/client-input";
+import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
+import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
+import { SandboxCountPair } from "../generated/space-tactics/sandbox-count-pair";
+import { SandboxTimeControl } from "../generated/space-tactics/sandbox-time-control";
 
 export interface Vector2D {
   x: number;
@@ -19,6 +24,7 @@ export interface SnapshotUnit {
   type: string;
   ownerId: string;
   pos: Vector2D;
+  vel: Vector2D;
   angle: number;
   shields: QuadrantStats;
   hull: QuadrantStats;
@@ -27,6 +33,10 @@ export interface SnapshotUnit {
   isFiring: boolean;
   battalionId: number;
   squadId: number;
+  visionRange: number;
+  aiState: string;
+  currentThermal: number;
+  currentAmmo: number;
 }
 
 export interface SnapshotProjectile {
@@ -48,12 +58,6 @@ export interface ServerStateSnapshot {
   isGameOver: boolean;
   winningFaction: string;
 }
-import { ClientInput } from "../generated/space-tactics/client-input";
-import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
-import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
-import { FleetUnit } from "../generated/space-tactics/fleet-unit";
-import { Projectile } from "../generated/space-tactics/projectile";
-import { SandboxCountPair } from "../generated/space-tactics/sandbox-count-pair";
 
 // Safe interop fallback for Vite / CJS package bundling of flatbuffers
 const FB = (flatbuffersNS as any).Flatbuffers || flatbuffersNS;
@@ -71,7 +75,6 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
     const bb = new ByteBuffer(uint8Array);
     const serverState = ServerState.getRootAsServerState(bb);
 
-    const tick = Number(serverState.tick());
     const mapWidth = serverState.mapWidth();
     const mapHeight = serverState.mapHeight();
     const isGameOver = serverState.isGameOver();
@@ -79,12 +82,13 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
 
     // Parse Fleet Units
     const unitsLength = serverState.unitsLength();
-    const units = [];
+    const units: SnapshotUnit[] = [];
     for (let i = 0; i < unitsLength; i++) {
       const u = serverState.units(i);
       if (!u) continue;
 
       const pos = u.pos();
+      const vel = u.vel();
       const shields = u.shields();
       const hull = u.hull();
 
@@ -93,6 +97,7 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
         type: u.type() || 'default',
         ownerId: u.ownerId() || 'enemy',
         pos: { x: pos?.x() || 0, y: pos?.y() || 0 },
+        vel: { x: vel?.x() || 0, y: vel?.y() || 0 },
         angle: u.angle(),
         shields: {
           front: shields?.front() || 0,
@@ -111,12 +116,16 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
         isFiring: u.isFiring(),
         battalionId: u.battalionId(),
         squadId: u.squadId(),
+        visionRange: u.visionRange(),
+        aiState: u.aiState() || '',
+        currentThermal: u.currentThermal(),
+        currentAmmo: u.currentAmmo(),
       });
     }
 
     // Parse Projectiles
     const projLength = serverState.projectilesLength();
-    const projectiles = [];
+    const projectiles: SnapshotProjectile[] = [];
     for (let i = 0; i < projLength; i++) {
       const p = serverState.projectiles(i);
       if (!p) continue;
@@ -138,10 +147,10 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
       projectiles,
       mapBounds: {
         width: mapWidth,
-        height: mapHeight
+        height: mapHeight,
       },
       isGameOver,
-      winningFaction
+      winningFaction,
     };
   } catch (error) {
     console.error('[BINARY CODEC] Failed to unpack FlatBuffers message:', error);
@@ -162,9 +171,12 @@ export function serializeClientInput(actionParams: {
   reset?: boolean;
   deploy?: string;
   sandboxSpawn?: string;
+  sandboxSpawnOwner?: string;
   sandboxRemove?: string;
   spawnX?: number;
   spawnY?: number;
+  isPaused?: boolean;
+  timeScale?: number;
   sandboxCounts?: Array<{
     unitType: string;
     count: number;
@@ -224,7 +236,7 @@ export function serializeClientInput(actionParams: {
       jammingSusceptibility?: number;
       targetLockTime?: number;
       radarImmunityActive?: boolean;
-      shieldGatedStealthThreshold?: boolean;
+      shieldGatedStealthThreshold?: number;
       decloakOnActionFlag?: boolean;
       stealthRecoveryDelaySeconds?: number;
       resourceHarvestingType?: number;
@@ -254,8 +266,9 @@ export function serializeClientInput(actionParams: {
   const controlledIdOffset = actionParams.currentId ? builder.createString(actionParams.currentId) : 0;
   const deployOffset = actionParams.deploy ? builder.createString(actionParams.deploy) : 0;
   const sandboxSpawnOffset = actionParams.sandboxSpawn ? builder.createString(actionParams.sandboxSpawn) : 0;
+  const sandboxSpawnOwnerOffset = actionParams.sandboxSpawnOwner ? builder.createString(actionParams.sandboxSpawnOwner) : 0;
   const sandboxRemoveOffset = actionParams.sandboxRemove ? builder.createString(actionParams.sandboxRemove) : 0;
-  
+
   // 2. Build Template Override Table (if provided)
   let templateTypeOffset = 0;
   let templateConfigOffset = 0;
@@ -264,7 +277,7 @@ export function serializeClientInput(actionParams: {
     const cfg = actionParams.templateOverride.config;
 
     UnitConfigUpdate.startUnitConfigUpdate(builder);
-    
+
     // Core & General
     if (cfg.weightClass !== undefined) UnitConfigUpdate.addWeightClass(builder, cfg.weightClass);
     if (cfg.visionRange !== undefined) UnitConfigUpdate.addVisionRange(builder, cfg.visionRange);
@@ -376,12 +389,25 @@ export function serializeClientInput(actionParams: {
 
     ClientInput.startSandboxCountsVector(builder, pairOffsets.length);
     for (let i = pairOffsets.length - 1; i >= 0; i--) {
-      builder.addOffset(pairOffsets[i]); 
+      builder.addOffset(pairOffsets[i]);
     }
     countsVectorOffset = builder.endVector();
   }
 
-  // 5. Build Root ClientInput Table
+  // 5. Build Sandbox Time Control Sub-Table (only when explicitly changed)
+  let timeControlOffset = 0;
+  if (actionParams.isPaused !== undefined || actionParams.timeScale !== undefined) {
+    SandboxTimeControl.startSandboxTimeControl(builder);
+    if (actionParams.isPaused !== undefined) {
+      SandboxTimeControl.addIsPaused(builder, actionParams.isPaused);
+    }
+    if (actionParams.timeScale !== undefined) {
+      SandboxTimeControl.addTimeScale(builder, actionParams.timeScale);
+    }
+    timeControlOffset = SandboxTimeControl.endSandboxTimeControl(builder);
+  }
+
+  // 6. Build Root ClientInput Table
   ClientInput.startClientInput(builder);
   ClientInput.addW(builder, !!actionParams.keys?.w);
   ClientInput.addS(builder, !!actionParams.keys?.s);
@@ -395,6 +421,7 @@ export function serializeClientInput(actionParams: {
 
   if (deployOffset) ClientInput.addDeploy(builder, deployOffset);
   if (sandboxSpawnOffset) ClientInput.addSandboxSpawn(builder, sandboxSpawnOffset);
+  if (sandboxSpawnOwnerOffset) ClientInput.addSandboxSpawnOwner(builder, sandboxSpawnOwnerOffset);
   if (sandboxRemoveOffset) ClientInput.addSandboxRemove(builder, sandboxRemoveOffset);
 
   if (actionParams.spawnX !== undefined) ClientInput.addSpawnX(builder, actionParams.spawnX);
@@ -404,6 +431,7 @@ export function serializeClientInput(actionParams: {
   if (templateTypeOffset) ClientInput.addTemplateOverrideType(builder, templateTypeOffset);
   if (templateConfigOffset) ClientInput.addTemplateOverrideConfig(builder, templateConfigOffset);
   if (groupingOffset) ClientInput.addUnitGrouping(builder, groupingOffset);
+  if (timeControlOffset) ClientInput.addTimeControl(builder, timeControlOffset);
 
   const root = ClientInput.endClientInput(builder);
   builder.finish(root);
