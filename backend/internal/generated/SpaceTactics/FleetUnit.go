@@ -180,8 +180,53 @@ func (rcv *FleetUnit) MutateVisionRange(n int32) bool {
 	return rcv._tab.MutateInt32Slot(28, n)
 }
 
+func (rcv *FleetUnit) Vel(obj *Vector2D) *Vector2D {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		x := o + rcv._tab.Pos
+		if obj == nil {
+			obj = new(Vector2D)
+		}
+		obj.Init(rcv._tab.Bytes, x)
+		return obj
+	}
+	return nil
+}
+
+func (rcv *FleetUnit) AiState() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *FleetUnit) CurrentThermal() float32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(34))
+	if o != 0 {
+		return rcv._tab.GetFloat32(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *FleetUnit) MutateCurrentThermal(n float32) bool {
+	return rcv._tab.MutateFloat32Slot(34, n)
+}
+
+func (rcv *FleetUnit) CurrentAmmo() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(36))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *FleetUnit) MutateCurrentAmmo(n int32) bool {
+	return rcv._tab.MutateInt32Slot(36, n)
+}
+
 func FleetUnitStart(builder *flatbuffers.Builder) {
-	builder.StartObject(13)
+	builder.StartObject(17)
 }
 func FleetUnitAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -221,6 +266,18 @@ func FleetUnitAddSquadId(builder *flatbuffers.Builder, squadId int32) {
 }
 func FleetUnitAddVisionRange(builder *flatbuffers.Builder, visionRange int32) {
 	builder.PrependInt32Slot(12, visionRange, 0)
+}
+func FleetUnitAddVel(builder *flatbuffers.Builder, vel flatbuffers.UOffsetT) {
+	builder.PrependStructSlot(13, flatbuffers.UOffsetT(vel), 0)
+}
+func FleetUnitAddAiState(builder *flatbuffers.Builder, aiState flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(14, flatbuffers.UOffsetT(aiState), 0)
+}
+func FleetUnitAddCurrentThermal(builder *flatbuffers.Builder, currentThermal float32) {
+	builder.PrependFloat32Slot(15, currentThermal, 0.0)
+}
+func FleetUnitAddCurrentAmmo(builder *flatbuffers.Builder, currentAmmo int32) {
+	builder.PrependInt32Slot(16, currentAmmo, 0)
 }
 func FleetUnitEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

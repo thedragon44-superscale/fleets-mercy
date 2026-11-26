@@ -248,8 +248,29 @@ func (rcv *ClientInput) UnitGrouping(obj *UnitGroupingPayload) *UnitGroupingPayl
 	return nil
 }
 
+func (rcv *ClientInput) SandboxSpawnOwner() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(42))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *ClientInput) TimeControl(obj *SandboxTimeControl) *SandboxTimeControl {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(44))
+	if o != 0 {
+		x := rcv._tab.Indirect(o + rcv._tab.Pos)
+		if obj == nil {
+			obj = new(SandboxTimeControl)
+		}
+		obj.Init(rcv._tab.Bytes, x)
+		return obj
+	}
+	return nil
+}
+
 func ClientInputStart(builder *flatbuffers.Builder) {
-	builder.StartObject(19)
+	builder.StartObject(21)
 }
 func ClientInputAddW(builder *flatbuffers.Builder, w bool) {
 	builder.PrependBoolSlot(0, w, false)
@@ -310,6 +331,12 @@ func ClientInputAddBehaviorOverrideConfig(builder *flatbuffers.Builder, behavior
 }
 func ClientInputAddUnitGrouping(builder *flatbuffers.Builder, unitGrouping flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(18, flatbuffers.UOffsetT(unitGrouping), 0)
+}
+func ClientInputAddSandboxSpawnOwner(builder *flatbuffers.Builder, sandboxSpawnOwner flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(19, flatbuffers.UOffsetT(sandboxSpawnOwner), 0)
+}
+func ClientInputAddTimeControl(builder *flatbuffers.Builder, timeControl flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(20, flatbuffers.UOffsetT(timeControl), 0)
 }
 func ClientInputEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

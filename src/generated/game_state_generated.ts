@@ -5,6 +5,7 @@ export { FleetUnit } from './space-tactics/fleet-unit';
 export { Hull } from './space-tactics/hull';
 export { Projectile } from './space-tactics/projectile';
 export { SandboxCountPair } from './space-tactics/sandbox-count-pair';
+export { SandboxTimeControl } from './space-tactics/sandbox-time-control';
 export { ServerState } from './space-tactics/server-state';
 export { Shields } from './space-tactics/shields';
 export { UnitConfigUpdate } from './space-tactics/unit-config-update';

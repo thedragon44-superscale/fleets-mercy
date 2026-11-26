@@ -37,6 +37,12 @@ table FleetUnit {
   battalion_id: int;
   squad_id: int;
   vision_range: int;
+
+  // Sandbox & Debug Telemetry
+  vel: Vector2D;
+  ai_state: string;
+  current_thermal: float;
+  current_ammo: int;
 }
 
 table Projectile {
@@ -161,6 +167,11 @@ table UnitGroupingPayload {
   is_squad_leader: bool;
 }
 
+table SandboxTimeControl {
+  is_paused: bool;
+  time_scale: float = 1.0;
+}
+
 table ClientInput {
   // 1. Movement & Flight Controls (WASD, Aim, Firing)
   w: bool;
@@ -190,6 +201,10 @@ table ClientInput {
 
   // 5. Fleet Grouping / Docking Bay Squad Assignments
   unit_grouping: UnitGroupingPayload;
+
+  // 6. Sandbox Faction Placement & Time Controls (Appended for wire compatibility)
+  sandbox_spawn_owner: string;
+  time_control: SandboxTimeControl;
 }
 
 root_type ServerState;

@@ -4,6 +4,7 @@ import * as flatbuffers from 'flatbuffers';
 
 import { BehaviorConfigUpdate } from '../space-tactics/behavior-config-update';
 import { SandboxCountPair } from '../space-tactics/sandbox-count-pair';
+import { SandboxTimeControl } from '../space-tactics/sandbox-time-control';
 import { UnitConfigUpdate } from '../space-tactics/unit-config-update';
 import { UnitGroupingPayload } from '../space-tactics/unit-grouping-payload';
 
@@ -138,8 +139,20 @@ unitGrouping(obj?:UnitGroupingPayload):UnitGroupingPayload|null {
   return offset ? (obj || new UnitGroupingPayload()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+sandboxSpawnOwner():string|null
+sandboxSpawnOwner(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+sandboxSpawnOwner(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 42);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+timeControl(obj?:SandboxTimeControl):SandboxTimeControl|null {
+  const offset = this.bb!.__offset(this.bb_pos, 44);
+  return offset ? (obj || new SandboxTimeControl()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
+}
+
 static startClientInput(builder:flatbuffers.Builder) {
-  builder.startObject(19);
+  builder.startObject(21);
 }
 
 static addW(builder:flatbuffers.Builder, w:boolean) {
@@ -228,6 +241,14 @@ static addBehaviorOverrideConfig(builder:flatbuffers.Builder, behaviorOverrideCo
 
 static addUnitGrouping(builder:flatbuffers.Builder, unitGroupingOffset:flatbuffers.Offset) {
   builder.addFieldOffset(18, unitGroupingOffset, 0);
+}
+
+static addSandboxSpawnOwner(builder:flatbuffers.Builder, sandboxSpawnOwnerOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(19, sandboxSpawnOwnerOffset, 0);
+}
+
+static addTimeControl(builder:flatbuffers.Builder, timeControlOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(20, timeControlOffset, 0);
 }
 
 static endClientInput(builder:flatbuffers.Builder):flatbuffers.Offset {

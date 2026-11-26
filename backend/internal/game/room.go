@@ -59,11 +59,14 @@ type UnitGroupingData struct {
 type SandboxClientInput = ClientStateInput
 
 type GameRoom struct {
-	resetTimer  int
-	deployQueue []string
-	isSandbox   bool
-	mapID       int
-	structures  []models.MapStructure
+	resetTimer      int
+	deployQueue     []string
+	isSandbox       bool
+	isPaused        bool
+	timeScale       float64
+	tickAccumulator float64
+	mapID           int
+	structures      []models.MapStructure
 
 	clients     map[*websocket.Conn]bool
 	mu          sync.Mutex
@@ -80,6 +83,7 @@ func NewGameRoom(mapID int, isSandbox bool) *GameRoom {
 		units:       make(map[string]*models.FleetUnit),
 		deployQueue: make([]string, 0),
 		isSandbox:   isSandbox,
+		timeScale:   1.0,
 		mapID:       mapID,
 	}
 	room.loadMapStructures()
@@ -167,6 +171,7 @@ func (r *GameRoom) resetWorld() {
 	r.units = make(map[string]*models.FleetUnit)
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
+	r.tickAccumulator = 0
 
 	if !r.isSandbox {
 		r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
@@ -353,6 +358,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		log.Printf("❌ Player disconnected: %s. Resetting state.", clientAddr)
 		r.mu.Lock()
 		delete(r.clients, conn)
+		r.isPaused = false
+		r.timeScale = 1.0
 		r.resetWorld()
 		r.mu.Unlock()
 		conn.Close()
@@ -385,19 +392,41 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		if dep := clientInput.Deploy(); len(dep) > 0 {
 			r.deployQueue = append(r.deployQueue, string(dep))
 		}
+
+		// Sandbox Time Controls (Pause & Simulation Speed)
+		var timeCtrl SpaceTactics.SandboxTimeControl
+		if r.isSandbox && clientInput.TimeControl(&timeCtrl) != nil {
+			r.isPaused = timeCtrl.IsPaused()
+			if ts := float64(timeCtrl.TimeScale()); ts > 0 {
+				r.timeScale = math.Max(0.1, math.Min(ts, 4.0))
+			}
+			log.Printf("⏱️ Sandbox time control -> Paused: %v, Scale: %.2fx", r.isPaused, r.timeScale)
+		}
+
+		// Faction-aware exact spatial spawning for Click-to-Spawn
 		if spawn := clientInput.SandboxSpawn(); len(spawn) > 0 {
 			spawnStr := string(spawn)
-			r.deployQueue = append(r.deployQueue, "SANDBOX:"+spawnStr)
+			ownerID := "player"
+			if ownerBytes := clientInput.SandboxSpawnOwner(); len(ownerBytes) > 0 {
+				ownerID = string(ownerBytes)
+			}
 			sx := clientInput.SpawnX()
 			sy := clientInput.SpawnY()
-			offsetX := sx + (rand.Float64()-0.5)*120
-			offsetY := sy + (rand.Float64()-0.5)*120
-			r.spawnUnit(spawnStr, "player", offsetX, offsetY, "GUARD")
+			defaultAI := "GUARD"
+			if ownerID == "enemy" {
+				defaultAI = "SEEK"
+			}
+			r.spawnUnit(spawnStr, ownerID, sx, sy, defaultAI)
 		}
+
 		if rem := clientInput.SandboxRemove(); len(rem) > 0 {
 			remStr := string(rem)
+			ownerID := "player"
+			if ownerBytes := clientInput.SandboxSpawnOwner(); len(ownerBytes) > 0 {
+				ownerID = string(ownerBytes)
+			}
 			for id, u := range r.units {
-				if u.OwnerID == "player" && u.Type == remStr {
+				if u.OwnerID == ownerID && u.Type == remStr {
 					delete(r.units, id)
 					break
 				}
@@ -431,9 +460,13 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					}
 					if targetCount > currentCount {
 						diff := targetCount - currentCount
+						defaultAI := "GUARD"
+						if ownerID == "enemy" {
+							defaultAI = "SEEK"
+						}
 						for j := 0; j < diff; j++ {
 							spawnX, spawnY := r.CalculateSpawnPosition(ownerID, j, targetCount)
-							r.spawnUnit(unitType, ownerID, spawnX, spawnY, "GUARD")
+							r.spawnUnit(unitType, ownerID, spawnX, spawnY, defaultAI)
 						}
 					} else if targetCount < currentCount {
 						diff := currentCount - targetCount
@@ -449,171 +482,140 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		// Parse template overrides
+		// Parse live template overrides (supports zeroing stats cleanly)
 		if tTypeBytes := clientInput.TemplateOverrideType(); len(tTypeBytes) > 0 {
-			tType := string(tTypeBytes)
-			var configTable SpaceTactics.UnitConfigUpdate
-			if clientInput.TemplateOverrideConfig(&configTable) != nil {
-				unitType := tType
+			unitType := string(tTypeBytes)
+			var cfg SpaceTactics.UnitConfigUpdate
+			if clientInput.TemplateOverrideConfig(&cfg) != nil {
+				clampedSpeed := math.Max(0, math.Min(float64(cfg.Speed()), 50.0))
+				clampedStrafe := math.Max(0, math.Min(float64(cfg.StrafingSpeed()), 50.0))
+				clampedTurn := math.Max(0, math.Min(float64(cfg.TurnRate()), 60.0))
+				clampedAngVel := math.Max(0, math.Min(float64(cfg.AngularVelocity()), 15.0))
+				clampedAccel := math.Max(0, math.Min(float64(cfg.AccelerationCurve()), 10.0))
+
 				if tmpl, exists := db.Templates[unitType]; exists {
-					// 1. Movement & Physics Dynamics (with safety clamping)
-					if val := configTable.Speed(); val != 0 {
-						tmpl.Speed = math.Min(float64(val), 50.0)
+					// 1. Core & General
+					if wc := int(cfg.WeightClass()); wc > 0 {
+						tmpl.WeightClass = wc
 					}
-					if val := configTable.StrafingSpeed(); val != 0 {
-						tmpl.StrafingSpeed = math.Min(float64(val), 50.0)
-					}
-					if val := configTable.TurnRate(); val != 0 {
-						tmpl.TurnRate = math.Min(float64(val), 60.0)
-					}
-					if val := configTable.AngularVelocity(); val != 0 {
-						tmpl.AngularVelocity = math.Min(float64(val), 15.0)
-					}
-					if val := configTable.AccelerationCurve(); val != 0 {
-						tmpl.AccelerationCurve = math.Min(float64(val), 10.0)
-					}
+					tmpl.VisionRange = int(cfg.VisionRange())
+					tmpl.SensorRange = float64(cfg.SensorRange())
+					tmpl.AggroRange = float64(cfg.AggroRange())
+					tmpl.RetreatMoraleThreshold = float64(cfg.RetreatMoraleThreshold())
+					tmpl.SquadCohesionLeashRange = float64(cfg.SquadCohesionLeashRange())
 
-					// 2. Combat Output & Ballistics
-					if val := configTable.Dps(); val != 0 {
-						tmpl.DPS = float64(val)
-					}
-					if val := configTable.MaxCooldown(); val != 0 {
-						tmpl.MaxCooldown = int(val)
-					}
-					if val := configTable.ProjectileRange(); val != 0 {
-						tmpl.ProjectileRange = float64(val)
-					}
-					if val := configTable.ProjectileSpeed(); val != 0 {
-						tmpl.ProjectileSpeed = float64(val)
-					}
-					if val := configTable.MaxThermalCapacity(); val != 0 {
-						tmpl.MaxThermalCapacity = float64(val)
-					}
+					// 2. Movement & Physics Dynamics
+					tmpl.Speed = clampedSpeed
+					tmpl.StrafingSpeed = clampedStrafe
+					tmpl.TurnRate = clampedTurn
+					tmpl.AngularVelocity = clampedAngVel
+					tmpl.AccelerationCurve = clampedAccel
+					tmpl.LateralThrustPower = float64(cfg.LateralThrustPower())
+					tmpl.ReverseThrustPower = float64(cfg.ReverseThrustPower())
+					tmpl.DriftCoefficient = float64(cfg.DriftCoefficient())
 
-					// 3. Vitals, Health & Shield Systems
-					if val := configTable.ShieldBase(); val != 0 {
-						tmpl.ShieldBase = float64(val)
+					// 3. Combat Output & Ballistics
+					tmpl.DPS = float64(cfg.Dps())
+					if mc := int(cfg.MaxCooldown()); mc > 0 {
+						tmpl.MaxCooldown = mc
 					}
-					if val := configTable.HullBase(); val != 0 {
-						tmpl.HullBase = float64(val)
-					}
-					if val := configTable.ShieldRegenRate(); val != 0 {
-						tmpl.ShieldRegenRate = float64(val)
-					}
-					if val := configTable.ShieldRechargeDelayTicks(); val != 0 {
-						tmpl.ShieldRechargeDelayTicks = int(val)
-					}
-					if val := configTable.ArmorMitigation(); val != 0 {
-						tmpl.ArmorMitigation = float64(val)
-					}
+					tmpl.ProjectileRange = float64(cfg.ProjectileRange())
+					tmpl.ProjectileSpeed = float64(cfg.ProjectileSpeed())
+					tmpl.OptimalRange = float64(cfg.OptimalRange())
+					tmpl.MaxRange = float64(cfg.MaxRange())
+					tmpl.EngagementRangeCap = float64(cfg.EngagementRangeCap())
+					tmpl.MaxAmmoCapacity = int(cfg.AmmoCapacity())
+					tmpl.MaxThermalCapacity = float64(cfg.MaxThermalCapacity())
 
-					// 4. AI & Sensors
-					if val := configTable.VisionRange(); val != 0 {
-						tmpl.VisionRange = int(val)
+					// 4. Vitals, Health & Shield Systems
+					newShieldBase := float64(cfg.ShieldBase())
+					tmpl.ShieldBase = newShieldBase
+					tmpl.Shields = models.QuadrantStats{
+						Front: newShieldBase, Rear: newShieldBase, Port: newShieldBase, Starboard: newShieldBase,
 					}
-					if val := configTable.SensorRange(); val != 0 {
-						tmpl.SensorRange = float64(val)
+					newHullBase := float64(cfg.HullBase())
+					tmpl.HullBase = newHullBase
+					tmpl.Hull = models.QuadrantStats{
+						Front: newHullBase, Rear: newHullBase, Port: newHullBase, Starboard: newHullBase,
 					}
-					if val := configTable.AggroRange(); val != 0 {
-						tmpl.AggroRange = float64(val)
-					}
-					if val := configTable.RetreatMoraleThreshold(); val != 0 {
-						tmpl.RetreatMoraleThreshold = float64(val)
-					}
-					if val := configTable.SquadCohesionLeashRange(); val != 0 {
-						tmpl.SquadCohesionLeashRange = float64(val)
-					}
+					tmpl.ShieldRegenRate = float64(cfg.ShieldRegenRate())
+					tmpl.ShieldRechargeDelayTicks = int(cfg.ShieldRechargeDelayTicks())
+					tmpl.ArmorMitigation = float64(cfg.ArmorMitigation())
 
-					// 5. Logistics & Special Systems
-					if val := configTable.ResourceHarvestingType(); val != 0 {
-						tmpl.ResourceHarvestingType = int(val)
-					}
-					if val := configTable.WarpCanisterCapacity(); val != 0 {
-						tmpl.WarpCanisterCapacity = int(val)
-					}
-					tmpl.PortDockingBayStatus = configTable.PortDockingBayStatus()
-					tmpl.StarboardDeploymentBayStatus = configTable.StarboardDeploymentBayStatus()
-					tmpl.SalvageableUponDestruction = configTable.SalvageableUponDestruction()
-					tmpl.RequiresReconTelemetry = configTable.RequiresReconTelemetry()
+					// 5. Stealth, Logistics & Special Systems
+					tmpl.RadarImmunityActive = cfg.RadarImmunityActive()
+					tmpl.ResourceHarvestingType = int(cfg.ResourceHarvestingType())
+					tmpl.WarpCanisterCapacity = int(cfg.WarpCanisterCapacity())
+					tmpl.PortDockingBayStatus = cfg.PortDockingBayStatus()
+					tmpl.StarboardDeploymentBayStatus = cfg.StarboardDeploymentBayStatus()
+					tmpl.SalvageableUponDestruction = cfg.SalvageableUponDestruction()
+					tmpl.RequiresReconTelemetry = cfg.RequiresReconTelemetry()
 
 					db.Templates[unitType] = tmpl
 				}
 
-				// Hot-update any active unit instances currently alive in the room
+				// Hot-update all live unit instances of this type in the room
 				for _, u := range r.units {
-					if u.Type == unitType {
-						if val := configTable.Speed(); val != 0 {
-							u.Speed = math.Min(float64(val), 50.0)
-						}
-						if val := configTable.StrafingSpeed(); val != 0 {
-							u.StrafingSpeed = math.Min(float64(val), 50.0)
-						}
-						if val := configTable.TurnRate(); val != 0 {
-							u.TurnRate = math.Min(float64(val), 60.0)
-						}
-						if val := configTable.AngularVelocity(); val != 0 {
-							u.AngularVelocity = math.Min(float64(val), 15.0)
-						}
-						if val := configTable.AccelerationCurve(); val != 0 {
-							u.AccelerationCurve = math.Min(float64(val), 10.0)
-						}
-
-						if val := configTable.Dps(); val != 0 {
-							u.DPS = float64(val)
-						}
-						if val := configTable.MaxCooldown(); val != 0 {
-							u.MaxCooldown = int(val)
-						}
-						if val := configTable.ProjectileRange(); val != 0 {
-							u.ProjectileRange = float64(val)
-						}
-						if val := configTable.ProjectileSpeed(); val != 0 {
-							u.ProjectileSpeed = float64(val)
-						}
-						if val := configTable.MaxThermalCapacity(); val != 0 {
-							u.MaxThermalCapacity = float64(val)
-						}
-
-						if val := configTable.ShieldBase(); val != 0 {
-							u.ShieldBase = float64(val)
-							u.Shields.Front = float64(val)
-							u.Shields.Rear = float64(val)
-							u.Shields.Port = float64(val)
-							u.Shields.Starboard = float64(val)
-						}
-						if val := configTable.HullBase(); val != 0 {
-							u.HullBase = float64(val)
-							u.Hull.Front = float64(val)
-							u.Hull.Rear = float64(val)
-							u.Hull.Port = float64(val)
-							u.Hull.Starboard = float64(val)
-						}
-						if val := configTable.ShieldRegenRate(); val != 0 {
-							u.ShieldRegenRate = float64(val)
-						}
-						if val := configTable.ShieldRechargeDelayTicks(); val != 0 {
-							u.ShieldRechargeDelayTicks = int(val)
-						}
-						if val := configTable.ArmorMitigation(); val != 0 {
-							u.ArmorMitigation = float64(val)
-						}
-
-						if val := configTable.VisionRange(); val != 0 {
-							u.VisionRange = int(val)
-						}
-						if val := configTable.SensorRange(); val != 0 {
-							u.SensorRange = float64(val)
-						}
-						if val := configTable.AggroRange(); val != 0 {
-							u.AggroRange = float64(val)
-						}
-						if val := configTable.RetreatMoraleThreshold(); val != 0 {
-							u.RetreatMoraleThreshold = float64(val)
-						}
-						if val := configTable.SquadCohesionLeashRange(); val != 0 {
-							u.SquadCohesionLeashRange = float64(val)
-						}
+					if u.Type != unitType {
+						continue
 					}
+
+					if wc := int(cfg.WeightClass()); wc > 0 {
+						u.WeightClass = wc
+					}
+					u.VisionRange = int(cfg.VisionRange())
+					u.SensorRange = float64(cfg.SensorRange())
+					u.AggroRange = float64(cfg.AggroRange())
+					u.RetreatMoraleThreshold = float64(cfg.RetreatMoraleThreshold())
+					u.SquadCohesionLeashRange = float64(cfg.SquadCohesionLeashRange())
+
+					u.Speed = clampedSpeed
+					u.StrafingSpeed = clampedStrafe
+					u.TurnRate = clampedTurn
+					u.AngularVelocity = clampedAngVel
+					u.AccelerationCurve = clampedAccel
+					u.LateralThrustPower = float64(cfg.LateralThrustPower())
+					u.ReverseThrustPower = float64(cfg.ReverseThrustPower())
+					u.DriftCoefficient = float64(cfg.DriftCoefficient())
+
+					u.DPS = float64(cfg.Dps())
+					if mc := int(cfg.MaxCooldown()); mc > 0 {
+						u.MaxCooldown = mc
+					}
+					u.ProjectileRange = float64(cfg.ProjectileRange())
+					u.ProjectileSpeed = float64(cfg.ProjectileSpeed())
+					u.OptimalRange = float64(cfg.OptimalRange())
+					u.MaxRange = float64(cfg.MaxRange())
+					u.EngagementRangeCap = float64(cfg.EngagementRangeCap())
+					u.MaxAmmoCapacity = int(cfg.AmmoCapacity())
+					u.MaxThermalCapacity = float64(cfg.MaxThermalCapacity())
+
+					// Only refill shield/hull pools when their base values actually change
+					if newShieldBase := float64(cfg.ShieldBase()); newShieldBase != u.ShieldBase {
+						u.ShieldBase = newShieldBase
+						u.Shields.Front = newShieldBase
+						u.Shields.Rear = newShieldBase
+						u.Shields.Port = newShieldBase
+						u.Shields.Starboard = newShieldBase
+					}
+					if newHullBase := float64(cfg.HullBase()); newHullBase != u.HullBase {
+						u.HullBase = newHullBase
+						u.Hull.Front = newHullBase
+						u.Hull.Rear = newHullBase
+						u.Hull.Port = newHullBase
+						u.Hull.Starboard = newHullBase
+					}
+					u.ShieldRegenRate = float64(cfg.ShieldRegenRate())
+					u.ShieldRechargeDelayTicks = int(cfg.ShieldRechargeDelayTicks())
+					u.ArmorMitigation = float64(cfg.ArmorMitigation())
+
+					u.RadarImmunityActive = cfg.RadarImmunityActive()
+					u.ResourceHarvestingType = int(cfg.ResourceHarvestingType())
+					u.WarpCanisterCapacity = int(cfg.WarpCanisterCapacity())
+					u.PortDockingBayStatus = cfg.PortDockingBayStatus()
+					u.StarboardDeploymentBayStatus = cfg.StarboardDeploymentBayStatus()
+					u.SalvageableUponDestruction = cfg.SalvageableUponDestruction()
+					u.RequiresReconTelemetry = cfg.RequiresReconTelemetry()
 				}
 				log.Printf("⚙️ Applied binary WebSocket template override for: %s", unitType)
 			}
@@ -727,7 +729,6 @@ func (r *GameRoom) Run() {
 
 	for range ticker.C {
 		r.mu.Lock()
-		r.tick++
 
 		if r.lastInput.Reset {
 			r.resetWorld()
@@ -736,91 +737,106 @@ func (r *GameRoom) Run() {
 			continue
 		}
 
-		r.runAI()
-		ProcessLogisticsLoops(r)
-
-		if deployDebounce > 0 {
-			deployDebounce--
-		}
-
-		var flagship *models.FleetUnit = r.units["player-flagship"]
-		if flagship == nil || flagship.IsDestroyed {
-			for _, u := range r.units {
-				if u.OwnerID == "player" && (u.Type == "flagship" || u.Type == "battalion_command_ship") && !u.IsDestroyed {
-					flagship = u
-					break
-				}
+		// Determine simulation steps for this 16ms frame (supports sandbox pause & 0.25x-2.0x scaling)
+		steps := 1
+		if r.isSandbox {
+			if r.isPaused {
+				steps = 0
+			} else {
+				r.tickAccumulator += r.timeScale
+				steps = int(r.tickAccumulator)
+				r.tickAccumulator -= float64(steps)
 			}
 		}
 
-		if flagship != nil && !flagship.IsDestroyed && deployDebounce == 0 && len(r.deployQueue) > 0 {
-			toDeploy := r.deployQueue[0]
-			r.deployQueue = r.deployQueue[1:]
+		for step := 0; step < steps; step++ {
+			r.tick++
 
-			if !strings.HasPrefix(toDeploy, "SANDBOX:") {
-				r.spawnUnit(toDeploy, "player", flagship.Pos.X, flagship.Pos.Y-100, "GUARD")
-				deployDebounce = 8
-			}
-		}
+			r.runAI()
+			ProcessLogisticsLoops(r)
 
-		controlledID := r.lastInput.ControlledUnitID
-		if controlledID == "" {
-			controlledID = "player-flagship"
-		}
-
-		for id, unit := range r.units {
-			if unit.IsDestroyed {
-				if (unit.Type == "flagship" || unit.Type == "battalion_command_ship") && !r.isSandbox {
-					// Capital ship down tracking
-				} else {
-					delete(r.units, id)
-				}
-				continue
+			if deployDebounce > 0 {
+				deployDebounce--
 			}
 
-			// Shield-Break Retreat Trigger for Squad Leaders
-			if unit.IsSquadLeader && unit.AIState != "RETREAT" {
-				totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
-				if totalShields <= 0.0 {
-					unit.AIState = "RETREAT"
-					for _, member := range r.units {
-						if member.SquadID == unit.SquadID && member.OwnerID == unit.OwnerID && !member.IsDestroyed {
-							member.AIState = "RETREAT"
-						}
+			var flagship *models.FleetUnit = r.units["player-flagship"]
+			if flagship == nil || flagship.IsDestroyed {
+				for _, u := range r.units {
+					if u.OwnerID == "player" && (u.Type == "flagship" || u.Type == "battalion_command_ship") && !u.IsDestroyed {
+						flagship = u
+						break
 					}
 				}
 			}
 
-			// Player Movement or Autonomous AI State Machine (with room dimensions passed)
-			if unit.ID == controlledID {
-				// Unit currently under direct player control
-				HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
-				unit.IsFiring = r.lastInput.IsFiring
-			} else if unit.OwnerID == "player" && unit.Type == "flagship" {
-				// Player flagship should NEVER move or run AI when unpiloted; it holds position and zeroes angular velocity.
-				unit.IsFiring = false
-				unit.Vel.X *= 0.95
-				unit.Vel.Y *= 0.95
-				unit.AngularVelocity = 0
-			} else {
-				// All other units (enemy units, spawned support drones, etc.) run their AI behavior
-				RunUnitAI(unit, r, flagship)
+			if flagship != nil && !flagship.IsDestroyed && deployDebounce == 0 && len(r.deployQueue) > 0 {
+				toDeploy := r.deployQueue[0]
+				r.deployQueue = r.deployQueue[1:]
+
+				if !strings.HasPrefix(toDeploy, "SANDBOX:") {
+					r.spawnUnit(toDeploy, "player", flagship.Pos.X, flagship.Pos.Y-100, "GUARD")
+					deployDebounce = 8
+				}
 			}
 
-			// Physics, Damping, Environment Collisions & World Gravity (with room dimensions passed)
-			ApplyUnitPhysics(unit, 12000.0, 12000.0)
-			ApplyEnvironmentalCollisions(unit, r.structures)
-			ApplyMajorWorldGravity(unit, r.structures)
+			controlledID := r.lastInput.ControlledUnitID
+			if controlledID == "" {
+				controlledID = "player-flagship"
+			}
 
-			// Weapon Firing & Cooldowns
-			HandleWeaponFiring(unit, r)
+			for id, unit := range r.units {
+				if unit.IsDestroyed {
+					if (unit.Type == "flagship" || unit.Type == "battalion_command_ship") && !r.isSandbox {
+						// Capital ship down tracking
+					} else {
+						delete(r.units, id)
+					}
+					continue
+				}
+
+				// Shield-Break Retreat Trigger for Squad Leaders
+				if unit.IsSquadLeader && unit.AIState != "RETREAT" {
+					totalShields := unit.Shields.Front + unit.Shields.Rear + unit.Shields.Port + unit.Shields.Starboard
+					if totalShields <= 0.0 {
+						unit.AIState = "RETREAT"
+						for _, member := range r.units {
+							if member.SquadID == unit.SquadID && member.OwnerID == unit.OwnerID && !member.IsDestroyed {
+								member.AIState = "RETREAT"
+							}
+						}
+					}
+				}
+
+				// Player Movement or Autonomous AI State Machine (with room dimensions passed)
+				if unit.ID == controlledID {
+					HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
+					unit.IsFiring = r.lastInput.IsFiring
+				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
+					// Player flagship should NEVER move or run AI when unpiloted; it holds position and zeroes angular velocity.
+					unit.IsFiring = false
+					unit.Vel.X *= 0.95
+					unit.Vel.Y *= 0.95
+					unit.AngularVelocity = 0
+				} else {
+					// All other units (enemy units, spawned support drones, etc.) run their AI behavior
+					RunUnitAI(unit, r, flagship)
+				}
+
+				// Physics, Damping, Environment Collisions & World Gravity (with room dimensions passed)
+				ApplyUnitPhysics(unit, 12000.0, 12000.0)
+				ApplyEnvironmentalCollisions(unit, r.structures)
+				ApplyMajorWorldGravity(unit, r.structures)
+
+				// Weapon Firing & Cooldowns
+				HandleWeaponFiring(unit, r)
+			}
+
+			// Unit-to-Unit Collisions and Projectile Updates
+			ResolveUnitCollisions(r.units, r.isSandbox)
+			UpdateProjectiles(r)
 		}
 
-		// Unit-to-Unit Collisions and Projectile Updates
-		ResolveUnitCollisions(r.units, r.isSandbox)
-		UpdateProjectiles(r)
-
-		// Downstream: Build and broadcast binary FlatBuffers frame
+		// Downstream: Build and broadcast binary FlatBuffers frame (runs even while paused so UI edits stay live)
 		builder := flatbuffers.NewBuilder(1024)
 
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
@@ -831,6 +847,7 @@ func (r *GameRoom) Run() {
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)
+			aiStateOffset := builder.CreateString(u.AIState)
 
 			SpaceTactics.FleetUnitStart(builder)
 			SpaceTactics.FleetUnitAddId(builder, idOffset)
@@ -839,6 +856,9 @@ func (r *GameRoom) Run() {
 
 			pos := SpaceTactics.CreateVector2D(builder, float32(u.Pos.X), float32(u.Pos.Y))
 			SpaceTactics.FleetUnitAddPos(builder, pos)
+
+			vel := SpaceTactics.CreateVector2D(builder, float32(u.Vel.X), float32(u.Vel.Y))
+			SpaceTactics.FleetUnitAddVel(builder, vel)
 
 			shields := SpaceTactics.CreateShields(builder, float32(u.Shields.Front), float32(u.Shields.Rear), float32(u.Shields.Port), float32(u.Shields.Starboard))
 			SpaceTactics.FleetUnitAddShields(builder, shields)
@@ -853,6 +873,9 @@ func (r *GameRoom) Run() {
 			SpaceTactics.FleetUnitAddBattalionId(builder, int32(u.BattalionID))
 			SpaceTactics.FleetUnitAddSquadId(builder, int32(u.SquadID))
 			SpaceTactics.FleetUnitAddVisionRange(builder, int32(u.VisionRange))
+			SpaceTactics.FleetUnitAddAiState(builder, aiStateOffset)
+			SpaceTactics.FleetUnitAddCurrentThermal(builder, float32(u.CurrentThermal))
+			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
 			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 

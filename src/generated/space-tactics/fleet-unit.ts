@@ -96,8 +96,30 @@ visionRange():number {
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
+vel(obj?:Vector2D):Vector2D|null {
+  const offset = this.bb!.__offset(this.bb_pos, 30);
+  return offset ? (obj || new Vector2D()).__init(this.bb_pos + offset, this.bb!) : null;
+}
+
+aiState():string|null
+aiState(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+aiState(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 32);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+currentThermal():number {
+  const offset = this.bb!.__offset(this.bb_pos, 34);
+  return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
+}
+
+currentAmmo():number {
+  const offset = this.bb!.__offset(this.bb_pos, 36);
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
+}
+
 static startFleetUnit(builder:flatbuffers.Builder) {
-  builder.startObject(13);
+  builder.startObject(17);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -150,6 +172,22 @@ static addSquadId(builder:flatbuffers.Builder, squadId:number) {
 
 static addVisionRange(builder:flatbuffers.Builder, visionRange:number) {
   builder.addFieldInt32(12, visionRange, 0);
+}
+
+static addVel(builder:flatbuffers.Builder, velOffset:flatbuffers.Offset) {
+  builder.addFieldStruct(13, velOffset, 0);
+}
+
+static addAiState(builder:flatbuffers.Builder, aiStateOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(14, aiStateOffset, 0);
+}
+
+static addCurrentThermal(builder:flatbuffers.Builder, currentThermal:number) {
+  builder.addFieldFloat32(15, currentThermal, 0.0);
+}
+
+static addCurrentAmmo(builder:flatbuffers.Builder, currentAmmo:number) {
+  builder.addFieldInt32(16, currentAmmo, 0);
 }
 
 static endFleetUnit(builder:flatbuffers.Builder):flatbuffers.Offset {
