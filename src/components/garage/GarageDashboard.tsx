@@ -1,7 +1,7 @@
 // src/components/GarageDashboard.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { API_BASE_URL } from '../config';
-import { useUnitTemplates } from '../hooks/useUnitTemplates';
+import { API_BASE_URL } from '../../config';
+import { useUnitTemplates } from '../../hooks/useUnitTemplates';
 
 export interface UnitBlueprint {
   id: string;

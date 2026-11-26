@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { renderEnvironmentVector } from '../renderer/vectorAssets';
-import { saveCustomMap, fetchMapDetail } from '../services/mapService';
+import { renderEnvironmentVector } from '../../renderer/vectorAssets';
+import { saveCustomMap, fetchMapDetail } from '../../services/mapService';
 
 interface PlacedStructure {
   id: string;

@@ -1,7 +1,7 @@
 // src/components/UnitConfig/common/ConfigSliderCard.tsx
 import React, { useState, useEffect } from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VARIABLE_DOCS, VariableDoc } from '../../../../constants/variableDocs';
 
 interface ConfigSliderCardProps {
   field: keyof UnitConfigConfigPayload;

@@ -1,6 +1,6 @@
 // src/components/UnitConfig/common/ConfigRow.tsx
 import React from 'react';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VARIABLE_DOCS, VariableDoc } from '../../../../constants/variableDocs';
 
 interface ConfigRowProps {
   fieldKey: string;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { VariableDoc } from '../constants/variableDocs';
+import { VariableDoc } from '../../constants/variableDocs';
 
 interface VariableInfoModalProps {
   doc: VariableDoc | null;

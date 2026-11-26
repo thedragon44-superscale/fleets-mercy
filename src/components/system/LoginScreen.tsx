@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../../config';
 
 interface LoginScreenProps {
   onLoginSuccess: (player: { id: number; username: string }) => void;

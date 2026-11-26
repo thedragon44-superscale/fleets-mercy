@@ -1,7 +1,7 @@
 // src/components/UnitConfig/common/ConfigCheckboxRow.tsx
 import React from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VARIABLE_DOCS, VariableDoc } from '../../../../constants/variableDocs';
 
 interface ConfigCheckboxRowProps {
   field: keyof UnitConfigConfigPayload;

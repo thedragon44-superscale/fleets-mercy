@@ -1,11 +1,11 @@
 // src/App.tsx
 import { useState, useEffect, useCallback } from 'react';
-import { LoginScreen } from './components/LoginScreen';
-import { GarageDashboard, LoadoutData } from './components/GarageDashboard';
-import { GameViewport } from './components/GameViewport';
-import { PracticeViewport } from './components/PracticeViewport';
-import { MapEditorViewport } from './components/MapEditorViewport';
-import { DeveloperSettingsDashboard } from './components/DeveloperSettingsDashboard';
+import { LoginScreen } from './components/system/LoginScreen';
+import { GarageDashboard, LoadoutData } from './components/garage/GarageDashboard';
+import { GameViewport } from './components/game/GameViewport';
+import { PracticeViewport } from './components/sandbox/PracticeViewport';
+import { MapEditorViewport } from './components/mapEditor/MapEditorViewport';
+import { DeveloperSettingsDashboard } from './components/system/DeveloperSettingsDashboard';
 import { TdmUnitSelectionScreen } from './components/teamDeathMatch/unitSelection';
 import { TdmMapSelectionScreen } from './components/teamDeathMatch/mapSelection';
 import { TdmViewport } from './components/teamDeathMatch/tdmViewport';

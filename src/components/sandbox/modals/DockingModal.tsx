@@ -1,6 +1,6 @@
-// src/components/DockingModal.tsx
+// src/components/sandbox/modals/DockingModal.tsx
 import React, { useState, useMemo } from 'react';
-import { SQUAD_COLORS, BATTALION_BORDERS } from '../utils/groupingColors';
+import { SQUAD_COLORS, BATTALION_BORDERS } from '../../../utils/groupingColors';
 
 interface FleetUnitSimple {
   id: string;
@@ -16,6 +16,7 @@ interface DockingModalProps {
   hasCommandShip?: boolean;
   spawnedUnits?: FleetUnitSimple[];
   onAssignUnitToSquad?: (unitId: string, squadId: number, battalionId: number, isLeader?: boolean) => void;
+  embedded?: boolean;
 }
 
 const BATTALION_TIERS = [
@@ -40,11 +41,11 @@ export const DockingModal: React.FC<DockingModalProps> = ({
   hasCommandShip = false,
   spawnedUnits = [],
   onAssignUnitToSquad,
+  embedded = false,
 }) => {
   const [activeBattalionTab, setActiveBattalionTab] = useState<number>(0);
   const [pickerSlot, setPickerSlot] = useState<{ squadId: number; slotIdx: number } | null>(null);
 
-  // Determine unlocked battalion tiers from actual spawned battalion_command_ship units
   const unlockedBattalions = useMemo(() => {
     const unlocked = new Set<number>([0]);
     const cmdShips = spawnedUnits.filter((u) => u.type === 'battalion_command_ship');
@@ -53,7 +54,6 @@ export const DockingModal: React.FC<DockingModalProps> = ({
       if (ship.battalionId && ship.battalionId > 0) {
         unlocked.add(ship.battalionId);
       } else {
-        // Fallback: first command ship unlocks Alpha (1), second unlocks Beta (2)
         unlocked.add(idx + 1);
       }
     });
@@ -90,7 +90,6 @@ export const DockingModal: React.FC<DockingModalProps> = ({
 
     const promoting = !unit.isLeader;
     if (promoting) {
-      // Demote any existing leader in the same (battalionId, squadId)
       const currentLeaders = activeBattalionUnits.filter(
         (u) => u.squadId === sqId && u.isLeader && u.id !== unit.id
       );
@@ -102,41 +101,13 @@ export const DockingModal: React.FC<DockingModalProps> = ({
     onAssignUnitToSquad(unit.id, sqId, activeBattalionTab, promoting);
   };
 
-  return (
-    <div
-      className="ui-interactive absolute top-4 left-[340px] w-[560px] max-h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-amber-500/40 rounded-xl p-4 z-50 flex flex-col shadow-2xl backdrop-blur-md overflow-hidden font-mono select-none"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">
-            ⚓
-          </div>
-          <div>
-            <h2 className="text-xs font-black text-white uppercase tracking-wider">
-              Fleet Docking & Grouping Studio
-            </h2>
-            <p className="text-[9px] font-bold text-amber-400 tracking-wider uppercase">
-              Command Hierarchy & Detachment Management
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs uppercase transition-all"
-        >
-          [CLOSE]
-        </button>
-      </div>
-
+  const dockingBody = (
+    <>
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
         {/* 1. Battalion Selector */}
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-            Command Echelon Tier (Select Detachment)
+            Command Echelon Tier
           </span>
           <div className="grid grid-cols-3 gap-1.5">
             {BATTALION_TIERS.map((bat) => {
@@ -150,7 +121,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                   disabled={isLocked}
                   className={`py-1.5 px-2 rounded-lg border-2 text-[9px] font-black uppercase transition-all flex flex-col items-center justify-center gap-0.5 ${
                     isSelected
-                      ? 'bg-slate-800 shadow-md scale-[1.02]'
+                      ? 'bg-slate-800 shadow-md'
                       : 'bg-[#161922] opacity-60 hover:opacity-100'
                   } ${isLocked ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-600' : bat.color}`}
                 >
@@ -188,7 +159,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sqStyle.hex }} />
                       <span className="text-[9px] font-black uppercase" style={{ color: sqStyle.hex }}>
-                        Formation Bay [{sqId}] — {sqStyle.name}
+                        Squad [{sqId}] — {sqStyle.name}
                       </span>
                     </div>
                     <span className="text-[8px] font-bold text-slate-400 uppercase">
@@ -236,7 +207,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
                                 </button>
                               </div>
                             </div>
-                            <span className="text-[7px] text-slate-400 font-bold uppercase">{unit.type}</span>
+                            <span className="text-[7px] text-slate-400 font-bold uppercase truncate">{unit.type}</span>
                           </div>
                         );
                       }
@@ -259,7 +230,7 @@ export const DockingModal: React.FC<DockingModalProps> = ({
         </div>
       </div>
 
-      {/* 3. Quick Dock Picker */}
+      {/* Quick Dock Picker */}
       {pickerSlot && (
         <div
           onClick={() => setPickerSlot(null)}
@@ -297,6 +268,47 @@ export const DockingModal: React.FC<DockingModalProps> = ({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col p-3 overflow-hidden font-mono select-none">
+        {dockingBody}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="ui-interactive absolute top-4 left-[340px] w-[560px] max-h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-amber-500/40 rounded-xl p-4 z-50 flex flex-col shadow-2xl backdrop-blur-md overflow-hidden font-mono select-none"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">
+            ⚓
+          </div>
+          <div>
+            <h2 className="text-xs font-black text-white uppercase tracking-wider">
+              Fleet Docking & Grouping Studio
+            </h2>
+            <p className="text-[9px] font-bold text-amber-400 tracking-wider uppercase">
+              Command Hierarchy & Detachment Management
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs uppercase transition-all"
+        >
+          [CLOSE]
+        </button>
+      </div>
+
+      {dockingBody}
     </div>
   );
 };

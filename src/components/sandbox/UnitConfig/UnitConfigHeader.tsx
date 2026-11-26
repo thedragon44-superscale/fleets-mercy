@@ -1,7 +1,7 @@
 // src/components/UnitConfig/UnitConfigHeader.tsx
 import React, { useMemo } from 'react';
-import { UNIT_DB } from '../GarageDashboard';
-import { useUnitTemplates } from '../../hooks/useUnitTemplates';
+import { UNIT_DB } from '../../garage/GarageDashboard';
+import { useUnitTemplates } from '../../../hooks/useUnitTemplates';
 
 interface UnitConfigHeaderProps {
   selectedUnitId: string;

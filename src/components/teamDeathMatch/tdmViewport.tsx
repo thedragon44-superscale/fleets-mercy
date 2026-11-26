@@ -5,8 +5,20 @@ import {
   unpackServerBinaryMessage,
   serializeClientInput,
   ServerStateSnapshot,
+  SnapshotUnit,
 } from '../../parsers/binaryCodec';
-import { fetchMapDetail } from '../../services/mapService';
+import { fetchMapDetail, MapDefinition } from '../../services/mapService';
+import { useUnitTemplates } from '../../hooks/useUnitTemplates';
+import { useFlightControls } from '../../hooks/useFlightControls';
+import {
+  drawFlagship,
+  drawUnitAsset,
+  drawProjectile,
+  drawHUDDiagnostics,
+  renderEnvironmentVector,
+} from '../../renderer/vectorAssets';
+import { getInterpolatedUnits } from '../../renderer/interpolation';
+import { TacticalRadar } from '../common/TacticalRadar';
 
 interface TdmViewportProps {
   mapId: number;
@@ -14,17 +26,6 @@ interface TdmViewportProps {
   customPool: string[];
   onBackToMenu: () => void;
   onChangeLoadout: () => void;
-}
-
-interface MapStructureSimple {
-  id?: number;
-  structureType?: string;
-  structure_type?: string;
-  posX?: number;
-  posY?: number;
-  pos_x?: number;
-  pos_y?: number;
-  radius?: number;
 }
 
 interface TdmHudState {
@@ -36,6 +37,8 @@ interface TdmHudState {
   pilotedAlive: boolean;
 }
 
+const GRID_SPACING = 500;
+
 export const TdmViewport: React.FC<TdmViewportProps> = ({
   mapId,
   pilotedUnit,
@@ -45,12 +48,19 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   // High-frequency 60Hz simulation state lives in refs (never triggers React re-renders)
   const snapshotRef = useRef<ServerStateSnapshot | null>(null);
-  const structuresRef = useRef<MapStructureSimple[]>([]);
+  const serverHistoryRef = useRef<{ timestamp: number; units: SnapshotUnit[] }[]>([]);
+  const mapDetailsRef = useRef<MapDefinition | null>(null);
   const pilotedIdRef = useRef<string | null>(null);
+  const cameraPosRef = useRef({ x: 6000, y: 6000 });
+  const renderPosRef = useRef({ x: 6000, y: 6000 });
+  const isInitializedRef = useRef<boolean>(false);
+
+  const { templatesRef } = useUnitTemplates();
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [hud, setHud] = useState<TdmHudState>({
@@ -62,35 +72,63 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     pilotedAlive: true,
   });
 
-  const keysRef = useRef<{ w: boolean; s: boolean; a: boolean; d: boolean; isFiring: boolean }>({
-    w: false,
-    s: false,
-    a: false,
-    d: false,
-    isFiring: false,
+  const { keysRef, tickFlightInput, clearInputs } = useFlightControls({
+    canvasRef,
+    cameraPosRef,
+    canControl: !hud.isGameOver,
+    resolvePilotedUnit: (units) => {
+      let unit = pilotedIdRef.current
+        ? units.find((u) => u.id === pilotedIdRef.current && !u.isDestroyed)
+        : undefined;
+
+      if (!unit) {
+        unit =
+          units.find(
+            (u) => u.ownerId === 'player' && u.type === pilotedUnit && !u.isDestroyed
+          ) || units.find((u) => u.ownerId === 'player' && !u.isDestroyed);
+        const nextId = unit ? unit.id : null;
+        if (pilotedIdRef.current !== nextId) {
+          pilotedIdRef.current = nextId;
+          isInitializedRef.current = false;
+        }
+      }
+      return unit;
+    },
+    onSendInput: (payload) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          serializeClientInput({
+            keys: payload.keys,
+            angle: payload.angle,
+            isFiring: payload.isFiring,
+            currentId: payload.currentId || null,
+          })
+        );
+      }
+    },
+    onCustomKeyDown: (e) => {
+      if (!e.repeat && e.key.toLowerCase() === 'r') {
+        handleResetMatch();
+        return true;
+      }
+      return false;
+    },
   });
-  const mouseRef = useRef<{ x: number; y: number; angle: number }>({ x: 0, y: 0, angle: 0 });
 
-  const clearInputs = () => {
-    keysRef.current.w = false;
-    keysRef.current.s = false;
-    keysRef.current.a = false;
-    keysRef.current.d = false;
-    keysRef.current.isFiring = false;
-  };
-
-  // Load map environmental structures once per mapId
+  // Load map metadata & environmental structures once per mapId
   useEffect(() => {
     let active = true;
     fetchMapDetail(mapId)
-      .then((detail: any) => {
-        if (active && detail?.structures) {
-          structuresRef.current = detail.structures;
+      .then((detail) => {
+        if (active && detail) {
+          mapDetailsRef.current = detail;
+          cameraPosRef.current = { x: detail.width / 2, y: detail.height / 2 };
+          renderPosRef.current = { x: detail.width / 2, y: detail.height / 2 };
         }
       })
       .catch((err) => {
         console.warn('TDM map detail fetch failed, continuing without structures:', err);
-        if (active) structuresRef.current = [];
+        if (active) mapDetailsRef.current = null;
       });
     return () => {
       active = false;
@@ -119,6 +157,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   useEffect(() => {
     pilotedIdRef.current = null;
     snapshotRef.current = null;
+    serverHistoryRef.current = [];
+    isInitializedRef.current = false;
     clearInputs();
 
     const poolQuery = customPool.join(',');
@@ -136,8 +176,21 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
     ws.onmessage = (event) => {
       const parsedState = unpackServerBinaryMessage(event.data);
-      if (parsedState) {
-        snapshotRef.current = parsedState;
+      if (!parsedState) return;
+      snapshotRef.current = parsedState;
+
+      if (!parsedState.units || parsedState.units.length === 0) {
+        serverHistoryRef.current = [];
+        isInitializedRef.current = false;
+        return;
+      }
+
+      serverHistoryRef.current.push({
+        timestamp: performance.now(),
+        units: parsedState.units,
+      });
+      if (serverHistoryRef.current.length > 20) {
+        serverHistoryRef.current.shift();
       }
     };
 
@@ -150,85 +203,27 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     };
   }, [mapId, pilotedUnit, customPool]);
 
-  // Keyboard, mouse & window-blur input handlers
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') keysRef.current.w = true;
-      if (e.key === 's' || e.key === 'S') keysRef.current.s = true;
-      if (e.key === 'a' || e.key === 'A') keysRef.current.a = true;
-      if (e.key === 'd' || e.key === 'D') keysRef.current.d = true;
-      if (e.key === ' ') keysRef.current.isFiring = true;
-      if (e.key === 'r' || e.key === 'R') {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          pilotedIdRef.current = null;
-          wsRef.current.send(serializeClientInput({ reset: true }));
-        }
-      }
-    };
+  
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') keysRef.current.w = false;
-      if (e.key === 's' || e.key === 'S') keysRef.current.s = false;
-      if (e.key === 'a' || e.key === 'A') keysRef.current.a = false;
-      if (e.key === 'd' || e.key === 'D') keysRef.current.d = false;
-      if (e.key === ' ') keysRef.current.isFiring = false;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      mouseRef.current.x = mouseX;
-      mouseRef.current.y = mouseY;
-      mouseRef.current.angle = Math.atan2(mouseY - centerY, mouseX - centerX);
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement)?.closest('.ui-interactive')) return;
-      if (e.button === 0) keysRef.current.isFiring = true;
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 0) keysRef.current.isFiring = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('blur', clearInputs);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('blur', clearInputs);
-    };
-  }, []);
-
-  // Continuous 60Hz Render & Input Loop (never tears down on incoming packets)
+  // Continuous 60Hz Render & Input Loop (uses PNG/vector assets from vectorAssets.ts)
   useEffect(() => {
     let animationFrameId: number;
-    let lastFpsTime = performance.now();
-    let lastHudSyncTime = performance.now();
+    let lastTime = performance.now();
+    let lastFpsTime = lastTime;
+    let lastHudSyncTime = lastTime;
     let frameCount = 0;
     let currentFps = 60;
 
-    const render = () => {
-      const now = performance.now();
+    const render = (currentTime: number) => {
+      const rawDt = (currentTime - lastTime) / 1000;
+      const dt = Math.min(Math.max(rawDt, 0.001), 0.1);
+      lastTime = currentTime;
+
       frameCount++;
-      if (now - lastFpsTime >= 1000) {
-        currentFps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+      if (currentTime - lastFpsTime >= 1000) {
+        currentFps = Math.round((frameCount * 1000) / (currentTime - lastFpsTime));
         frameCount = 0;
-        lastFpsTime = now;
+        lastFpsTime = currentTime;
       }
 
       const canvas = canvasRef.current;
@@ -236,194 +231,223 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
       if (canvas && snapshot) {
         const ctx = canvas.getContext('2d');
+        const radarCanvas = radarCanvasRef.current;
+        const radarCtx = radarCanvas?.getContext('2d');
+
         if (ctx) {
-          const mapW = snapshot.mapBounds?.width || 12000;
-          const mapH = snapshot.mapBounds?.height || 12000;
+          const mapDetails = mapDetailsRef.current;
+          const mapW = mapDetails?.width ?? snapshot.mapBounds?.width ?? 12000;
+          const mapH = mapDetails?.height ?? snapshot.mapBounds?.height ?? 12000;
 
-          // Resolve & pin piloted unit ID so camera never jumps between allied ships of the same class
-          let playerUnit = pilotedIdRef.current
-            ? snapshot.units.find((u) => u.id === pilotedIdRef.current && !u.isDestroyed)
-            : undefined;
+          const liveUnits = snapshot.units || [];
+          const liveUnitMap = new Map<string, SnapshotUnit>(liveUnits.map((u) => [u.id, u]));
 
-          if (!playerUnit) {
-            playerUnit =
-              snapshot.units.find(
-                (u) => u.ownerId === 'player' && u.type === pilotedUnit && !u.isDestroyed
-              ) || snapshot.units.find((u) => u.ownerId === 'player' && !u.isDestroyed);
-            pilotedIdRef.current = playerUnit ? playerUnit.id : null;
+          const playerUnit = tickFlightInput(currentTime, liveUnits);
+
+          if (playerUnit) {
+            if (!isInitializedRef.current) {
+              renderPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
+              cameraPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
+              isInitializedRef.current = true;
+            }
+            const lerpRate = 1.0 - Math.pow(0.0001, dt);
+            renderPosRef.current.x += (playerUnit.pos.x - renderPosRef.current.x) * lerpRate;
+            renderPosRef.current.y += (playerUnit.pos.y - renderPosRef.current.y) * lerpRate;
+
+            const camLerp = 1.0 - Math.exp(-12.0 * dt);
+            cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
+            cameraPosRef.current.y += (renderPosRef.current.y - cameraPosRef.current.y) * camLerp;
           }
 
-          const cameraX = playerUnit ? playerUnit.pos.x : mapW / 2;
-          const cameraY = playerUnit ? playerUnit.pos.y : mapH / 2;
+          const cameraX = cameraPosRef.current.x;
+          const cameraY = cameraPosRef.current.y;
 
           // Clear frame
-          ctx.fillStyle = '#020617';
+          ctx.fillStyle = '#050811';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
           ctx.save();
           ctx.translate(canvas.width / 2 - cameraX, canvas.height / 2 - cameraY);
 
           // Tactical sector grid
-          const gridSize = 500;
-          const startX = Math.max(0, Math.floor((cameraX - canvas.width / 2) / gridSize) * gridSize);
-          const endX = Math.min(mapW, Math.ceil((cameraX + canvas.width / 2) / gridSize) * gridSize);
-          const startY = Math.max(0, Math.floor((cameraY - canvas.height / 2) / gridSize) * gridSize);
-          const endY = Math.min(mapH, Math.ceil((cameraY + canvas.height / 2) / gridSize) * gridSize);
+          const startX = Math.max(
+            0,
+            Math.floor((cameraX - canvas.width / 2) / GRID_SPACING) * GRID_SPACING
+          );
+          const endX = Math.min(
+            mapW,
+            Math.ceil((cameraX + canvas.width / 2) / GRID_SPACING) * GRID_SPACING
+          );
+          const startY = Math.max(
+            0,
+            Math.floor((cameraY - canvas.height / 2) / GRID_SPACING) * GRID_SPACING
+          );
+          const endY = Math.min(
+            mapH,
+            Math.ceil((cameraY + canvas.height / 2) / GRID_SPACING) * GRID_SPACING
+          );
 
-          ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
+          ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          for (let x = startX; x <= endX; x += gridSize) {
+          for (let x = startX; x <= endX; x += GRID_SPACING) {
             ctx.moveTo(x, startY);
             ctx.lineTo(x, endY);
           }
-          for (let y = startY; y <= endY; y += gridSize) {
+          for (let y = startY; y <= endY; y += GRID_SPACING) {
             ctx.moveTo(startX, y);
             ctx.lineTo(endX, y);
           }
           ctx.stroke();
 
           // Map bounds
-          ctx.strokeStyle = '#334155';
-          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#a855f7';
+          ctx.lineWidth = 4;
           ctx.strokeRect(0, 0, mapW, mapH);
 
-          // Environmental structures
-          for (const s of structuresRef.current) {
-            const sx = s.posX ?? s.pos_x ?? 0;
-            const sy = s.posY ?? s.pos_y ?? 0;
-            const sr = s.radius ?? 150;
-            const sType = s.structureType ?? s.structure_type ?? '';
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-            if (sType === 'gas_giant') {
-              ctx.fillStyle = 'rgba(249, 115, 22, 0.14)';
-              ctx.strokeStyle = 'rgba(251, 146, 60, 0.55)';
-            } else if (sType === 'asteroid_belt') {
-              ctx.fillStyle = 'rgba(100, 116, 139, 0.12)';
-              ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
-            } else {
-              ctx.fillStyle = 'rgba(56, 189, 248, 0.10)';
-              ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
-            }
-            ctx.fill();
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.restore();
+          // Environmental structures (shared vector renderer)
+          if (mapDetails?.structures) {
+            mapDetails.structures.forEach((s) => {
+              ctx.save();
+              ctx.translate(s.posX, s.posY);
+              renderEnvironmentVector(ctx, s.structureType, s.radius);
+              ctx.restore();
+            });
           }
 
-          // Projectiles
-          for (const p of snapshot.projectiles) {
-            ctx.save();
-            if (p.type === 'railgun') {
-              ctx.fillStyle = '#38bdf8';
-              ctx.beginPath();
-              ctx.arc(p.pos.x, p.pos.y, 4, 0, Math.PI * 2);
-              ctx.fill();
-            } else if (p.type === 'torpedo') {
-              ctx.fillStyle = '#fb7185';
-              ctx.beginPath();
-              ctx.arc(p.pos.x, p.pos.y, 5, 0, Math.PI * 2);
-              ctx.fill();
-            } else {
-              ctx.fillStyle = '#f59e0b';
-              ctx.beginPath();
-              ctx.arc(p.pos.x, p.pos.y, 3, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.restore();
-          }
+          // Interpolated fleet units rendered with real PNG/vector assets
+          const interpolatedUnits =
+            liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
+          const unitsToDraw =
+            interpolatedUnits && interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
 
-          // Fleet units
           let playerAlive = 0;
           let enemyAlive = 0;
 
-          for (const u of snapshot.units) {
+          for (const u of liveUnits) {
             if (u.isDestroyed) continue;
-            const isPlayer = u.ownerId === 'player';
-            if (isPlayer) playerAlive++;
+            if (u.ownerId === 'player') playerAlive++;
             else enemyAlive++;
+          }
 
-            const isPiloted = playerUnit?.id === u.id;
+          unitsToDraw.forEach((u: any) => {
+            const latest = liveUnitMap.get(u.id);
+            if (!latest || latest.isDestroyed) return;
+            const mergedUnit = { ...latest, pos: u.pos, angle: u.angle };
 
-            ctx.save();
-            ctx.translate(u.pos.x, u.pos.y);
+            const isPiloted = playerUnit?.id === mergedUnit.id;
+            const rx = isPiloted ? renderPosRef.current.x : mergedUnit.pos.x;
+            const ry = isPiloted ? renderPosRef.current.y : mergedUnit.pos.y;
+            const isAccelerating = isPiloted && !!keysRef.current['w'];
 
-            // Piloted unit highlight ring
+            // Subtle highlight ring around the player's piloted ship
             if (isPiloted) {
-              ctx.strokeStyle = 'rgba(34, 211, 238, 0.75)';
-              ctx.lineWidth = 1.5;
+              ctx.save();
+              ctx.strokeStyle = 'rgba(34, 211, 238, 0.7)';
+              ctx.lineWidth = 1.75;
               ctx.beginPath();
-              ctx.arc(0, 0, 26, 0, Math.PI * 2);
+              ctx.arc(rx, ry, 34, 0, Math.PI * 2);
               ctx.stroke();
+              ctx.restore();
             }
 
-            ctx.rotate(u.angle);
-            ctx.fillStyle = isPiloted ? '#22d3ee' : isPlayer ? '#0891b2' : '#e11d48';
-            ctx.strokeStyle = isPiloted ? '#ecfeff' : isPlayer ? '#67e8f9' : '#fda4af';
-            ctx.lineWidth = isPiloted ? 2.5 : 1.75;
+            if (mergedUnit.type === 'flagship' || mergedUnit.type === 'battalion_command_ship') {
+              drawFlagship(
+                ctx,
+                rx,
+                ry,
+                mergedUnit.angle,
+                mergedUnit.shields,
+                mergedUnit.hull,
+                mergedUnit.isFiring,
+                mergedUnit.isDestroyed,
+                isAccelerating
+              );
+            } else {
+              drawUnitAsset(
+                ctx,
+                rx,
+                ry,
+                mergedUnit.angle,
+                mergedUnit.type,
+                mergedUnit.ownerId,
+                mergedUnit.isDestroyed
+              );
+            }
+          });
 
-            ctx.beginPath();
-            ctx.moveTo(16, 0);
-            ctx.lineTo(-11, -11);
-            ctx.lineTo(-6, 0);
-            ctx.lineTo(-11, 11);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.restore();
-          }
+          // Projectiles (shared renderer)
+          (snapshot.projectiles || []).forEach((p) => {
+            drawProjectile(ctx, p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.type);
+          });
 
           ctx.restore();
 
-          // Un-shrouded TDM Tactical Minimap (bottom-right, per tdm_visibility.go)
-          const radarSize = 180;
-          const radarPad = 16;
-          const rx = canvas.width - radarSize - radarPad;
-          const ry = canvas.height - radarSize - radarPad;
-
-          ctx.save();
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-          ctx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
-          ctx.lineWidth = 1.5;
-          ctx.fillRect(rx, ry, radarSize, radarSize);
-          ctx.strokeRect(rx, ry, radarSize, radarSize);
-
-          for (const u of snapshot.units) {
-            if (u.isDestroyed) continue;
-            const ux = rx + (u.pos.x / mapW) * radarSize;
-            const uy = ry + (u.pos.y / mapH) * radarSize;
-            const isPiloted = playerUnit?.id === u.id;
-
-            ctx.fillStyle = isPiloted
-              ? '#ffffff'
-              : u.ownerId === 'player'
-              ? '#22d3ee'
-              : '#fb7185';
-            ctx.beginPath();
-            ctx.arc(ux, uy, isPiloted ? 3.5 : 2, 0, Math.PI * 2);
-            ctx.fill();
+          // Piloted ship 4-quadrant shield & hull HUD diagnostics
+          if (playerUnit) {
+            drawHUDDiagnostics(ctx, playerUnit.shields, playerUnit.hull);
           }
-          ctx.restore();
 
-          // Send player input at 60Hz
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(
-              serializeClientInput({
-                keys: keysRef.current,
-                angle: mouseRef.current.angle,
-                isFiring: keysRef.current.isFiring,
-                currentId: playerUnit?.id || null,
-              })
-            );
+          // Un-shrouded TDM Tactical Minimap (per tdm_visibility.go)
+          if (radarCtx && radarCanvas) {
+            const rw = radarCanvas.width;
+            const rh = radarCanvas.height;
+            const scaleX = rw / mapW;
+            const scaleY = rh / mapH;
+
+            radarCtx.fillStyle = 'rgba(5, 8, 17, 0.95)';
+            radarCtx.fillRect(0, 0, rw, rh);
+            radarCtx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
+            radarCtx.lineWidth = 1.5;
+            radarCtx.strokeRect(0, 0, rw, rh);
+
+            if (mapDetails?.structures) {
+              mapDetails.structures.forEach((s) => {
+                const sx = s.posX * scaleX;
+                const sy = s.posY * scaleY;
+                const sr = Math.max(2, s.radius * scaleX);
+                radarCtx.fillStyle =
+                  s.structureType === 'gas_giant'
+                    ? 'rgba(100, 150, 255, 0.2)'
+                    : 'rgba(168, 85, 247, 0.45)';
+                radarCtx.beginPath();
+                radarCtx.arc(sx, sy, sr, 0, Math.PI * 2);
+                radarCtx.fill();
+              });
+            }
+
+            liveUnits.forEach((u) => {
+              if (u.isDestroyed) return;
+              const isPiloted = playerUnit?.id === u.id;
+              const ux = (isPiloted ? renderPosRef.current.x : u.pos.x) * scaleX;
+              const uy = (isPiloted ? renderPosRef.current.y : u.pos.y) * scaleY;
+              const weight = templatesRef.current[u.type]?.weightClass ?? 1;
+
+              radarCtx.fillStyle = isPiloted
+                ? '#ffffff'
+                : u.ownerId === 'player'
+                ? '#22d3ee'
+                : '#fb7185';
+              radarCtx.beginPath();
+              radarCtx.arc(ux, uy, isPiloted ? 3.5 : weight >= 3 ? 2.5 : 1.8, 0, Math.PI * 2);
+              radarCtx.fill();
+            });
+
+            // Camera viewport rectangle on minimap
+            const viewW = canvas.width * scaleX;
+            const viewH = canvas.height * scaleY;
+            const viewX = cameraX * scaleX - viewW / 2;
+            const viewY = cameraY * scaleY - viewH / 2;
+            radarCtx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+            radarCtx.lineWidth = 1;
+            radarCtx.strokeRect(viewX, viewY, viewW, viewH);
           }
+
+          
 
           // Sync low-frequency HUD state (~4Hz or immediately on match end)
-          if (now - lastHudSyncTime >= 250 || snapshot.isGameOver) {
-            lastHudSyncTime = now;
+          if (currentTime - lastHudSyncTime >= 250 || snapshot.isGameOver) {
+            lastHudSyncTime = currentTime;
             setHud((prev) => {
               if (
                 prev.fps === currentFps &&
@@ -453,11 +477,13 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [pilotedUnit]);
+  }, [pilotedUnit, templatesRef, tickFlightInput]);
 
   const handleResetMatch = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       pilotedIdRef.current = null;
+      serverHistoryRef.current = [];
+      isInitializedRef.current = false;
       clearInputs();
       wsRef.current.send(serializeClientInput({ reset: true }));
     }
@@ -500,6 +526,14 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           <span className="text-cyan-400">{hud.playerAlive + hud.enemyAlive}</span>
         </div>
       </div>
+
+      {/* SHARED TACTICAL RADAR */}
+      <TacticalRadar
+        canvasRef={radarCanvasRef}
+        label="TDM Radar"
+        accent="cyan"
+        positionClass="bottom-4 right-4"
+      />
 
       {/* CONNECTION STATUS OVERLAY */}
       {!isConnected && (

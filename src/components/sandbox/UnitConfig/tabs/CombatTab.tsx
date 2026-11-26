@@ -1,7 +1,7 @@
 // src/components/UnitConfig/tabs/CombatTab.tsx
 import React from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VariableDoc } from '../../../constants/variableDocs';
+import { VariableDoc } from '../../../../constants/variableDocs';
 import { ConfigSliderCard } from '../common/ConfigSliderCard';
 
 interface CombatTabProps {

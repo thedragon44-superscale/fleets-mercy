@@ -1,19 +1,20 @@
 // src/components/GameViewport.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useGameSocket } from '../hooks/useGameSockets';
-import { useUnitTemplates } from '../hooks/useUnitTemplates';
+import { useGameSocket } from '../../hooks/useGameSockets';
+import { useUnitTemplates } from '../../hooks/useUnitTemplates';
+import { useFlightControls } from '../../hooks/useFlightControls';
 import {
   drawFlagship,
   drawUnitAsset,
   drawProjectile,
   drawHUDDiagnostics,
   renderEnvironmentVector,
-} from '../renderer/vectorAssets';
-import { getInterpolatedUnits } from '../renderer/interpolation';
-import { SnapshotUnit, ServerStateSnapshot } from '../parsers/binaryCodec';
-import { LoadoutData, UNIT_DB } from './GarageDashboard';
-import { WS_BASE_URL } from '../config';
-import { fetchMapDetail, MapDefinition } from '../services/mapService';
+} from '../../renderer/vectorAssets';
+import { getInterpolatedUnits } from '../../renderer/interpolation';
+import { SnapshotUnit, ServerStateSnapshot } from '../../parsers/binaryCodec';
+import { LoadoutData, UNIT_DB } from '../garage/GarageDashboard';
+import { WS_BASE_URL } from '../../config';
+import { fetchMapDetail, MapDefinition } from '../../services/mapService';
 
 interface GameViewportProps {
   activeLoadout?: LoadoutData;
@@ -27,10 +28,6 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
   const serverState = useRef<ServerStateSnapshot | null>(null);
   const serverHistoryRef = useRef<{ timestamp: number; units: SnapshotUnit[] }[]>([]);
   const cameraPos = useRef({ x: 6000, y: 10000 });
-  const keys = useRef<{ [key: string]: boolean }>({});
-  const mouseCanvasPos = useRef({ x: 0, y: 0 });
-  const mouseDirtyRef = useRef(false);
-  const isFiring = useRef(false);
 
   const [mapDetails, setMapDetails] = useState<MapDefinition | null>(null);
   const gameOverLatched = useRef<{ winner: string; x: number; y: number } | null>(null);
@@ -116,37 +113,35 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
     return () => observer.disconnect();
   }, []);
 
-  const sendAction = (actionParams: { deploy?: string; reset?: boolean } = {}) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !serverState.current) return;
-
-    const flagship = serverState.current.units?.find(
-      (u) => u.id === 'player-flagship' || (u.ownerId === 'player' && u.type === 'battalion_command_ship')
-    );
-    let angle = flagship?.angle || 0;
-
-    if (flagship) {
-      const worldMouseX = mouseCanvasPos.current.x - canvas.width / 2 + cameraPos.current.x;
-      const worldMouseY = mouseCanvasPos.current.y - canvas.height / 2 + cameraPos.current.y;
-      const dx = worldMouseX - flagship.pos.x;
-      const dy = worldMouseY - flagship.pos.y;
-      if (Math.hypot(dx, dy) > 35.0) {
-        angle = Math.atan2(dy, dx);
+  const { keysRef, mouseCanvasPosRef, tickFlightInput, sendImmediate } = useFlightControls({
+    canvasRef,
+    cameraPosRef: cameraPos,
+    resolvePilotedUnit: (units) =>
+      units.find(
+        (u) =>
+          (u.id === 'player-flagship' ||
+            (u.ownerId === 'player' && u.type === 'battalion_command_ship')) &&
+          !u.isDestroyed
+      ),
+    onSendInput: sendInput,
+    onCustomKeyDown: (e) => {
+      if (e.repeat) return false;
+      const k = e.key.toLowerCase();
+      if (['1', '2', '3', '4'].includes(k)) {
+        queueSquadDeploy(parseInt(k, 10));
+        return true;
       }
-    }
-
-    sendInput({
-      keys: keys.current,
-      angle,
-      isFiring: isFiring.current && !!flagship,
-      currentId: flagship?.id || 'player-flagship',
-      deploy: actionParams.deploy,
-      reset: actionParams.reset || false,
-    });
-  };
+      if (k === 'r') {
+        handleResetMatch();
+        return true;
+      }
+      return false;
+    },
+  });
 
   const handleResetMatch = () => {
-    sendAction({ reset: true });
+    serverHistoryRef.current = [];
+    sendImmediate(serverState.current?.units || [], { reset: true });
     const freshReserves = { ...defaultLoadout.fleetComposition };
     reservesRef.current = freshReserves;
     setReserves(freshReserves);
@@ -157,7 +152,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
       reservesRef.current[unitId] -= 1;
       setReserves((prev) => ({ ...prev, [unitId]: reservesRef.current[unitId] }));
       sendInput({
-        keys: keys.current,
+        keys: keysRef.current,
         deploy: unitId,
       });
     }
@@ -169,74 +164,9 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
   };
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      keys.current[k] = true;
-      if (!e.repeat) {
-        if (['1', '2', '3', '4'].includes(k)) {
-          queueSquadDeploy(parseInt(k, 10));
-        } else if (k === 'r') {
-          handleResetMatch();
-        } else {
-          sendAction();
-        }
-      }
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.current[e.key.toLowerCase()] = false;
-      sendAction();
-    };
-
-    const onBlur = () => {
-      keys.current = {};
-      isFiring.current = false;
-      sendAction();
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      mouseCanvasPos.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-      mouseDirtyRef.current = true;
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 && !(e.target as HTMLElement).closest('.ui-interactive')) {
-        isFiring.current = true;
-        sendAction();
-      }
-    };
-
-    const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 0 && isFiring.current) {
-        isFiring.current = false;
-        sendAction();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-
     let animId: number;
-    let lastInputSendTime = 0;
 
     const render = (currentTime: number) => {
-      // Throttled aim sync (~60Hz max)
-      if ((mouseDirtyRef.current || isFiring.current) && currentTime - lastInputSendTime >= 16) {
-        mouseDirtyRef.current = false;
-        lastInputSendTime = currentTime;
-        sendAction();
-      }
-
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
       if (!ctx || !canvas) {
@@ -249,15 +179,13 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
 
       if (serverState.current) {
         const liveUnits = serverState.current.units || [];
-        const flagship = liveUnits.find(
-          (u) => u.id === 'player-flagship' || (u.ownerId === 'player' && u.type === 'battalion_command_ship')
-        );
+        const flagship = tickFlightInput(currentTime, liveUnits);
 
         if (flagship) {
           cameraPos.current.x +=
-            (flagship.pos.x + (mouseCanvasPos.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
+            (flagship.pos.x + (mouseCanvasPosRef.current.x - canvas.width / 2) * 0.35 - cameraPos.current.x) * 0.1;
           cameraPos.current.y +=
-            (flagship.pos.y + (mouseCanvasPos.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
+            (flagship.pos.y + (mouseCanvasPosRef.current.y - canvas.height / 2) * 0.35 - cameraPos.current.y) * 0.1;
         }
 
         const mapW = mapDetails?.width ?? serverState.current.mapBounds.width ?? 12000;
@@ -328,7 +256,7 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
         const unitsToDraw = interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
 
         unitsToDraw.forEach((u) => {
-          const isAccelerating = u.id === flagship?.id && !!keys.current['w'];
+          const isAccelerating = u.id === flagship?.id && !!keysRef.current['w'];
           if (u.type === 'flagship' || u.type === 'battalion_command_ship') {
             drawFlagship(ctx, u.pos.x, u.pos.y, u.angle, u.shields, u.hull, u.isFiring, u.isDestroyed, isAccelerating);
           } else {
@@ -496,14 +424,8 @@ export const GameViewport: React.FC<GameViewportProps> = ({ activeLoadout, mapId
     animId = requestAnimationFrame(render);
     return () => {
       cancelAnimationFrame(animId);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [mapDetails, templatesRef]);
+  }, [mapDetails, templatesRef, tickFlightInput]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2) {

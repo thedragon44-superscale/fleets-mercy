@@ -1,4 +1,4 @@
-// src/components/UnitConfig/UnitConfigContainer.tsx
+// src/components/sandbox/UnitConfig/UnitConfigContainer.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { UnitConfigHeader } from './UnitConfigHeader';
 import { UnitConfigTabs } from './UnitConfigTabs';
@@ -8,15 +8,16 @@ import { CombatTab } from './tabs/CombatTab';
 import { AiSensorTab } from './tabs/AiSensorTab';
 import { LogisticsTab } from './tabs/LogisticsTab';
 import { ConfigTabType, UnitConfigConfigPayload } from './types';
-import { VariableDoc } from '../../constants/variableDocs';
-import { VariableInfoModal } from '../VariableInfoModal';
-import { useUnitTemplates } from '../../hooks/useUnitTemplates';
+import { VariableDoc } from '../../../constants/variableDocs';
+import { VariableInfoModal } from '../../common/VariableInfoModal';
+import { useUnitTemplates } from '../../../hooks/useUnitTemplates';
 
 interface UnitConfigContainerProps {
   isOpen: boolean;
   initialUnitId?: string;
   onClose: () => void;
   sendTemplateOverride?: (unitType: string, override: any) => void;
+  embedded?: boolean;
 }
 
 export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
@@ -24,6 +25,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
   initialUnitId = 'flagship',
   onClose,
   sendTemplateOverride,
+  embedded = false,
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<string>(initialUnitId);
   const [activeTab, setActiveTab] = useState<ConfigTabType>('movement');
@@ -100,18 +102,8 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }
   };
 
-  return (
-    <div
-      className="ui-interactive absolute top-4 left-[340px] w-[520px] max-h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-4 z-50 flex flex-col shadow-2xl backdrop-blur-md overflow-hidden"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <UnitConfigHeader
-        selectedUnitId={selectedUnitId}
-        onSelectUnit={setSelectedUnitId}
-        onClose={onClose}
-      />
-
+  const bodyContent = (
+    <>
       <UnitConfigTabs
         activeTab={activeTab}
         modifiedFields={modifiedFieldSet}
@@ -174,7 +166,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       </div>
 
       {statusMsg && (
-        <div className="text-cyan-400 text-[10px] font-bold text-center py-1 bg-cyan-950/40 border border-cyan-500/30 rounded mb-2">
+        <div className="text-cyan-400 text-[10px] font-bold text-center py-1 bg-cyan-950/40 border border-cyan-500/30 rounded mb-2 shrink-0">
           {statusMsg}
         </div>
       )}
@@ -208,6 +200,29 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       </div>
 
       <VariableInfoModal doc={activeDoc} onClose={() => setActiveDoc(null)} />
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col p-3 overflow-hidden font-mono select-none">
+        {bodyContent}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="ui-interactive absolute top-4 left-[340px] w-[520px] max-h-[calc(100vh-90px)] bg-[#0f1115]/95 border border-cyan-500/40 rounded-xl p-4 z-50 flex flex-col shadow-2xl backdrop-blur-md overflow-hidden"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <UnitConfigHeader
+        selectedUnitId={selectedUnitId}
+        onSelectUnit={setSelectedUnitId}
+        onClose={onClose}
+      />
+      {bodyContent}
     </div>
   );
 };

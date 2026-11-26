@@ -1,7 +1,7 @@
 // src/hooks/useUnitTemplates.ts
 import { useEffect, useSyncExternalStore } from 'react';
 import { API_BASE_URL } from '../config';
-import { UnitConfigConfigPayload } from '../components/UnitConfig/types';
+import { UnitConfigConfigPayload } from '../components/sandbox/UnitConfig/types';
 
 export type TemplateMap = Record<string, UnitConfigConfigPayload>;
 

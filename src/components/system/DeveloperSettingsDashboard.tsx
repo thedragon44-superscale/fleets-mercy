@@ -1,6 +1,6 @@
 // src/components/DeveloperSettingsDashboard.tsx
 import React from 'react';
-import { useSettingsStore } from '../config/settingsStore';
+import { useSettingsStore } from '../../config/settingsStore';
 
 interface DeveloperSettingsProps {
   onNavigateHome: () => void;
