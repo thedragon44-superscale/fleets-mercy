@@ -122,7 +122,7 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pr-1 mb-2">
+      <div className="flex-1 overflow-y-auto pr-1 mb-2 sandbox-scroll">
         {activeTab === 'movement' && (
           <MovementTab
             config={currentConfig}
@@ -171,30 +171,30 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-slate-800">
+      <div className="flex flex-col gap-1.5 shrink-0 pt-2 border-t border-white/10">
         <div className="flex gap-2">
           <button
             onClick={handleResetToDatabase}
             disabled={!hasUnsavedChanges}
-            className={`flex-1 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all border ${
+            className={`flex-1 font-medium py-1.5 rounded-md text-[11px] transition-colors border ${
               hasUnsavedChanges
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-slate-600'
-                : 'bg-slate-900/60 text-slate-600 border-slate-800 cursor-not-allowed'
+                ? 'bg-[#080a0f] hover:bg-white/5 text-slate-200 border-white/15'
+                : 'bg-[#080a0f]/50 text-slate-600 border-white/5 cursor-not-allowed'
             }`}
             title="Revert tweaks back to last database save or initial load"
           >
-            🔄 Revert to DB / Last Save
+            Revert to DB
           </button>
           <button
             onClick={saveConfigurationToDB}
             disabled={isSaving}
-            className={`flex-1 font-black py-2 rounded-lg text-[10px] uppercase tracking-widest transition-all shadow-md ${
+            className={`flex-1 font-medium py-1.5 rounded-md text-[11px] transition-colors border ${
               hasUnsavedChanges
-                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
-                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/40'
+                : 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border-cyan-500/35'
             }`}
           >
-            {isSaving ? 'Saving...' : '💾 Save Spec Sheet'}
+            {isSaving ? 'Saving...' : 'Save Spec Sheet'}
           </button>
         </div>
       </div>

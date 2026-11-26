@@ -490,7 +490,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				clampedSpeed := math.Max(0, math.Min(float64(cfg.Speed()), 50.0))
 				clampedStrafe := math.Max(0, math.Min(float64(cfg.StrafingSpeed()), 50.0))
 				clampedTurn := math.Max(0, math.Min(float64(cfg.TurnRate()), 60.0))
-				clampedAngVel := math.Max(0, math.Min(float64(cfg.AngularVelocity()), 15.0))
+				clampedAngVel := math.Max(0, math.Min(float64(cfg.AngularVelocity()), 60.0))
 				clampedAccel := math.Max(0, math.Min(float64(cfg.AccelerationCurve()), 10.0))
 
 				if tmpl, exists := db.Templates[unitType]; exists {
@@ -812,11 +812,14 @@ func (r *GameRoom) Run() {
 					HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
 					unit.IsFiring = r.lastInput.IsFiring
 				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
-					// Player flagship should NEVER move or run AI when unpiloted; it holds position and zeroes angular velocity.
+					// Player flagship should NEVER move or run AI when unpiloted; it holds position and coasts spin to zero.
 					unit.IsFiring = false
 					unit.Vel.X *= 0.95
 					unit.Vel.Y *= 0.95
-					unit.AngularVelocity = 0
+					unit.CurrentAngularVel *= 0.88
+					if math.Abs(unit.CurrentAngularVel) < 0.01 {
+						unit.CurrentAngularVel = 0
+					}
 				} else {
 					// All other units (enemy units, spawned support drones, etc.) run their AI behavior
 					RunUnitAI(unit, r, flagship)

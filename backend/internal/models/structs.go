@@ -176,6 +176,7 @@ type FleetUnit struct {
 	StrafingSpeed                  float64 `json:"strafingSpeed"`
 	TurnRate                       float64 `json:"turnRate"`
 	AngularVelocity                float64 `json:"angularVelocity"`
+	CurrentAngularVel              float64 `json:"-"`
 	AccelerationCurve              float64 `json:"accelerationCurve"`
 	LateralThrustPower             float64 `json:"lateralThrustPower"`
 	ReverseThrustPower             float64 `json:"reverseThrustPower"`
