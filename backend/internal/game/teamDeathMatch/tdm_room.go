@@ -58,6 +58,7 @@ func (r *TDMRoom) ResetMatch() {
 	r.SetTick(0)
 	r.isGameOver = false
 	r.winningFaction = ""
+	r.lastInput = game.SandboxClientInput{}
 
 	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType, r.customUnitPool)
 	log.Printf("⚔️ TDM Match Initialized: 20v20 Skirmish spawned. Piloted unit locked to ID: %s", r.pilotedUnitID)
@@ -109,6 +110,9 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		log.Printf("❌ Player disconnected from TDM: %s", clientAddr)
 		r.mu.Lock()
 		delete(r.clients, conn)
+		if len(r.clients) == 0 {
+			r.lastInput = game.SandboxClientInput{}
+		}
 		r.mu.Unlock()
 		conn.Close()
 	}()
@@ -165,7 +169,6 @@ func (r *TDMRoom) Run() {
 					continue
 				}
 
-				// Player control handling for the designated piloted unit
 				if unit.ID == r.pilotedUnitID {
 					game.HandlePlayerMovement(unit, game.SandboxClientInput{
 						W:        r.lastInput.W,
@@ -177,13 +180,13 @@ func (r *TDMRoom) Run() {
 					}, 12000.0, 12000.0)
 					unit.IsFiring = r.lastInput.IsFiring
 				} else {
-					// Autonomous squad AI execution
 					game.RunUnitAI(unit, r.GameRoom, nil)
 				}
 
 				game.ApplyUnitPhysics(unit, 12000.0, 12000.0)
 				game.ApplyEnvironmentalCollisions(unit, r.GetStructures())
 				game.ApplyMajorWorldGravity(unit, r.GetStructures())
+				game.RegenerateShields(unit)
 				game.HandleWeaponFiring(unit, r.GameRoom)
 			}
 
@@ -192,7 +195,7 @@ func (r *TDMRoom) Run() {
 		}
 
 		// 3. Build & Broadcast Binary FlatBuffers State
-		builder := flatbuffers.NewBuilder(1024)
+		builder := flatbuffers.NewBuilder(2048)
 		units := r.GetUnits()
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(units))
 
@@ -203,6 +206,7 @@ func (r *TDMRoom) Run() {
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)
+			aiStateOffset := builder.CreateString(u.AIState)
 
 			SpaceTactics.FleetUnitStart(builder)
 			SpaceTactics.FleetUnitAddId(builder, idOffset)
@@ -225,6 +229,13 @@ func (r *TDMRoom) Run() {
 			SpaceTactics.FleetUnitAddBattalionId(builder, int32(u.BattalionID))
 			SpaceTactics.FleetUnitAddSquadId(builder, int32(u.SquadID))
 			SpaceTactics.FleetUnitAddVisionRange(builder, int32(u.VisionRange))
+
+			vel := SpaceTactics.CreateVector2D(builder, float32(u.Vel.X), float32(u.Vel.Y))
+			SpaceTactics.FleetUnitAddVel(builder, vel)
+			SpaceTactics.FleetUnitAddAiState(builder, aiStateOffset)
+			SpaceTactics.FleetUnitAddCurrentThermal(builder, float32(u.CurrentThermal))
+			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
+
 			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 

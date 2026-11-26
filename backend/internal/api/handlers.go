@@ -20,7 +20,9 @@ func enableCORS(w *http.ResponseWriter) {
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	if r.Method != "POST" {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -56,7 +58,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetLoadoutsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	playerIDStr := r.URL.Query().Get("playerId")
 	playerID, err := strconv.Atoi(playerIDStr)
@@ -66,7 +70,7 @@ func GetLoadoutsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.Conn.Query(
-		"SELECT id, player_id, loadout_index, name, fleet_composition, squad_1, squad_2, squad_3, squad_4 FROM player_loadouts WHERE player_id = $1 ORDER BY loadout_index ASC", 
+		"SELECT id, player_id, loadout_index, name, fleet_composition, squad_1, squad_2, squad_3, squad_4 FROM player_loadouts WHERE player_id = $1 ORDER BY loadout_index ASC",
 		playerID,
 	)
 	if err != nil {
@@ -75,7 +79,7 @@ func GetLoadoutsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var loadouts []models.PlayerLoadout
+	loadouts := make([]models.PlayerLoadout, 0)
 	for rows.Next() {
 		var l models.PlayerLoadout
 		var comp, s1, s2, s3, s4 []byte
@@ -83,7 +87,11 @@ func GetLoadoutsHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		l.FleetComposition = comp; l.Squad1 = s1; l.Squad2 = s2; l.Squad3 = s3; l.Squad4 = s4
+		l.FleetComposition = comp
+		l.Squad1 = s1
+		l.Squad2 = s2
+		l.Squad3 = s3
+		l.Squad4 = s4
 		loadouts = append(loadouts, l)
 	}
 
@@ -93,7 +101,9 @@ func GetLoadoutsHandler(w http.ResponseWriter, r *http.Request) {
 
 func SaveLoadoutHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	if r.Method != "POST" {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -125,7 +135,9 @@ func SaveLoadoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetMapsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	rows, err := db.Conn.Query("SELECT map_id, map_key, map_name, description, width, height FROM maps ORDER BY map_id ASC")
 	if err != nil {
@@ -134,7 +146,7 @@ func GetMapsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var maps []models.MapDefinition
+	maps := make([]models.MapDefinition, 0)
 	for rows.Next() {
 		var m models.MapDefinition
 		if err := rows.Scan(&m.ID, &m.MapKey, &m.Name, &m.Description, &m.Width, &m.Height); err != nil {
@@ -150,7 +162,9 @@ func GetMapsHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	mapIdStr := r.URL.Query().Get("id")
 	mapId, err := strconv.Atoi(mapIdStr)
@@ -170,11 +184,12 @@ func GetMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.Structures = make([]models.MapStructure, 0)
 	structRows, err := db.Conn.Query(
 		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
 		 FROM map_structures ms 
 		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
-		 WHERE ms.map_id = $1`, 
+		 WHERE ms.map_id = $1`,
 		mapId,
 	)
 	if err == nil {
@@ -209,7 +224,9 @@ type SaveMapRequest struct {
 
 func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	if r.Method != "POST" {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -296,7 +313,9 @@ func SaveCustomMapHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	rows, err := db.Conn.Query(`
 		SELECT 
@@ -349,89 +368,90 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(
 			&class, &aiState,
 			&weightClass, &visionRange, &sensorRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
-			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled, 
+			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled,
 			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
 			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
-			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity, 
-			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds, 
+			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity,
+			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds,
 			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
-			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold, 
+			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold,
 			&decloakOnActionFlag, &stealthDelay,
-			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus, 
-			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration, 
+			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus,
+			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration,
 			&warpCanisterCapacity, &emergencyWarpEvacuationTarget,
 		); err != nil {
+			log.Printf("⚠️ GetTemplatesHandler row scan failed: %v", err)
 			continue
 		}
 
 		templatesMap[class] = map[string]interface{}{
-			"unitClass":                   class,
-			"aiDefaultState":              aiState,
-			"weightClass":                 weightClass,
-			"visionRange":                 visionRange,
-			"sensorRange":                 sensorRange,
-			"aggroRange":                  aggroRange,
-			"aggroThreatWeight":           aggroThreatWeight,
-			"retreatMoraleThreshold":      retreatMoraleThreshold,
-			"squadCohesionLeashRange":     squadCohesionLeashRange,
-			"shieldBase":                  shieldBase,
-			"hullBase":                    hullBase,
-			"quadrantShieldingEnabled":    quadrantShieldingEnabled,
-			"quadrantShieldPoolsEnabled":  quadrantShieldPoolsEnabled,
-			"quadrantHullPoolsEnabled":    quadrantHullPoolsEnabled,
-			"shieldRegenRate":             shieldRegenRate,
-			"shieldRechargeDelayTicks":    shieldRechargeDelayTicks,
-			"directionalShieldArc":        directionalShieldArc,
-			"armorMitigation":             armorMitigation,
-			"armorHardnessRating":         armorHardnessRating,
-			"ablativePlatingDurability":   ablativePlatingDurability,
-			"speed":                       speed,
-			"strafingSpeed":               strafingSpeed,
-			"turnRate":                    turnRate,
-			"angularVelocity":             angularVelocity,
-			"lateralThrustPower":          lateralThrustPower,
-			"reverseThrustPower":          reverseThrustPower,
-			"driftCoefficient":            driftCoefficient,
-			"accelerationCurve":           accelerationCurve,
-			"dps":                         dps,
-			"maxCooldown":                 maxCooldown,
-			"projectileRange":             projectileRange,
-			"projectileSpeed":             projectileSpeed,
-			"optimalRange":                optimalRange,
-			"maxRange":                    maxRange,
-			"engagementRangeCap":          engagementRangeCap,
-			"ammoCapacity":                ammoCap,
-			"initialOrdnanceCapacity":     initialOrdnanceCapacity,
-			"turretTraverseSpeed":         turretTraverseSpeed,
-			"weaponDispersionBloom":       weaponDispersionBloom,
-			"projectileTrackingCapability": projectileTrackingCapability,
-			"shieldPenetrationFactor":     shieldPenetrationFactor,
-			"sustainedFireLimitSeconds":   sustainedFireLimitSeconds,
-			"barrelCoolingDurationSeconds": barrelCoolingDurationSeconds,
-			"burstSalvoCooldown":          burstSalvoCooldown,
-			"beamRaycastDuration":         beamRaycastDuration,
-			"maxThermalCapacity":          thermalCap,
-			"thermalDissipationRate":      thermalDiss,
-			"powerGridAllocationWeight":   powerGridAllocationWeight,
-			"radarCrossSection":           radarCrossSection,
-			"sensorResolutionTier":        sensorResolutionTier,
-			"jammingSusceptibility":       jammingSusceptibility,
-			"targetLockTime":              targetLockTime,
-			"radarImmunityActive":         radarImmune,
-			"shieldGatedStealthThreshold": shieldGatedStealthThreshold,
-			"decloakOnActionFlag":         decloakOnActionFlag,
-			"stealthRecoveryDelaySeconds": stealthDelay,
-			"resourceHarvestingType":      resourceHarvestingType,
-			"requiresReconTelemetry":      requiresReconTelemetry,
-			"requiresAnchorDrone":         requiresAnchorDrone,
-			"requiresReconAnchor":         requiresReconAnchor,
-			"portDockingBayStatus":        portDockingBayStatus,
-			"starboardDeploymentBayStatus": starboardDeploymentBayStatus,
-			"salvageableUponDestruction":  salvageableUponDestruction,
-			"cryoGasRadius":               cryoGasRadius,
-			"cryoEffectDuration":          cryoEffectDuration,
-			"gravitonVortexDuration":      gravitonVortexDuration,
-			"warpCanisterCapacity":        warpCanisterCapacity,
+			"unitClass":                     class,
+			"aiDefaultState":                aiState,
+			"weightClass":                   weightClass,
+			"visionRange":                   visionRange,
+			"sensorRange":                   sensorRange,
+			"aggroRange":                    aggroRange,
+			"aggroThreatWeight":             aggroThreatWeight,
+			"retreatMoraleThreshold":        retreatMoraleThreshold,
+			"squadCohesionLeashRange":       squadCohesionLeashRange,
+			"shieldBase":                    shieldBase,
+			"hullBase":                      hullBase,
+			"quadrantShieldingEnabled":      quadrantShieldingEnabled,
+			"quadrantShieldPoolsEnabled":    quadrantShieldPoolsEnabled,
+			"quadrantHullPoolsEnabled":      quadrantHullPoolsEnabled,
+			"shieldRegenRate":               shieldRegenRate,
+			"shieldRechargeDelayTicks":      shieldRechargeDelayTicks,
+			"directionalShieldArc":          directionalShieldArc,
+			"armorMitigation":               armorMitigation,
+			"armorHardnessRating":           armorHardnessRating,
+			"ablativePlatingDurability":     ablativePlatingDurability,
+			"speed":                         speed,
+			"strafingSpeed":                 strafingSpeed,
+			"turnRate":                      turnRate,
+			"angularVelocity":               angularVelocity,
+			"lateralThrustPower":            lateralThrustPower,
+			"reverseThrustPower":            reverseThrustPower,
+			"driftCoefficient":              driftCoefficient,
+			"accelerationCurve":             accelerationCurve,
+			"dps":                           dps,
+			"maxCooldown":                   maxCooldown,
+			"projectileRange":               projectileRange,
+			"projectileSpeed":               projectileSpeed,
+			"optimalRange":                  optimalRange,
+			"maxRange":                      maxRange,
+			"engagementRangeCap":            engagementRangeCap,
+			"ammoCapacity":                  ammoCap,
+			"initialOrdnanceCapacity":       initialOrdnanceCapacity,
+			"turretTraverseSpeed":           turretTraverseSpeed,
+			"weaponDispersionBloom":         weaponDispersionBloom,
+			"projectileTrackingCapability":  projectileTrackingCapability,
+			"shieldPenetrationFactor":       shieldPenetrationFactor,
+			"sustainedFireLimitSeconds":     sustainedFireLimitSeconds,
+			"barrelCoolingDurationSeconds":  barrelCoolingDurationSeconds,
+			"burstSalvoCooldown":            burstSalvoCooldown,
+			"beamRaycastDuration":           beamRaycastDuration,
+			"maxThermalCapacity":            thermalCap,
+			"thermalDissipationRate":        thermalDiss,
+			"powerGridAllocationWeight":     powerGridAllocationWeight,
+			"radarCrossSection":             radarCrossSection,
+			"sensorResolutionTier":          sensorResolutionTier,
+			"jammingSusceptibility":         jammingSusceptibility,
+			"targetLockTime":                targetLockTime,
+			"radarImmunityActive":           radarImmune,
+			"shieldGatedStealthThreshold":   shieldGatedStealthThreshold,
+			"decloakOnActionFlag":           decloakOnActionFlag,
+			"stealthRecoveryDelaySeconds":   stealthDelay,
+			"resourceHarvestingType":        resourceHarvestingType,
+			"requiresReconTelemetry":        requiresReconTelemetry,
+			"requiresAnchorDrone":           requiresAnchorDrone,
+			"requiresReconAnchor":           requiresReconAnchor,
+			"portDockingBayStatus":          portDockingBayStatus,
+			"starboardDeploymentBayStatus":  starboardDeploymentBayStatus,
+			"salvageableUponDestruction":    salvageableUponDestruction,
+			"cryoGasRadius":                 cryoGasRadius,
+			"cryoEffectDuration":            cryoEffectDuration,
+			"gravitonVortexDuration":        gravitonVortexDuration,
+			"warpCanisterCapacity":          warpCanisterCapacity,
 			"emergencyWarpEvacuationTarget": emergencyWarpEvacuationTarget,
 		}
 	}
@@ -442,7 +462,9 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 
 func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
-	if r.Method == "OPTIONS" { return }
+	if r.Method == "OPTIONS" {
+		return
+	}
 
 	if r.Method != "POST" {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -462,15 +484,21 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getFloat := func(key string) float64 {
-		if v, ok := req[key].(float64); ok { return v }
+		if v, ok := req[key].(float64); ok {
+			return v
+		}
 		return 0
 	}
 	getInt := func(key string) int {
-		if v, ok := req[key].(float64); ok { return int(v) }
+		if v, ok := req[key].(float64); ok {
+			return int(v)
+		}
 		return 0
 	}
 	getBool := func(key string) bool {
-		if v, ok := req[key].(bool); ok { return v }
+		if v, ok := req[key].(bool); ok {
+			return v
+		}
 		return false
 	}
 
@@ -513,16 +541,22 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately sync the in-memory template cache so active rooms reflect changes without rebooting
-	if tmpl, exists := db.Templates[unitType]; exists {
+	// Thread-safe sync of the in-memory template cache
+	if tmpl, exists := db.GetTemplate(unitType); exists {
+		shieldBase := getFloat("shieldBase")
+		hullBase := getFloat("hullBase")
+		ammoCap := getInt("ammoCapacity")
+
 		tmpl.WeightClass = getInt("weightClass")
 		tmpl.VisionRange = getInt("visionRange")
 		tmpl.SensorRange = getFloat("sensorRange")
 		tmpl.AggroRange = getFloat("aggroRange")
 		tmpl.RetreatMoraleThreshold = getFloat("retreatMoraleThreshold")
 		tmpl.SquadCohesionLeashRange = getFloat("squadCohesionLeashRange")
-		tmpl.ShieldBase = getFloat("shieldBase")
-		tmpl.HullBase = getFloat("hullBase")
+		tmpl.ShieldBase = shieldBase
+		tmpl.HullBase = hullBase
+		tmpl.Shields = models.QuadrantStats{Front: shieldBase, Rear: shieldBase, Port: shieldBase, Starboard: shieldBase}
+		tmpl.Hull = models.QuadrantStats{Front: hullBase, Rear: hullBase, Port: hullBase, Starboard: hullBase}
 		tmpl.ShieldRegenRate = getFloat("shieldRegenRate")
 		tmpl.ShieldRechargeDelayTicks = getInt("shieldRechargeDelayTicks")
 		tmpl.ArmorMitigation = getFloat("armorMitigation")
@@ -538,15 +572,22 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl.MaxCooldown = getInt("maxCooldown")
 		tmpl.ProjectileRange = getFloat("projectileRange")
 		tmpl.ProjectileSpeed = getFloat("projectileSpeed")
+		tmpl.OptimalRange = getFloat("optimalRange")
+		tmpl.MaxRange = getFloat("maxRange")
+		tmpl.EngagementRangeCap = getFloat("engagementRangeCap")
 		tmpl.MaxThermalCapacity = getFloat("maxThermalCapacity")
-		tmpl.MaxAmmoCapacity = getInt("ammoCapacity")
+		tmpl.MaxAmmoCapacity = ammoCap
+		tmpl.CurrentAmmo = ammoCap
+		tmpl.RadarImmunityActive = getBool("radarImmunityActive")
+		tmpl.StealthTimer = getFloat("stealthRecoveryDelaySeconds")
 		tmpl.ResourceHarvestingType = getInt("resourceHarvestingType")
 		tmpl.WarpCanisterCapacity = getInt("warpCanisterCapacity")
 		tmpl.PortDockingBayStatus = getBool("portDockingBayStatus")
 		tmpl.StarboardDeploymentBayStatus = getBool("starboardDeploymentBayStatus")
 		tmpl.SalvageableUponDestruction = getBool("salvageableUponDestruction")
 		tmpl.RequiresReconTelemetry = getBool("requiresReconTelemetry")
-		db.Templates[unitType] = tmpl
+
+		db.SetTemplate(unitType, tmpl)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

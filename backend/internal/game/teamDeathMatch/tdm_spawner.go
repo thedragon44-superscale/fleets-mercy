@@ -2,6 +2,7 @@ package teamDeathMatch
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 
 	"space-tactics-server/internal/db"
@@ -29,7 +30,6 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 		pilotedUnitType = "viper_interceptor"
 	}
 
-	// Use custom spawn pool if available and non-empty, otherwise fallback to default tdmUnitPool
 	activePool := customPool
 	if len(activePool) == 0 {
 		activePool = tdmUnitPool
@@ -37,37 +37,30 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 
 	var pilotedID string
 	units := r.GetUnits()
+	structures := r.GetStructures()
 
-	// Spawn Factions: player, enemy
 	factions := []string{"player", "enemy"}
 
 	for _, faction := range factions {
-		// Each faction gets 20 units total, split across 4 squads (5 units per squad)
 		unitIndex := 0
 		for squadID := 1; squadID <= 4; squadID++ {
-			// Generate a decentralized cluster center coordinate for this squad
-			clusterX, clusterY := generateSquadClusterCoords(faction, squadID)
-
-			// Randomly select one unit index in this squad of 5 to be the Squad Leader (0 to 4)
+			clusterX, clusterY := generateSquadClusterCoords(faction, squadID, structures)
 			leaderIndexWithinSquad := rand.Intn(5)
 
 			for i := 0; i < 5; i++ {
 				unitIndex++
 				var unitType string
 
-				// If player faction and this is the very first unit, enforce the user's chosen piloted class
 				if faction == "player" && unitIndex == 1 {
 					unitType = pilotedUnitType
 				} else {
-					// Pick a random unit type from the active custom spawn pool
 					unitType = activePool[rand.Intn(len(activePool))]
 				}
 
-				template, exists := db.Templates[unitType]
+				template, exists := db.GetTemplate(unitType)
 				if !exists {
-					// Fallback to viper if template lookup fails
 					unitType = "viper_interceptor"
-					template = db.Templates[unitType]
+					template, _ = db.GetTemplate(unitType)
 				}
 
 				id := fmt.Sprintf("tdm-%s-%s-%d", faction, unitType, r.NextUnitID())
@@ -78,9 +71,9 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 
 				isLeader := (i == leaderIndexWithinSquad)
 
-				// Scatter individual squad members slightly around the cluster center
 				spawnX := clusterX + (rand.Float64()-0.5)*300.0
 				spawnY := clusterY + (rand.Float64()-0.5)*300.0
+				spawnX, spawnY = sanitizeSpawnCoords(spawnX, spawnY, structures)
 
 				unit := &models.FleetUnit{
 					ID:                           id,
@@ -144,23 +137,43 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 }
 
 // generateSquadClusterCoords computes decentralized spawn locations across the 12000x12000 map bounds,
-// keeping player squads generally separated from enemy squads initially.
-func generateSquadClusterCoords(faction string, squadID int) (float64, float64) {
+// keeping player squads separated from enemy squads and clear of environmental hazards.
+func generateSquadClusterCoords(faction string, squadID int, structures []models.MapStructure) (float64, float64) {
 	var baseX, baseY float64
 
 	if faction == "player" {
-		// Player side occupies the bottom/left sectors of the map
 		baseX = 2000.0 + float64((squadID-1)%2)*3000.0
 		baseY = 8000.0 + float64((squadID-1)/2)*2000.0
 	} else {
-		// Enemy side occupies the top/right sectors of the map
 		baseX = 7000.0 + float64((squadID-1)%2)*3000.0
 		baseY = 2000.0 + float64((squadID-1)/2)*2000.0
 	}
 
-	// Add a bit of random variance to sector placement
 	finalX := baseX + (rand.Float64()-0.5)*1000.0
 	finalY := baseY + (rand.Float64()-0.5)*1000.0
 
-	return finalX, finalY
+	return sanitizeSpawnCoords(finalX, finalY, structures)
+}
+
+// sanitizeSpawnCoords pushes spawn coordinates outside hazardous/solid structures and clamps to map bounds.
+func sanitizeSpawnCoords(x, y float64, structures []models.MapStructure) (float64, float64) {
+	for _, s := range structures {
+		safeRadius := s.Radius + 150.0
+		dx := x - s.PosX
+		dy := y - s.PosY
+		dist := math.Hypot(dx, dy)
+
+		if dist < safeRadius {
+			angle := math.Atan2(dy, dx)
+			if dist < 0.1 {
+				angle = rand.Float64() * 2 * math.Pi
+			}
+			x = s.PosX + math.Cos(angle)*safeRadius
+			y = s.PosY + math.Sin(angle)*safeRadius
+		}
+	}
+
+	x = math.Max(150.0, math.Min(11850.0, x))
+	y = math.Max(150.0, math.Min(11850.0, y))
+	return x, y
 }

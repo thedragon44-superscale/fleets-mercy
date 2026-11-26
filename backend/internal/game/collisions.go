@@ -7,23 +7,35 @@ import (
 
 // getUnitRadius returns a uniform, sprite-accurate physical footprint radius decoupled from weight class
 func getUnitRadius(unit *models.FleetUnit) float64 {
-	// Uniform base radius matching the visual asset boundaries for close formation packing
 	return 30.0
 }
 
 // ResolveUnitCollisions checks and resolves physics-based overlapping collisions between individual fleet units
 func ResolveUnitCollisions(units map[string]*models.FleetUnit, isSandbox bool) {
+	active := make([]*models.FleetUnit, 0, len(units))
+	for _, u := range units {
+		if !u.IsDestroyed {
+			active = append(active, u)
+		}
+	}
+
+	n := len(active)
+	if n < 2 {
+		return
+	}
+
 	// Run 2 iterative passes per tick for stable multi-body cluster separation
 	for iteration := 0; iteration < 2; iteration++ {
-		for _, unit := range units {
+		for i := 0; i < n; i++ {
+			unit := active[i]
 			if unit.IsDestroyed {
 				continue
 			}
-
 			radiusA := getUnitRadius(unit)
 
-			for _, other := range units {
-				if unit.ID == other.ID || other.IsDestroyed {
+			for j := i + 1; j < n; j++ {
+				other := active[j]
+				if other.IsDestroyed {
 					continue
 				}
 
@@ -34,42 +46,56 @@ func ResolveUnitCollisions(units map[string]*models.FleetUnit, isSandbox bool) {
 				dy := other.Pos.Y - unit.Pos.Y
 				dist := math.Hypot(dx, dy)
 
-				if dist < minDist && dist > 0.1 {
-					overlap := minDist - dist
-					nx := dx / dist
-					ny := dy / dist
-					
-					// Asymmetric mass dominance: Lighter units absorb 100% of displacement against heavier hulls
-					weightA := float64(unit.WeightClass)
-					if weightA < 1 { weightA = 1 }
-					weightB := float64(other.WeightClass)
-					if weightB < 1 { weightB = 1 }
-					
-					var ratioA, ratioB float64
-					if weightA > weightB {
-						// Unit is heavier than other: Unit is immovable, other absorbs full displacement
-						ratioA = 0.0
-						ratioB = 1.0
-					} else if weightB > weightA {
-						// Other is heavier than unit: Other is immovable, unit absorbs full displacement
-						ratioA = 1.0
-						ratioB = 0.0
-					} else {
-						// Equal weight classes: Split displacement 50/50
-						ratioA = 0.5
-						ratioB = 0.5
-					}
+				if dist >= minDist {
+					continue
+				}
 
-					unit.Pos.X -= nx * overlap * ratioA
-					unit.Pos.Y -= ny * overlap * ratioA
-					other.Pos.X += nx * overlap * ratioB
-					other.Pos.Y += ny * overlap * ratioB
+				var nx, ny, overlap float64
+				if dist <= 0.1 {
+					// Deterministic separation vector for stacked spawns at identical coordinates
+					angle := float64((i+j)%8) * (math.Pi / 4.0)
+					nx = math.Cos(angle)
+					ny = math.Sin(angle)
+					overlap = minDist
+				} else {
+					nx = dx / dist
+					ny = dy / dist
+					overlap = minDist - dist
+				}
 
-					if !(isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
-						impactVel := math.Hypot(unit.Vel.X-other.Vel.X, unit.Vel.Y-other.Vel.Y)
-						if impactVel > 2.0 {
-							applyDamage(other, impactVel*0.03, math.Atan2(dy, dx))
-						}
+				// Asymmetric mass dominance: Lighter units absorb 100% of displacement against heavier hulls
+				weightA := float64(unit.WeightClass)
+				if weightA < 1 {
+					weightA = 1
+				}
+				weightB := float64(other.WeightClass)
+				if weightB < 1 {
+					weightB = 1
+				}
+
+				var ratioA, ratioB float64
+				if weightA > weightB {
+					ratioA = 0.0
+					ratioB = 1.0
+				} else if weightB > weightA {
+					ratioA = 1.0
+					ratioB = 0.0
+				} else {
+					ratioA = 0.5
+					ratioB = 0.5
+				}
+
+				unit.Pos.X -= nx * overlap * ratioA
+				unit.Pos.Y -= ny * overlap * ratioA
+				other.Pos.X += nx * overlap * ratioB
+				other.Pos.Y += ny * overlap * ratioB
+
+				if !(isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
+					impactVel := math.Hypot(unit.Vel.X-other.Vel.X, unit.Vel.Y-other.Vel.Y)
+					if impactVel > 2.0 {
+						impactAngle := math.Atan2(ny, nx)
+						applyDamage(other, impactVel*0.03, impactAngle)
+						applyDamage(unit, impactVel*0.03, impactAngle+math.Pi)
 					}
 				}
 			}

@@ -3,13 +3,32 @@ package db
 import (
 	"database/sql"
 	"log"
+	"sync"
 
 	_ "github.com/lib/pq"
 	"space-tactics-server/internal/models"
 )
 
-var Templates = make(map[string]models.FleetUnit)
-var Conn *sql.DB
+var (
+	TemplatesMu sync.RWMutex
+	Templates   = make(map[string]models.FleetUnit)
+	Conn        *sql.DB
+)
+
+// GetTemplate safely reads a unit blueprint from the in-memory cache.
+func GetTemplate(unitType string) (models.FleetUnit, bool) {
+	TemplatesMu.RLock()
+	defer TemplatesMu.RUnlock()
+	tmpl, ok := Templates[unitType]
+	return tmpl, ok
+}
+
+// SetTemplate safely writes a unit blueprint to the in-memory cache.
+func SetTemplate(unitType string, tmpl models.FleetUnit) {
+	TemplatesMu.Lock()
+	defer TemplatesMu.Unlock()
+	Templates[unitType] = tmpl
+}
 
 func InitDB() {
 	connStr := "user=gameadmin password=tactics123 dbname=spacetactics sslmode=disable"
@@ -18,7 +37,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("❌ Failed to open DB:", err)
 	}
-	
+
 	if err = Conn.Ping(); err != nil {
 		log.Fatal("❌ Failed to connect to PostgreSQL:", err)
 	}
@@ -46,6 +65,9 @@ func InitDB() {
 		log.Fatal("❌ Failed to query unit_templates:", err)
 	}
 	defer rows.Close()
+
+	TemplatesMu.Lock()
+	defer TemplatesMu.Unlock()
 
 	for rows.Next() {
 		var class, aiState string
@@ -75,16 +97,16 @@ func InitDB() {
 		if err := rows.Scan(
 			&class, &aiState,
 			&weightClass, &visionRange, &sensorRange, &aggroRange, &aggroThreatWeight, &retreatMoraleThreshold, &squadCohesionLeashRange,
-			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled, 
+			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled,
 			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
 			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
-			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity, 
-			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds, 
+			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity,
+			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds,
 			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
-			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold, 
+			&radarCrossSection, &sensorResolutionTier, &jammingSusceptibility, &targetLockTime, &radarImmune, &shieldGatedStealthThreshold,
 			&decloakOnActionFlag, &stealthDelay,
-			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus, 
-			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration, 
+			&resourceHarvestingType, &requiresReconTelemetry, &requiresAnchorDrone, &requiresReconAnchor, &portDockingBayStatus,
+			&starboardDeploymentBayStatus, &salvageableUponDestruction, &cryoGasRadius, &cryoEffectDuration, &gravitonVortexDuration,
 			&warpCanisterCapacity, &emergencyWarpEvacuationTarget,
 		); err != nil {
 			log.Fatal(err)
@@ -143,21 +165,27 @@ func SaveTemplateOverride(unitType string, t models.FleetUnit) {
 		return
 	}
 	query := `UPDATE unit_templates SET 
-		speed = $1, strafing_speed = $2, turn_rate = $3, angular_velocity = $4, acceleration_curve = $5,
-		dps = $6, max_cooldown = $7, projectile_range = $8, projectile_speed = $9, max_thermal_capacity = $10,
-		shield_base = $11, hull_base = $12, shield_regen_rate = $13, shield_recharge_delay_ticks = $14, armor_mitigation = $15,
-		vision_range = $16, aggro_range = $17, retreat_morale_threshold = $18, squad_cohesion_leash_range = $19,
-		resource_harvesting_type = $20, warp_canister_capacity = $21, port_docking_bay_status = $22, starboard_deployment_bay_status = $23,
-		salvageable_upon_destruction = $24, requires_recon_telemetry = $25, sensor_range = $26
-		WHERE unit_class = $27`
-	
+		speed = $1, strafing_speed = $2, turn_rate = $3, angular_velocity = $4,
+		lateral_thrust_power = $5, reverse_thrust_power = $6, drift_coefficient = $7, acceleration_curve = $8,
+		dps = $9, max_cooldown = $10, projectile_range = $11, projectile_speed = $12,
+		optimal_range = $13, max_range = $14, engagement_range_cap = $15, ammo_capacity = $16, max_thermal_capacity = $17,
+		shield_base = $18, hull_base = $19, shield_regen_rate = $20, shield_recharge_delay_ticks = $21, armor_mitigation = $22,
+		weight_class = $23, vision_range = $24, sensor_range = $25, aggro_range = $26,
+		retreat_morale_threshold = $27, squad_cohesion_leash_range = $28, radar_immunity_active = $29,
+		resource_harvesting_type = $30, warp_canister_capacity = $31, port_docking_bay_status = $32,
+		starboard_deployment_bay_status = $33, salvageable_upon_destruction = $34, requires_recon_telemetry = $35
+		WHERE unit_class = $36`
+
 	_, err := Conn.Exec(query,
-		t.Speed, t.StrafingSpeed, t.TurnRate, t.AngularVelocity, t.AccelerationCurve,
-		t.DPS, t.MaxCooldown, t.ProjectileRange, t.ProjectileSpeed, t.MaxThermalCapacity,
+		t.Speed, t.StrafingSpeed, t.TurnRate, t.AngularVelocity,
+		t.LateralThrustPower, t.ReverseThrustPower, t.DriftCoefficient, t.AccelerationCurve,
+		t.DPS, t.MaxCooldown, t.ProjectileRange, t.ProjectileSpeed,
+		t.OptimalRange, t.MaxRange, t.EngagementRangeCap, t.MaxAmmoCapacity, t.MaxThermalCapacity,
 		t.ShieldBase, t.HullBase, t.ShieldRegenRate, t.ShieldRechargeDelayTicks, t.ArmorMitigation,
-		t.VisionRange, t.AggroRange, t.RetreatMoraleThreshold, t.SquadCohesionLeashRange,
-		t.ResourceHarvestingType, t.WarpCanisterCapacity, t.PortDockingBayStatus, t.StarboardDeploymentBayStatus,
-		t.SalvageableUponDestruction, t.RequiresReconTelemetry, t.SensorRange,
+		t.WeightClass, t.VisionRange, t.SensorRange, t.AggroRange,
+		t.RetreatMoraleThreshold, t.SquadCohesionLeashRange, t.RadarImmunityActive,
+		t.ResourceHarvestingType, t.WarpCanisterCapacity, t.PortDockingBayStatus,
+		t.StarboardDeploymentBayStatus, t.SalvageableUponDestruction, t.RequiresReconTelemetry,
 		unitType,
 	)
 	if err != nil {

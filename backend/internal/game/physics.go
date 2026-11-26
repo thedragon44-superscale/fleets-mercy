@@ -5,10 +5,26 @@ import (
 	"space-tactics-server/internal/models"
 )
 
-func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
-	if target.IsDestroyed { return }
+func applyQuadrantDamage(shield *float64, hull *float64, damage float64) {
+	if *shield > 0 {
+		if damage <= *shield {
+			*shield -= damage
+			return
+		}
+		overflow := damage - *shield
+		*shield = 0
+		*hull = math.Max(0, *hull-overflow)
+		return
+	}
+	*hull = math.Max(0, *hull-damage)
+}
 
-	// Database-driven Armor Mitigation (replaces hardcoded flagship/command ship string checks)
+func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) {
+	if target.IsDestroyed || damage <= 0 {
+		return
+	}
+
+	// Database-driven Armor Mitigation
 	if target.ArmorMitigation > 0 {
 		damage *= (1.0 - target.ArmorMitigation)
 	}
@@ -16,29 +32,13 @@ func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) 
 	relAngle := math.Mod(impactAngle-target.Angle+math.Pi*3, math.Pi*2) - math.Pi
 
 	if relAngle >= -math.Pi/4 && relAngle <= math.Pi/4 {
-		if target.Shields.Front > 0 { 
-			target.Shields.Front = math.Max(0, target.Shields.Front-damage)
-		} else { 
-			target.Hull.Front = math.Max(0, target.Hull.Front-damage) 
-		}
+		applyQuadrantDamage(&target.Shields.Front, &target.Hull.Front, damage)
 	} else if relAngle > math.Pi/4 && relAngle < 3*math.Pi/4 {
-		if target.Shields.Starboard > 0 { 
-			target.Shields.Starboard = math.Max(0, target.Shields.Starboard-damage)
-		} else { 
-			target.Hull.Starboard = math.Max(0, target.Hull.Starboard-damage) 
-		}
+		applyQuadrantDamage(&target.Shields.Starboard, &target.Hull.Starboard, damage)
 	} else if relAngle < -math.Pi/4 && relAngle > -3*math.Pi/4 {
-		if target.Shields.Port > 0 { 
-			target.Shields.Port = math.Max(0, target.Shields.Port-damage)
-		} else { 
-			target.Hull.Port = math.Max(0, target.Hull.Port-damage) 
-		}
+		applyQuadrantDamage(&target.Shields.Port, &target.Hull.Port, damage)
 	} else {
-		if target.Shields.Rear > 0 { 
-			target.Shields.Rear = math.Max(0, target.Shields.Rear-damage)
-		} else { 
-			target.Hull.Rear = math.Max(0, target.Hull.Rear-damage) 
-		}
+		applyQuadrantDamage(&target.Shields.Rear, &target.Hull.Rear, damage)
 	}
 
 	if target.Hull.Front <= 0 || target.Hull.Rear <= 0 || target.Hull.Port <= 0 || target.Hull.Starboard <= 0 {
@@ -47,8 +47,33 @@ func applyDamage(target *models.FleetUnit, damage float64, impactAngle float64) 
 	}
 }
 
+// RegenerateShields restores shield quadrants each tick based on ShieldRegenRate (HP/s at 60Hz).
+func RegenerateShields(unit *models.FleetUnit) {
+	if unit.IsDestroyed || unit.ShieldRegenRate <= 0 || unit.ShieldBase <= 0 {
+		return
+	}
+
+	regenPerTick := unit.ShieldRegenRate / 60.0
+	maxShield := unit.ShieldBase
+
+	if unit.Shields.Front < maxShield {
+		unit.Shields.Front = math.Min(maxShield, unit.Shields.Front+regenPerTick)
+	}
+	if unit.Shields.Rear < maxShield {
+		unit.Shields.Rear = math.Min(maxShield, unit.Shields.Rear+regenPerTick)
+	}
+	if unit.Shields.Port < maxShield {
+		unit.Shields.Port = math.Min(maxShield, unit.Shields.Port+regenPerTick)
+	}
+	if unit.Shields.Starboard < maxShield {
+		unit.Shields.Starboard = math.Min(maxShield, unit.Shields.Starboard+regenPerTick)
+	}
+}
+
 func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.MapStructure) {
-	if unit.IsDestroyed { return }
+	if unit.IsDestroyed {
+		return
+	}
 
 	for _, s := range structures {
 		if s.StructureType == "asteroid_belt" {
@@ -58,8 +83,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 				nodeDist := s.Radius * (0.6 + math.Sin(float64(i))*0.3)
 				nodeX := s.PosX + math.Cos(angle)*nodeDist
 				nodeY := s.PosY + math.Sin(angle)*nodeDist
-				
-				// Solid collision boundary per node with a clean response buffer
+
 				nodeRadius := 28.0
 
 				dx := unit.Pos.X - nodeX
@@ -70,12 +94,10 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 					nx := dx / dist
 					ny := dy / dist
 					overlap := nodeRadius - dist
-					
-					// Positional push-out
+
 					unit.Pos.X += nx * overlap
 					unit.Pos.Y += ny * overlap
 
-					// Velocity component cancellation along the collision normal
 					dot := unit.Vel.X*nx + unit.Vel.Y*ny
 					if dot < 0 {
 						unit.Vel.X -= dot * nx
@@ -93,7 +115,7 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 		collisionRadius := s.Radius + 35.0
 
 		if dist < collisionRadius {
-			if s.StructureType == "gas_giant" && dist < s.Radius * 0.6 {
+			if s.StructureType == "gas_giant" && dist < s.Radius*0.6 {
 				// Core Death Zone: Instant destruction
 				unit.IsDestroyed = true
 				unit.Shields = models.QuadrantStats{}
@@ -118,10 +140,14 @@ func ApplyEnvironmentalCollisions(unit *models.FleetUnit, structures []models.Ma
 }
 
 func ApplyMajorWorldGravity(unit *models.FleetUnit, structures []models.MapStructure) {
-	if unit.IsDestroyed { return }
+	if unit.IsDestroyed {
+		return
+	}
 
 	for _, s := range structures {
-		if s.StructureType != "major_world" && s.StructureType != "terrestrial" { continue }
+		if s.StructureType != "major_world" && s.StructureType != "terrestrial" {
+			continue
+		}
 
 		dx := s.PosX - unit.Pos.X
 		dy := s.PosY - unit.Pos.Y
