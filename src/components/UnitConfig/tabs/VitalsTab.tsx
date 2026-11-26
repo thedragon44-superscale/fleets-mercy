@@ -1,104 +1,40 @@
 // src/components/UnitConfig/tabs/VitalsTab.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VariableDoc } from '../../../constants/variableDocs';
+import { ConfigSliderCard } from '../common/ConfigSliderCard';
+import { ConfigCheckboxRow } from '../common/ConfigCheckboxRow';
 
 interface VitalsTabProps {
   config: UnitConfigConfigPayload;
+  modifiedFields?: Set<keyof UnitConfigConfigPayload>;
   onChange: (field: keyof UnitConfigConfigPayload, value: number | boolean) => void;
   onOpenDoc: (doc: VariableDoc) => void;
 }
 
-export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange, onOpenDoc }) => {
-  const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
+const VITALS_SLIDERS: Array<{
+  field: keyof UnitConfigConfigPayload;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { field: 'shieldBase', label: 'Base Shields (HP)', min: 0, max: 25000, step: 100 },
+  { field: 'hullBase', label: 'Base Hull (HP)', min: 0, max: 25000, step: 100 },
+  { field: 'shieldRegenRate', label: 'Shield Regen Rate (HP/s)', min: 0, max: 200, step: 1 },
+  { field: 'shieldRechargeDelayTicks', label: 'Recharge Delay (Ticks)', min: 0, max: 600, step: 10 },
+  { field: 'armorMitigation', label: 'Armor Mitigation', min: 0, max: 1, step: 0.05 },
+  { field: 'armorHardnessRating', label: 'Armor Hardness Rating', min: 0, max: 50, step: 1 },
+  { field: 'ablativePlatingDurability', label: 'Ablative Plating Durability', min: 0, max: 2000, step: 50 },
+  { field: 'directionalShieldArc', label: 'Shield Arc (Degrees)', min: 45, max: 360, step: 45 },
+];
 
-  useEffect(() => {
-    setLocalValues(config);
-  }, [config]);
-
-  const handleSliderChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    setLocalValues((prev) => ({ ...prev, [field]: val }));
-  };
-
-  const handleCommitChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    onChange(field, val);
-  };
-
-  const renderSliderCard = (
-    field: keyof UnitConfigConfigPayload,
-    label: string,
-    min: string,
-    max: string,
-    step: string
-  ) => {
-    const doc = VARIABLE_DOCS[field];
-    const val = (localValues[field] as number) ?? 0;
-
-    return (
-      <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-        <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-          <div className="flex items-center gap-1.5">
-            <span>{label}</span>
-            {doc && (
-              <button
-                type="button"
-                onClick={() => onOpenDoc(doc)}
-                className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
-                title="Click for variable documentation"
-              >
-                ?
-              </button>
-            )}
-          </div>
-          <span className="text-cyan-400 font-black">{val}</span>
-        </div>
-        <input
-          type="range" min={min} max={max} step={step}
-          value={val}
-          onChange={(e) => handleSliderChange(field, parseFloat(e.target.value))}
-          onMouseUp={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          className="accent-cyan-400 cursor-pointer"
-        />
-      </div>
-    );
-  };
-
-  const renderCheckboxRow = (field: keyof UnitConfigConfigPayload, label: string) => {
-    const doc = VARIABLE_DOCS[field];
-    const checked = !!localValues[field];
-
-    return (
-      <label className="flex items-center justify-between cursor-pointer text-[9px] font-bold text-slate-300 uppercase bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => {
-              handleSliderChange(field, e.target.checked as any);
-              onChange(field, e.target.checked);
-            }}
-            className="accent-cyan-400 w-3.5 h-3.5 cursor-pointer"
-          />
-          <span>{label}</span>
-        </div>
-        {doc && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              onOpenDoc(doc);
-            }}
-            className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
-            title="Click for variable documentation"
-          >
-            ?
-          </button>
-        )}
-      </label>
-    );
-  };
-
+export const VitalsTab: React.FC<VitalsTabProps> = ({
+  config,
+  modifiedFields,
+  onChange,
+  onOpenDoc,
+}) => {
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -106,20 +42,46 @@ export const VitalsTab: React.FC<VitalsTabProps> = ({ config, onChange, onOpenDo
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {renderSliderCard('shieldBase', 'Base Shields (HP)', '0', '25000', '100')}
-        {renderSliderCard('hullBase', 'Base Hull (HP)', '0', '25000', '100')}
-        {renderSliderCard('shieldRegenRate', 'Shield Regen Rate (HP/s)', '0', '200', '1')}
-        {renderSliderCard('shieldRechargeDelayTicks', 'Recharge Delay (Ticks)', '0', '600', '10')}
-        {renderSliderCard('armorMitigation', 'Armor Mitigation', '0', '1.0', '0.05')}
-        {renderSliderCard('armorHardnessRating', 'Armor Hardness Rating', '0', '50', '1')}
-        {renderSliderCard('ablativePlatingDurability', 'Ablative Plating Durability', '0', '2000', '50')}
-        {renderSliderCard('directionalShieldArc', 'Shield Arc (Degrees)', '45', '360', '45')}
+        {VITALS_SLIDERS.map(({ field, label, min, max, step }) => (
+          <ConfigSliderCard
+            key={field}
+            field={field}
+            label={label}
+            value={(config[field] as number) ?? 0}
+            min={min}
+            max={max}
+            step={step}
+            isModified={modifiedFields?.has(field)}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+        ))}
 
-        {/* Toggles Grid */}
         <div className="col-span-full grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {renderCheckboxRow('quadrantShieldingEnabled', 'Quad Shielding')}
-          {renderCheckboxRow('quadrantShieldPoolsEnabled', 'Quad Shield Pools')}
-          {renderCheckboxRow('quadrantHullPoolsEnabled', 'Quad Hull Pools')}
+          <ConfigCheckboxRow
+            field="quadrantShieldingEnabled"
+            label="Quad Shielding"
+            checked={!!config.quadrantShieldingEnabled}
+            isModified={modifiedFields?.has('quadrantShieldingEnabled')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="quadrantShieldPoolsEnabled"
+            label="Quad Shield Pools"
+            checked={!!config.quadrantShieldPoolsEnabled}
+            isModified={modifiedFields?.has('quadrantShieldPoolsEnabled')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="quadrantHullPoolsEnabled"
+            label="Quad Hull Pools"
+            checked={!!config.quadrantHullPoolsEnabled}
+            isModified={modifiedFields?.has('quadrantHullPoolsEnabled')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
         </div>
       </div>
     </div>

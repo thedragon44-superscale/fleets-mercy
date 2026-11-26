@@ -1,69 +1,51 @@
 // src/components/UnitConfig/tabs/CombatTab.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VariableDoc } from '../../../constants/variableDocs';
+import { ConfigSliderCard } from '../common/ConfigSliderCard';
 
 interface CombatTabProps {
   config: UnitConfigConfigPayload;
+  modifiedFields?: Set<keyof UnitConfigConfigPayload>;
   onChange: (field: keyof UnitConfigConfigPayload, value: number) => void;
   onOpenDoc: (doc: VariableDoc) => void;
 }
 
-export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange, onOpenDoc }) => {
-  const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
+const COMBAT_SLIDERS: Array<{
+  field: keyof UnitConfigConfigPayload;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { field: 'dps', label: 'Damage Per Second (DPS)', min: 0, max: 5000, step: 50 },
+  { field: 'maxCooldown', label: 'Max Cooldown (Ticks)', min: 1, max: 120, step: 1 },
+  { field: 'projectileSpeed', label: 'Projectile Speed', min: 0, max: 100, step: 1 },
+  { field: 'projectileRange', label: 'Projectile Range (m)', min: 0, max: 10000, step: 100 },
+  { field: 'optimalRange', label: 'Optimal Range (m)', min: 0, max: 10000, step: 100 },
+  { field: 'maxRange', label: 'Max Range (m)', min: 0, max: 10000, step: 100 },
+  { field: 'engagementRangeCap', label: 'Engagement Range Cap (m)', min: 0, max: 10000, step: 100 },
+  { field: 'ammoCapacity', label: 'Ammo Capacity (-1 = Infinite)', min: -1, max: 1000, step: 1 },
+  { field: 'initialOrdnanceCapacity', label: 'Initial Ordnance Capacity', min: 0, max: 500, step: 10 },
+  { field: 'turretTraverseSpeed', label: 'Turret Traverse Speed', min: 0, max: 10, step: 0.1 },
+  { field: 'weaponDispersionBloom', label: 'Weapon Dispersion Bloom', min: 0, max: 5, step: 0.1 },
+  { field: 'projectileTrackingCapability', label: 'Projectile Tracking Capability', min: 0, max: 5, step: 0.1 },
+  { field: 'shieldPenetrationFactor', label: 'Shield Penetration Factor', min: 0, max: 1, step: 0.05 },
+  { field: 'sustainedFireLimitSeconds', label: 'Sustained Fire Limit (s)', min: 0, max: 60, step: 1 },
+  { field: 'barrelCoolingDurationSeconds', label: 'Barrel Cooling Duration (s)', min: 0, max: 30, step: 0.5 },
+  { field: 'burstSalvoCooldown', label: 'Burst Salvo Cooldown', min: 0, max: 1000, step: 10 },
+  { field: 'beamRaycastDuration', label: 'Beam Raycast Duration (s)', min: 0, max: 10, step: 0.1 },
+  { field: 'maxThermalCapacity', label: 'Max Thermal Capacity', min: 0, max: 5000, step: 50 },
+  { field: 'thermalDissipationRate', label: 'Thermal Dissipation Rate', min: 0, max: 250, step: 5 },
+  { field: 'powerGridAllocationWeight', label: 'Power Grid Allocation Weight', min: 0, max: 10, step: 0.5 },
+];
 
-  useEffect(() => {
-    setLocalValues(config);
-  }, [config]);
-
-  const handleSliderChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    setLocalValues((prev) => ({ ...prev, [field]: val }));
-  };
-
-  const handleCommitChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    onChange(field, val);
-  };
-
-  const renderSliderCard = (
-    field: keyof UnitConfigConfigPayload,
-    label: string,
-    min: string,
-    max: string,
-    step: string
-  ) => {
-    const doc = VARIABLE_DOCS[field];
-    const val = (localValues[field] as number) ?? 0;
-
-    return (
-      <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-        <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-          <div className="flex items-center gap-1.5">
-            <span>{label}</span>
-            {doc && (
-              <button
-                type="button"
-                onClick={() => onOpenDoc(doc)}
-                className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
-                title="Click for variable documentation"
-              >
-                ?
-              </button>
-            )}
-          </div>
-          <span className="text-cyan-400 font-black">{val}</span>
-        </div>
-        <input
-          type="range" min={min} max={max} step={step}
-          value={val}
-          onChange={(e) => handleSliderChange(field, parseFloat(e.target.value))}
-          onMouseUp={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          className="accent-cyan-400 cursor-pointer"
-        />
-      </div>
-    );
-  };
-
+export const CombatTab: React.FC<CombatTabProps> = ({
+  config,
+  modifiedFields,
+  onChange,
+  onOpenDoc,
+}) => {
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -71,26 +53,20 @@ export const CombatTab: React.FC<CombatTabProps> = ({ config, onChange, onOpenDo
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {renderSliderCard('dps', 'Damage Per Second (DPS)', '0', '5000', '50')}
-        {renderSliderCard('maxCooldown', 'Max Cooldown (Ticks)', '1', '120', '1')}
-        {renderSliderCard('projectileSpeed', 'Projectile Speed', '0', '100', '1')}
-        {renderSliderCard('projectileRange', 'Projectile Range (m)', '0', '10000', '100')}
-        {renderSliderCard('optimalRange', 'Optimal Range (m)', '0', '10000', '100')}
-        {renderSliderCard('maxRange', 'Max Range (m)', '0', '10000', '100')}
-        {renderSliderCard('engagementRangeCap', 'Engagement Range Cap (m)', '0', '10000', '100')}
-        {renderSliderCard('ammoCapacity', 'Ammo Capacity (-1 = Infinite)', '-1', '1000', '10')}
-        {renderSliderCard('initialOrdnanceCapacity', 'Initial Ordnance Capacity', '0', '500', '10')}
-        {renderSliderCard('turretTraverseSpeed', 'Turret Traverse Speed', '0', '10', '0.1')}
-        {renderSliderCard('weaponDispersionBloom', 'Weapon Dispersion Bloom', '0', '5.0', '0.1')}
-        {renderSliderCard('projectileTrackingCapability', 'Projectile Tracking Capability', '0', '5.0', '0.1')}
-        {renderSliderCard('shieldPenetrationFactor', 'Shield Penetration Factor', '0', '1.0', '0.05')}
-        {renderSliderCard('sustainedFireLimitSeconds', 'Sustained Fire Limit (s)', '0', '60', '1')}
-        {renderSliderCard('barrelCoolingDurationSeconds', 'Barrel Cooling Duration (s)', '0', '30', '0.5')}
-        {renderSliderCard('burstSalvoCooldown', 'Burst Salvo Cooldown', '0', '1000', '10')}
-        {renderSliderCard('beamRaycastDuration', 'Beam Raycast Duration (s)', '0', '10', '0.1')}
-        {renderSliderCard('maxThermalCapacity', 'Max Thermal Capacity', '0', '5000', '50')}
-        {renderSliderCard('thermalDissipationRate', 'Thermal Dissipation Rate', '0', '250', '5')}
-        {renderSliderCard('powerGridAllocationWeight', 'Power Grid Allocation Weight', '0', '10', '0.5')}
+        {COMBAT_SLIDERS.map(({ field, label, min, max, step }) => (
+          <ConfigSliderCard
+            key={field}
+            field={field}
+            label={label}
+            value={(config[field] as number) ?? 0}
+            min={min}
+            max={max}
+            step={step}
+            isModified={modifiedFields?.has(field)}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+        ))}
       </div>
     </div>
   );

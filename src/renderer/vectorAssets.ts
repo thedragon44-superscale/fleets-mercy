@@ -120,7 +120,7 @@ export function drawFlagship(
   y: number,
   angle: number,
   shields?: QuadrantStats,
-  hull?: QuadrantStats,
+  _hull?: QuadrantStats,
   isFiring = false,
   isDestroyed = false,
   isAccelerating = false
@@ -523,7 +523,7 @@ export function drawSpawnGhost(
   ctx.restore();
 }
 
-export function drawHUDDiagnostics(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, hull?: QuadrantStats) {
+export function drawHUDDiagnostics(ctx: CanvasRenderingContext2D, shields?: QuadrantStats, _hull?: QuadrantStats) {
   ctx.save();
   ctx.font = '10px monospace'; ctx.fillStyle = '#00f3ff';
   const canvasHeight = ctx.canvas?.height || window.innerHeight;
@@ -539,8 +539,8 @@ export function drawTargetDummy(
   x: number,
   y: number,
   angle: number,
-  shields?: QuadrantStats,
-  hull?: QuadrantStats,
+  _shields?: QuadrantStats,
+  _hull?: QuadrantStats,
   isDestroyed = false,
   ownerId = 'enemy',
   type = 'viper_interceptor'
@@ -548,7 +548,7 @@ export function drawTargetDummy(
   drawUnitAsset(ctx, x, y, angle, type, ownerId, isDestroyed);
 }
 
-export function drawProjectile(ctx: CanvasRenderingContext2D, x: number, y: number, vx: number, vy: number, type: string) {
+export function drawProjectile(ctx: CanvasRenderingContext2D, x: number, y: number, _vx: number, _vy: number, type: string) {
   ctx.save();
   ctx.fillStyle = type === 'player' ? '#00f3ff' : '#ff2a6d';
   ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();

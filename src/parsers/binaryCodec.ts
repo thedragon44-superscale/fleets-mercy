@@ -259,7 +259,7 @@ export function serializeClientInput(actionParams: {
     squadId: number;
     isSquadLeader: boolean;
   };
-}): Uint8Array {
+}): Uint8Array<ArrayBuffer> {
   const builder = new Builder(1024);
 
   // 1. Create string offsets
@@ -436,5 +436,5 @@ export function serializeClientInput(actionParams: {
   const root = ClientInput.endClientInput(builder);
   builder.finish(root);
 
-  return builder.asUint8Array();
+  return builder.asUint8Array() as Uint8Array<ArrayBuffer>;
 }

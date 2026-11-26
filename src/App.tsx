@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { GarageDashboard, LoadoutData } from './components/GarageDashboard';
 import { GameViewport } from './components/GameViewport';
@@ -10,16 +10,17 @@ import { TdmUnitSelectionScreen } from './components/teamDeathMatch/unitSelectio
 import { TdmMapSelectionScreen } from './components/teamDeathMatch/mapSelection';
 import { TdmViewport } from './components/teamDeathMatch/tdmViewport';
 import { fetchMaps, MapDefinition } from './services/mapService';
+import { refreshUnitTemplates } from './hooks/useUnitTemplates';
 
-export type AppView = 
-  | 'login' 
-  | 'main-menu' 
-  | 'garage' 
-  | 'map-select' 
-  | 'standard-game' 
-  | 'sandbox-mode' 
-  | 'map-editor-select' 
-  | 'map-editor' 
+export type AppView =
+  | 'login'
+  | 'main-menu'
+  | 'garage'
+  | 'map-select'
+  | 'standard-game'
+  | 'sandbox-mode'
+  | 'map-editor-select'
+  | 'map-editor'
   | 'developer-settings'
   | 'tdm-unit-select'
   | 'tdm-map-select'
@@ -38,6 +39,15 @@ export default function App() {
   const [tdmPilotedUnit, setTdmPilotedUnit] = useState<string>('viper_interceptor');
   const [tdmCustomPool, setTdmCustomPool] = useState<string[]>([]);
 
+  const refreshMaps = useCallback(() => {
+    fetchMaps().then((data) => {
+      if (data && data.length > 0) {
+        setMaps(data);
+        setSelectedMapId((prev) => (data.some((m) => m.id === prev) ? prev : data[0].id));
+      }
+    });
+  }, []);
+
   useEffect(() => {
     const savedUser = localStorage.getItem('spacetactics_user');
     if (savedUser) {
@@ -45,17 +55,20 @@ export default function App() {
         const parsed = JSON.parse(savedUser);
         setPlayer(parsed);
         setView('main-menu');
-      } catch (e) {
+      } catch {
         localStorage.removeItem('spacetactics_user');
       }
     }
 
-    fetchMaps().then(data => {
-      if (data && data.length > 0) {
-        setMaps(data);
-      }
-    });
-  }, []);
+    refreshMaps();
+  }, [refreshMaps]);
+
+  // Pre-warm shared PostgreSQL unit templates once logged in
+  useEffect(() => {
+    if (player) {
+      refreshUnitTemplates();
+    }
+  }, [player]);
 
   const handleLoginSuccess = (user: { id: number; username: string }) => {
     setPlayer(user);
@@ -71,7 +84,7 @@ export default function App() {
   const handleLaunchPractice = (loadout: LoadoutData) => {
     setActiveLoadout(loadout);
     setIsSandboxLaunch(false);
-    fetchMaps().then(data => { if (data) setMaps(data); });
+    refreshMaps();
     setView('map-select');
   };
 
@@ -84,7 +97,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col items-center w-[380px] p-6 bg-[#0f1115] border border-cyan-500/40 rounded-xl shadow-2xl">
           <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-black text-base mb-3 shadow-inner">
             ⚡
@@ -98,23 +111,23 @@ export default function App() {
 
           <div className="flex flex-col gap-2.5 w-full">
             {/* TDM Matchmaking Entry */}
-            <button 
+            <button
               onClick={() => setView('tdm-unit-select')}
               className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black py-3 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg shadow-cyan-900/30"
             >
               ⚔️ 20v20 Team Deathmatch
             </button>
 
-            <button 
+            <button
               onClick={() => setView('garage')}
               className="w-full bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg"
             >
               Hangar & Loadout Garage
             </button>
 
-            <button 
+            <button
               onClick={() => {
-                fetchMaps().then(data => { if (data) setMaps(data); });
+                refreshMaps();
                 if (activeLoadout) {
                   setIsSandboxLaunch(false);
                   setView('map-select');
@@ -127,9 +140,9 @@ export default function App() {
               Launch Standard Game
             </button>
 
-            <button 
+            <button
               onClick={() => {
-                fetchMaps().then(data => { if (data) setMaps(data); });
+                refreshMaps();
                 setIsSandboxLaunch(true);
                 setView('map-select');
               }}
@@ -138,9 +151,9 @@ export default function App() {
               Unit Testing Sandbox
             </button>
 
-            <button 
+            <button
               onClick={() => {
-                fetchMaps().then(data => { if (data) setMaps(data); });
+                refreshMaps();
                 setView('map-editor-select');
               }}
               className="w-full bg-[#161922] hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
@@ -148,14 +161,14 @@ export default function App() {
               Map Creator Studio
             </button>
 
-            <button 
+            <button
               onClick={() => setView('developer-settings')}
               className="w-full bg-[#161922] hover:bg-slate-800 text-amber-400 border border-slate-800 hover:border-amber-500/50 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
               Developer Settings & Tuning
             </button>
 
-            <button 
+            <button
               onClick={handleLogout}
               className="mt-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
             >
@@ -170,7 +183,7 @@ export default function App() {
   // TDM Flow: 1. Unit Selection & Spawn Pool Config
   if (view === 'tdm-unit-select') {
     return (
-      <TdmUnitSelectionScreen 
+      <TdmUnitSelectionScreen
         onBack={() => setView('main-menu')}
         onProceedToMapSelect={(pilotedUnit, customPool) => {
           setTdmPilotedUnit(pilotedUnit);
@@ -184,7 +197,7 @@ export default function App() {
   // TDM Flow: 2. Map Selection Theater
   if (view === 'tdm-map-select') {
     return (
-      <TdmMapSelectionScreen 
+      <TdmMapSelectionScreen
         pilotedUnit={tdmPilotedUnit}
         customPool={tdmCustomPool}
         onBack={() => setView('tdm-unit-select')}
@@ -199,7 +212,7 @@ export default function App() {
   // TDM Flow: 3. 60 FPS Viewport & End-of-Match Modal
   if (view === 'tdm-viewport') {
     return (
-      <TdmViewport 
+      <TdmViewport
         mapId={selectedMapId}
         pilotedUnit={tdmPilotedUnit}
         customPool={tdmCustomPool}
@@ -212,11 +225,11 @@ export default function App() {
   // Garage Dashboard View
   if (view === 'garage') {
     return (
-      <GarageDashboard 
-        player={player} 
-        onLaunchPractice={handleLaunchPractice} 
-        onLogout={handleLogout} 
-        onNavigateHome={() => setView('main-menu')} 
+      <GarageDashboard
+        player={player}
+        onLaunchPractice={handleLaunchPractice}
+        onLogout={handleLogout}
+        onNavigateHome={() => setView('main-menu')}
       />
     );
   }
@@ -226,7 +239,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
-        
+
         <div className={`relative z-10 flex flex-col items-center w-[460px] p-6 bg-[#0f1115] border rounded-xl shadow-2xl ${isSandboxLaunch ? 'border-amber-500/40' : 'border-cyan-500/40'}`}>
           <h2 className={`text-sm font-black uppercase tracking-wider mb-1 text-center ${isSandboxLaunch ? 'text-amber-400' : 'text-cyan-400'}`}>
             Operational Sector Select
@@ -236,15 +249,15 @@ export default function App() {
           </p>
 
           <div className="w-full flex flex-col gap-1.5 mb-5 max-h-60 overflow-y-auto pr-1">
-            {maps.length > 0 ? maps.map(m => {
+            {maps.length > 0 ? maps.map((m) => {
               const isSelected = selectedMapId === m.id;
               return (
-                <div 
+                <div
                   key={m.id}
                   onClick={() => setSelectedMapId(m.id)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                    isSelected 
-                      ? (isSandboxLaunch ? 'bg-amber-500/10 border-amber-400 shadow-md' : 'bg-cyan-500/10 border-cyan-400 shadow-md') 
+                    isSelected
+                      ? (isSandboxLaunch ? 'bg-amber-500/10 border-amber-400 shadow-md' : 'bg-cyan-500/10 border-cyan-400 shadow-md')
                       : 'bg-[#161922] border-slate-800 hover:border-slate-700'
                   }`}
                 >
@@ -260,13 +273,13 @@ export default function App() {
           </div>
 
           <div className="flex gap-2 w-full">
-            <button 
+            <button
               onClick={() => setView(isSandboxLaunch ? 'main-menu' : 'garage')}
               className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
             >
               &larr; Back
             </button>
-            <button 
+            <button
               onClick={() => setView(isSandboxLaunch ? 'sandbox-mode' : 'standard-game')}
               className={`flex-1 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all shadow-lg ${
                 isSandboxLaunch ? 'bg-amber-500 hover:bg-amber-600 text-slate-950' : 'bg-cyan-400 hover:bg-cyan-300 text-slate-950'
@@ -285,7 +298,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col justify-center items-center font-mono select-none">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(234,179,8,0.04)_0%,rgba(11,14,20,1)_100%)] pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col items-center w-[460px] p-6 bg-[#0f1115] border border-amber-500/40 rounded-xl shadow-2xl">
           <h2 className="text-sm font-black text-amber-400 uppercase tracking-wider mb-1 text-center">
             Map Creator Studio
@@ -294,7 +307,7 @@ export default function App() {
             Select Sector to Edit or Create New
           </p>
 
-          <button 
+          <button
             onClick={() => {
               setEditorTargetMapId(null);
               setView('map-editor');
@@ -306,8 +319,8 @@ export default function App() {
 
           <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest w-full mb-1.5">Or Load Existing Sector:</div>
           <div className="w-full flex flex-col gap-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
-            {maps.length > 0 ? maps.map(m => (
-              <div 
+            {maps.length > 0 ? maps.map((m) => (
+              <div
                 key={m.id}
                 onClick={() => {
                   setEditorTargetMapId(m.id);
@@ -323,7 +336,7 @@ export default function App() {
             )}
           </div>
 
-          <button 
+          <button
             onClick={() => setView('main-menu')}
             className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition-all"
           >
@@ -334,12 +347,23 @@ export default function App() {
     );
   }
 
-  // Standard Game Viewport
-  if (view === 'standard-game' && activeLoadout) {
+  // Standard Game Viewport (falls back to Garage if no loadout is active)
+  if (view === 'standard-game') {
+    if (!activeLoadout) {
+      return (
+        <GarageDashboard
+          player={player}
+          onLaunchPractice={handleLaunchPractice}
+          onLogout={handleLogout}
+          onNavigateHome={() => setView('main-menu')}
+        />
+      );
+    }
+
     return (
       <div className="relative w-screen h-screen overflow-hidden bg-[#0b0e14]">
         <div className="absolute top-2 left-2 z-50 flex gap-2 items-center">
-          <button 
+          <button
             onClick={() => setView('main-menu')}
             className="bg-slate-800 hover:bg-slate-700 text-red-400 border border-red-500/30 px-3 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all"
           >
@@ -350,7 +374,7 @@ export default function App() {
           </span>
         </div>
 
-        <GameViewport activeLoadout={activeLoadout} mode="standard" mapId={selectedMapId} />
+        <GameViewport activeLoadout={activeLoadout} mapId={selectedMapId} />
       </div>
     );
   }
@@ -358,8 +382,8 @@ export default function App() {
   // Unit Testing Sandbox Viewport
   if (view === 'sandbox-mode') {
     return (
-      <PracticeViewport 
-        mapId={selectedMapId} 
+      <PracticeViewport
+        mapId={selectedMapId}
         onNavigateGarage={() => setView('garage')}
         onNavigateHome={() => setView('main-menu')}
         onLogout={handleLogout}

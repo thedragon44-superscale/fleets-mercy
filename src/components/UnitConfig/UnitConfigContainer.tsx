@@ -46,12 +46,17 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
     }
   }, [initialUnitId]);
 
-  const modifiedFields = useMemo(
-    () => Array.from(getModifiedFields(selectedUnitId)),
+  const modifiedFieldSet = useMemo(
+    () => getModifiedFields(selectedUnitId),
     [templates, originalTemplates, selectedUnitId, getModifiedFields]
   );
 
-  const hasUnsavedChanges = modifiedFields.length > 0;
+  const modifiedFieldsList = useMemo(
+    () => Array.from(modifiedFieldSet),
+    [modifiedFieldSet]
+  );
+
+  const hasUnsavedChanges = modifiedFieldsList.length > 0;
 
   if (!isOpen) return null;
 
@@ -112,30 +117,55 @@ export const UnitConfigContainer: React.FC<UnitConfigContainerProps> = ({
       {hasUnsavedChanges && (
         <div className="flex items-center justify-between gap-2 px-2.5 py-1 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[9px] text-amber-300 shrink-0">
           <span className="font-black uppercase tracking-wider shrink-0">
-            ● {modifiedFields.length} Unsaved {modifiedFields.length === 1 ? 'Edit' : 'Edits'}
+            ● {modifiedFieldsList.length} Unsaved {modifiedFieldsList.length === 1 ? 'Edit' : 'Edits'}
           </span>
           <span className="truncate text-amber-200/80">
-            {modifiedFields.slice(0, 4).join(', ')}
-            {modifiedFields.length > 4 ? ` +${modifiedFields.length - 4} more` : ''}
+            {modifiedFieldsList.slice(0, 4).join(', ')}
+            {modifiedFieldsList.length > 4 ? ` +${modifiedFieldsList.length - 4} more` : ''}
           </span>
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto pr-1 mb-2">
         {activeTab === 'movement' && (
-          <MovementTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
+          <MovementTab
+            config={currentConfig}
+            modifiedFields={modifiedFieldSet}
+            onChange={handleConfigChange}
+            onOpenDoc={setActiveDoc}
+          />
         )}
         {activeTab === 'vitals' && (
-          <VitalsTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
+          <VitalsTab
+            config={currentConfig}
+            modifiedFields={modifiedFieldSet}
+            onChange={handleConfigChange}
+            onOpenDoc={setActiveDoc}
+          />
         )}
         {activeTab === 'combat' && (
-          <CombatTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
+          <CombatTab
+            config={currentConfig}
+            modifiedFields={modifiedFieldSet}
+            onChange={handleConfigChange}
+            onOpenDoc={setActiveDoc}
+          />
         )}
         {activeTab === 'ai' && (
-          <AiSensorTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
+          <AiSensorTab
+            config={currentConfig}
+            modifiedFields={modifiedFieldSet}
+            onChange={handleConfigChange}
+            onOpenDoc={setActiveDoc}
+          />
         )}
         {activeTab === 'logistics' && (
-          <LogisticsTab config={currentConfig} onChange={handleConfigChange} onOpenDoc={setActiveDoc} />
+          <LogisticsTab
+            config={currentConfig}
+            modifiedFields={modifiedFieldSet}
+            onChange={handleConfigChange}
+            onOpenDoc={setActiveDoc}
+          />
         )}
       </div>
 

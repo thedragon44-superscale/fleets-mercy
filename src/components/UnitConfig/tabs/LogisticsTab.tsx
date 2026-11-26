@@ -1,104 +1,37 @@
 // src/components/UnitConfig/tabs/LogisticsTab.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { UnitConfigConfigPayload } from '../types';
-import { VARIABLE_DOCS, VariableDoc } from '../../../constants/variableDocs';
+import { VariableDoc } from '../../../constants/variableDocs';
+import { ConfigSliderCard } from '../common/ConfigSliderCard';
+import { ConfigCheckboxRow } from '../common/ConfigCheckboxRow';
 
 interface LogisticsTabProps {
   config: UnitConfigConfigPayload;
+  modifiedFields?: Set<keyof UnitConfigConfigPayload>;
   onChange: (field: keyof UnitConfigConfigPayload, value: number | boolean) => void;
   onOpenDoc: (doc: VariableDoc) => void;
 }
 
-export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange, onOpenDoc }) => {
-  const [localValues, setLocalValues] = useState<UnitConfigConfigPayload>(config);
+const LOGISTICS_SLIDERS: Array<{
+  field: keyof UnitConfigConfigPayload;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { field: 'resourceHarvestingType', label: 'Harvesting Type ID', min: 0, max: 10, step: 1 },
+  { field: 'warpCanisterCapacity', label: 'Warp Canister Capacity', min: 0, max: 50, step: 1 },
+  { field: 'cryoGasRadius', label: 'Cryo Gas Radius', min: 0, max: 1000, step: 50 },
+  { field: 'cryoEffectDuration', label: 'Cryo Effect Duration (s)', min: 0, max: 30, step: 0.5 },
+  { field: 'gravitonVortexDuration', label: 'Graviton Vortex Duration (s)', min: 0, max: 30, step: 0.5 },
+];
 
-  useEffect(() => {
-    setLocalValues(config);
-  }, [config]);
-
-  const handleSliderChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    setLocalValues((prev) => ({ ...prev, [field]: val }));
-  };
-
-  const handleCommitChange = (field: keyof UnitConfigConfigPayload, val: number) => {
-    onChange(field, val);
-  };
-
-  const renderSliderCard = (
-    field: keyof UnitConfigConfigPayload,
-    label: string,
-    min: string,
-    max: string,
-    step: string
-  ) => {
-    const doc = VARIABLE_DOCS[field];
-    const val = (localValues[field] as number) ?? 0;
-
-    return (
-      <div className="flex flex-col gap-1 bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-        <div className="flex justify-between items-center text-[9px] font-bold text-slate-300 uppercase">
-          <div className="flex items-center gap-1.5">
-            <span>{label}</span>
-            {doc && (
-              <button
-                type="button"
-                onClick={() => onOpenDoc(doc)}
-                className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
-                title="Click for variable documentation"
-              >
-                ?
-              </button>
-            )}
-          </div>
-          <span className="text-cyan-400 font-black">{val}</span>
-        </div>
-        <input
-          type="range" min={min} max={max} step={step}
-          value={val}
-          onChange={(e) => handleSliderChange(field, parseFloat(e.target.value))}
-          onMouseUp={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => handleCommitChange(field, parseFloat((e.target as HTMLInputElement).value))}
-          className="accent-cyan-400 cursor-pointer"
-        />
-      </div>
-    );
-  };
-
-  const renderCheckboxRow = (field: keyof UnitConfigConfigPayload, label: string) => {
-    const doc = VARIABLE_DOCS[field];
-    const checked = !!localValues[field];
-
-    return (
-      <label className="flex items-center justify-between cursor-pointer text-[9px] font-bold text-slate-300 uppercase bg-[#161922] p-2.5 rounded-xl border border-slate-800">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => {
-              handleSliderChange(field, e.target.checked as any);
-              onChange(field, e.target.checked);
-            }}
-            className="accent-cyan-400 w-3.5 h-3.5 cursor-pointer"
-          />
-          <span>{label}</span>
-        </div>
-        {doc && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              onOpenDoc(doc);
-            }}
-            className="w-3.5 h-3.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-[8px] font-black transition-all"
-            title="Click for variable documentation"
-          >
-            ?
-          </button>
-        )}
-      </label>
-    );
-  };
-
+export const LogisticsTab: React.FC<LogisticsTabProps> = ({
+  config,
+  modifiedFields,
+  onChange,
+  onOpenDoc,
+}) => {
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-1">
@@ -106,22 +39,79 @@ export const LogisticsTab: React.FC<LogisticsTabProps> = ({ config, onChange, on
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {renderSliderCard('resourceHarvestingType', 'Harvesting Type ID', '0', '10', '1')}
-        {renderSliderCard('warpCanisterCapacity', 'Warp Canister Capacity', '0', '50', '1')}
-        {renderSliderCard('cryoGasRadius', 'Cryo Gas Radius', '0', '1000', '50')}
-        {renderSliderCard('cryoEffectDuration', 'Cryo Effect Duration (s)', '0', '30', '0.5')}
-        {renderSliderCard('gravitonVortexDuration', 'Graviton Vortex Duration (s)', '0', '30', '0.5')}
+        {LOGISTICS_SLIDERS.map(({ field, label, min, max, step }) => (
+          <ConfigSliderCard
+            key={field}
+            field={field}
+            label={label}
+            value={(config[field] as number) ?? 0}
+            min={min}
+            max={max}
+            step={step}
+            isModified={modifiedFields?.has(field)}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+        ))}
 
-        {/* Status Flags Grid */}
         <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {renderCheckboxRow('portDockingBayStatus', 'Port Docking Bay Status')}
-          {renderCheckboxRow('starboardDeploymentBayStatus', 'Starboard Deployment Bay Active')}
-          {renderCheckboxRow('salvageableUponDestruction', 'Salvageable Upon Destruction')}
-          {renderCheckboxRow('requiresReconTelemetry', 'Requires Recon Telemetry')}
-          {renderCheckboxRow('requiresAnchorDrone', 'Requires Anchor Drone')}
-          {renderCheckboxRow('requiresReconAnchor', 'Requires Recon Anchor')}
+          <ConfigCheckboxRow
+            field="portDockingBayStatus"
+            label="Port Docking Bay Status"
+            checked={!!config.portDockingBayStatus}
+            isModified={modifiedFields?.has('portDockingBayStatus')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="starboardDeploymentBayStatus"
+            label="Starboard Deployment Bay Active"
+            checked={!!config.starboardDeploymentBayStatus}
+            isModified={modifiedFields?.has('starboardDeploymentBayStatus')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="salvageableUponDestruction"
+            label="Salvageable Upon Destruction"
+            checked={!!config.salvageableUponDestruction}
+            isModified={modifiedFields?.has('salvageableUponDestruction')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="requiresReconTelemetry"
+            label="Requires Recon Telemetry"
+            checked={!!config.requiresReconTelemetry}
+            isModified={modifiedFields?.has('requiresReconTelemetry')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="requiresAnchorDrone"
+            label="Requires Anchor Drone"
+            checked={!!config.requiresAnchorDrone}
+            isModified={modifiedFields?.has('requiresAnchorDrone')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
+          <ConfigCheckboxRow
+            field="requiresReconAnchor"
+            label="Requires Recon Anchor"
+            checked={!!config.requiresReconAnchor}
+            isModified={modifiedFields?.has('requiresReconAnchor')}
+            onChange={onChange}
+            onOpenDoc={onOpenDoc}
+          />
           <div className="col-span-full">
-            {renderCheckboxRow('emergencyWarpEvacuationTarget', 'Emergency Warp Evacuation Target Active')}
+            <ConfigCheckboxRow
+              field="emergencyWarpEvacuationTarget"
+              label="Emergency Warp Evacuation Target Active"
+              checked={!!config.emergencyWarpEvacuationTarget}
+              isModified={modifiedFields?.has('emergencyWarpEvacuationTarget')}
+              onChange={onChange}
+              onOpenDoc={onOpenDoc}
+            />
           </div>
         </div>
       </div>

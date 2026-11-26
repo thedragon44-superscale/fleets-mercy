@@ -1,6 +1,7 @@
 // src/components/GarageDashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { API_BASE_URL } from '../config';
+import { useUnitTemplates } from '../hooks/useUnitTemplates';
 
 export interface UnitBlueprint {
   id: string;
@@ -47,8 +48,38 @@ const SQUAD_KEYS = ['squad1', 'squad2', 'squad3', 'squad4'] as const;
 const SQUAD_SLOTS = [0, 1, 2, 3, 4] as const;
 const FLEET_TIERS = ['FLAGSHIP', 'BATTALION_1', 'BATTALION_2'] as const;
 
+type StaticUnitMetadata = Omit<
+  UnitBlueprint,
+  | 'speed'
+  | 'strafingSpeed'
+  | 'turnRate'
+  | 'angularVelocity'
+  | 'accelerationCurve'
+  | 'shields'
+  | 'hull'
+  | 'shieldRegenRate'
+  | 'armorMitigation'
+  | 'dps'
+  | 'maxCooldown'
+  | 'projectileRange'
+  | 'projectileSpeed'
+  | 'optimalRange'
+  | 'maxRange'
+  | 'engagementRangeCap'
+  | 'visionRange'
+  | 'sensorRange'
+  | 'aggroRange'
+  | 'retreatMoraleThreshold'
+  | 'squadCohesionLeashRange'
+  | 'maxThermalCapacity'
+  | 'lateralThrustPower'
+  | 'reverseThrustPower'
+  | 'driftCoefficient'
+  | 'ammoCapacity'
+>;
+
 // Static UI-only visual metadata fallback
-const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'strafingSpeed' | 'turnRate' | 'angularVelocity' | 'accelerationCurve' | 'shields' | 'hull' | 'shieldRegenRate' | 'armorMitigation' | 'dps' | 'maxCooldown' | 'projectileRange' | 'projectileSpeed' | 'optimalRange' | 'maxRange' | 'engagementRangeCap' | 'visionRange' | 'aggroRange' | 'retreatMoraleThreshold' | 'squadCohesionLeashRange' | 'maxThermalCapacity' | 'lateralThrustPower' | 'reverseThrustPower' | 'driftCoefficient' | 'ammoCapacity'>[] = [
+const BASE_CATALOG_METADATA: StaticUnitMetadata[] = [
   { id: 'flagship', name: 'Player Flagship', shortName: 'Flagship', weight: 10, classType: 'CAPITAL', role: 'Fleet Command', aiState: 'MANUAL', doctrine: 'FLAGSHIP AI: Command mothership of the fleet. Houses deployment bays, repair drones, and strategic warhead launchers.' },
   { id: 'viper_interceptor', name: 'Viper Interceptor', shortName: 'Viper', weight: 1, classType: 'LIGHT', role: 'Air Superiority', aiState: 'SEEK', doctrine: 'SEEK AI: Auto-detects hostiles. Closes distance to deliver kinetic auto-cannon bursts.' },
   { id: 'recon_probe', name: 'Recon Probe', shortName: 'Recon', weight: 1, classType: 'LIGHT', role: 'Radar Expansion', aiState: 'SEEK', doctrine: 'SEEK AI: Unarmed scout. Maintains maximum sensor range from hostiles to paint targets through Fog of War.' },
@@ -72,7 +103,7 @@ const BASE_CATALOG_METADATA: Omit<UnitBlueprint, 'speed' | 'strafingSpeed' | 'tu
   { id: 'gun_emplacement', name: 'Gun Emplacement', shortName: 'Turret', weight: 5, classType: 'CAPITAL', role: 'Static Defense', aiState: 'GUARD', doctrine: 'GUARD AI: Stationary defense platform locking down deposits.' }
 ];
 
-export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map(m => ({
+export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map((m) => ({
   ...m,
   speed: '0.00',
   strafingSpeed: '0.00',
@@ -99,7 +130,7 @@ export let UNIT_DB: UnitBlueprint[] = BASE_CATALOG_METADATA.map(m => ({
   lateralThrustPower: '0.00',
   reverseThrustPower: '0.00',
   driftCoefficient: '0.00',
-  ammoCapacity: '0'
+  ammoCapacity: '0',
 }));
 
 export interface LoadoutData {
@@ -127,90 +158,86 @@ export type FleetTier = typeof FLEET_TIERS[number];
 const ASSET_FILENAME_MAP: { [unitId: string]: string } = {
   flagship: 'flagship.png', viper_interceptor: 'viper.png', recon_probe: 'recon.png', phantom_transport: 'phantom.png', ion_interceptor: 'ion.png',
   mining_barge: 'mining.png', supply_tender: 'supply.png', plasma_skimmer: 'plasma.png', grav_extractor: 'grav.png',
-  assault_gunship: 'assault.png', command_escort: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png', 
-  lancer_corvette: 'lancer.png', cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png', 
+  assault_gunship: 'assault.png', command_escort: 'assault.png', aegis_repair: 'aegis.png', vortex_minelayer: 'vortex.png',
+  lancer_corvette: 'lancer.png', cryo_flak: 'cryo.png', specter_jammer: 'specter.png', aegis_wall: 'wall.png',
   torpedo_bomber: 'torpedo.png', warp_frigate: 'warp.png', gun_emplacement: 'turret.png', battalion_command_ship: 'flagship.png'
 };
 
 const PREVIEW_ROTATION_CSS: { [unitId: string]: string } = {
-  flagship: 'rotate(90deg)', battalion_command_ship: 'rotate(90deg)', command_escort: 'rotate(90deg)', 
-  aegis_repair: 'rotate(90deg)', assault_gunship: 'rotate(90deg)', grav_extractor: 'rotate(90deg)', 
-  mining_barge: 'rotate(90deg)', plasma_skimmer: 'rotate(90deg)', specter_jammer: 'rotate(90deg)', 
-  supply_tender: 'rotate(90deg)', torpedo_bomber: 'rotate(90deg)', vortex_minelayer: 'rotate(90deg)', 
+  flagship: 'rotate(90deg)', battalion_command_ship: 'rotate(90deg)', command_escort: 'rotate(90deg)',
+  aegis_repair: 'rotate(90deg)', assault_gunship: 'rotate(90deg)', grav_extractor: 'rotate(90deg)',
+  mining_barge: 'rotate(90deg)', plasma_skimmer: 'rotate(90deg)', specter_jammer: 'rotate(90deg)',
+  supply_tender: 'rotate(90deg)', torpedo_bomber: 'rotate(90deg)', vortex_minelayer: 'rotate(90deg)',
   lancer_corvette: 'rotate(-90deg)', viper_interceptor: 'rotate(-90deg)',
-  cryo_flak: 'rotate(0deg)', ion_interceptor: 'rotate(0deg)', phantom_transport: 'rotate(0deg)', 
-  recon_probe: 'rotate(0deg)', gun_emplacement: 'rotate(0deg)', aegis_wall: 'rotate(0deg)', 
+  cryo_flak: 'rotate(0deg)', ion_interceptor: 'rotate(0deg)', phantom_transport: 'rotate(0deg)',
+  recon_probe: 'rotate(0deg)', gun_emplacement: 'rotate(0deg)', aegis_wall: 'rotate(0deg)',
   warp_frigate: 'rotate(0deg)'
 };
 
+const formatStat = (val: number | undefined, suffix: string = ''): string => {
+  if (val === undefined || val === null) {
+    return `0${suffix.includes('px') || suffix.includes('Ticks') ? suffix : ''}`;
+  }
+  return Number.isInteger(val) ? `${val}${suffix}` : `${val.toFixed(2)}${suffix}`;
+};
+
 export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractice, onLogout, onNavigateHome }) => {
-  const [unitDbState, setUnitDbState] = useState<UnitBlueprint[]>(UNIT_DB);
+  const { templates } = useUnitTemplates();
+
+  const unitDbState: UnitBlueprint[] = useMemo(() => {
+    const built = BASE_CATALOG_METADATA.map((meta) => {
+      const t = templates[meta.id];
+      return {
+        ...meta,
+        weight: t?.weightClass ?? meta.weight,
+        speed: formatStat(t?.speed),
+        strafingSpeed: formatStat(t?.strafingSpeed),
+        turnRate: formatStat(t?.turnRate),
+        angularVelocity: formatStat(t?.angularVelocity),
+        accelerationCurve: formatStat(t?.accelerationCurve),
+        shields: formatStat(t?.shieldBase),
+        hull: formatStat(t?.hullBase),
+        shieldRegenRate: formatStat(t?.shieldRegenRate),
+        armorMitigation: formatStat(t?.armorMitigation),
+        dps: formatStat(t?.dps),
+        maxCooldown: formatStat(t?.maxCooldown, ' Ticks'),
+        projectileRange: formatStat(t?.projectileRange),
+        projectileSpeed: formatStat(t?.projectileSpeed),
+        optimalRange: formatStat(t?.optimalRange),
+        maxRange: formatStat(t?.maxRange),
+        engagementRangeCap: formatStat(t?.engagementRangeCap),
+        visionRange: formatStat(t?.visionRange),
+        sensorRange: formatStat(t?.sensorRange),
+        aggroRange: formatStat(t?.aggroRange),
+        retreatMoraleThreshold: formatStat(t?.retreatMoraleThreshold),
+        squadCohesionLeashRange: formatStat(t?.squadCohesionLeashRange),
+        maxThermalCapacity: formatStat(t?.maxThermalCapacity),
+        lateralThrustPower: formatStat(t?.lateralThrustPower),
+        reverseThrustPower: formatStat(t?.reverseThrustPower),
+        driftCoefficient: formatStat(t?.driftCoefficient),
+        ammoCapacity: formatStat(t?.ammoCapacity),
+      };
+    });
+    UNIT_DB = built;
+    return built;
+  }, [templates]);
+
   const [loadouts, setLoadouts] = useState<LoadoutData[]>([]);
   const [activeSlot, setActiveSlot] = useState<number>(1);
   const [activeTier, setActiveTier] = useState<FleetTier>('FLAGSHIP');
   const [activeLoadout, setActiveLoadout] = useState<LoadoutData | null>(null);
-  const [inspectedUnit, setInspectedUnit] = useState<UnitBlueprint>(UNIT_DB[0]);
+  const [inspectedUnitId, setInspectedUnitId] = useState<string>(BASE_CATALOG_METADATA[0].id);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
   const [pickerState, setPickerState] = useState<{ squadKey: typeof SQUAD_KEYS[number]; slotIdx: number } | null>(null);
 
+  const inspectedUnit = useMemo(
+    () => unitDbState.find((u) => u.id === inspectedUnitId) || unitDbState[0],
+    [unitDbState, inspectedUnitId]
+  );
+
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/templates`)
-      .then((res) => res.json())
-      .then((dbTemplates) => {
-        if (dbTemplates) {
-          const dynamicallyBuiltCatalog: UnitBlueprint[] = BASE_CATALOG_METADATA.map((meta) => {
-            const t = dbTemplates[meta.id] || {};
-            
-            // Robust accessor checking both camelCase and snake_case properties while supporting numeric 0 correctly
-            const getVal = (camel: string, snake: string, suffix: string = '') => {
-              const val = t[camel] !== undefined && t[camel] !== null ? t[camel] : (t[snake] !== undefined && t[snake] !== null ? t[snake] : undefined);
-              if (val === undefined || val === null) return `0${suffix.includes('px') || suffix.includes('Ticks') ? suffix : ''}`;
-              if (typeof val === 'number') {
-                return Number.isInteger(val) ? `${val}${suffix}` : `${val.toFixed(2)}${suffix}`;
-              }
-              return `${val}${suffix}`;
-            };
-
-            return {
-              ...meta,
-              speed: getVal('speed', 'speed'),
-              strafingSpeed: getVal('strafingSpeed', 'strafing_speed'),
-              turnRate: getVal('turnRate', 'turn_rate'),
-              angularVelocity: getVal('angularVelocity', 'angular_velocity'),
-              accelerationCurve: getVal('accelerationCurve', 'acceleration_curve'),
-              shields: getVal('shieldBase', 'shield_base'),
-              hull: getVal('hullBase', 'hull_base'),
-              shieldRegenRate: getVal('shieldRegenRate', 'shield_regen_rate'),
-              armorMitigation: getVal('armorMitigation', 'armor_mitigation'),
-              dps: getVal('dps', 'dps'),
-              maxCooldown: getVal('maxCooldown', 'max_cooldown', ' Ticks'),
-              projectileRange: getVal('projectileRange', 'projectile_range'),
-              projectileSpeed: getVal('projectileSpeed', 'projectile_speed'),
-              optimalRange: getVal('optimalRange', 'optimal_range'),
-              maxRange: getVal('maxRange', 'max_range'),
-              engagementRangeCap: getVal('engagementRangeCap', 'engagement_range_cap'),
-              visionRange: getVal('visionRange', 'vision_range'),
-              sensorRange: getVal('sensorRange', 'sensor_range'),
-              aggroRange: getVal('aggroRange', 'aggro_range'),
-              retreatMoraleThreshold: getVal('retreatMoraleThreshold', 'retreat_morale_threshold'),
-              squadCohesionLeashRange: getVal('squadCohesionLeashRange', 'squad_cohesion_leash_range'),
-              maxThermalCapacity: getVal('maxThermalCapacity', 'max_thermal_capacity'),
-              lateralThrustPower: getVal('lateralThrustPower', 'lateral_thrust_power'),
-              reverseThrustPower: getVal('reverseThrustPower', 'reverse_thrust_power'),
-              driftCoefficient: getVal('driftCoefficient', 'drift_coefficient'),
-              ammoCapacity: getVal('ammoCapacity', 'ammo_capacity'),
-            };
-          });
-
-          setUnitDbState(dynamicallyBuiltCatalog);
-          UNIT_DB = dynamicallyBuiltCatalog;
-          setInspectedUnit(dynamicallyBuiltCatalog[0]);
-        }
-      })
-      .catch((err) => console.error('⚠️ Failed to load DB templates:', err));
-
     fetchLoadouts();
   }, [player.id]);
 
@@ -219,18 +246,33 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
       const res = await fetch(`${API_BASE_URL}/api/loadouts?playerId=${player.id}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        const formatted = data.map(l => ({
+        const formatted = data.map((l) => ({
           ...l,
           fleetComposition: typeof l.fleetComposition === 'string' ? JSON.parse(l.fleetComposition) : (l.fleetComposition || {}),
           squad1: typeof l.squad1 === 'string' ? JSON.parse(l.squad1) : (l.squad1 || []),
           squad2: typeof l.squad2 === 'string' ? JSON.parse(l.squad2) : (l.squad2 || []),
           squad3: typeof l.squad3 === 'string' ? JSON.parse(l.squad3) : (l.squad3 || []),
           squad4: typeof l.squad4 === 'string' ? JSON.parse(l.squad4) : (l.squad4 || []),
-          squadLeaders: typeof l.squadLeaders === 'string' ? JSON.parse(l.squadLeaders) : (l.squadLeaders || {})
+          squadLeaders: typeof l.squadLeaders === 'string' ? JSON.parse(l.squadLeaders) : (l.squadLeaders || {}),
         }));
         setLoadouts(formatted);
-        const current = formatted.find(l => l.loadoutIndex === activeSlot) || formatted[0];
-        if (current) setActiveLoadout(JSON.parse(JSON.stringify(current)));
+        const current = formatted.find((l) => l.loadoutIndex === activeSlot) || formatted[0];
+        if (current) {
+          setActiveLoadout(JSON.parse(JSON.stringify(current)));
+        } else {
+          setActiveLoadout({
+            id: 0,
+            playerId: player.id,
+            loadoutIndex: activeSlot,
+            name: `Loadout ${activeSlot}`,
+            fleetComposition: {},
+            squad1: [],
+            squad2: [],
+            squad3: [],
+            squad4: [],
+            squadLeaders: {},
+          });
+        }
       }
     } catch (err) {
       setStatusMsg('Telemetry connection failed.');
@@ -240,13 +282,21 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
   const handleSelectSlot = (slotIdx: number) => {
     setActiveSlot(slotIdx);
     setPickerState(null);
-    const selected = loadouts.find(l => l.loadoutIndex === slotIdx);
+    const selected = loadouts.find((l) => l.loadoutIndex === slotIdx);
     if (selected) {
       setActiveLoadout(JSON.parse(JSON.stringify(selected)));
     } else {
       setActiveLoadout({
-        id: 0, playerId: player.id, loadoutIndex: slotIdx, name: `Loadout ${slotIdx}`,
-        fleetComposition: {}, squad1: [], squad2: [], squad3: [], squad4: [], squadLeaders: {}
+        id: 0,
+        playerId: player.id,
+        loadoutIndex: slotIdx,
+        name: `Loadout ${slotIdx}`,
+        fleetComposition: {},
+        squad1: [],
+        squad2: [],
+        squad3: [],
+        squad4: [],
+        squadLeaders: {},
       });
     }
   };
@@ -260,7 +310,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
       squad2: [],
       squad3: [],
       squad4: [],
-      squadLeaders: {}
+      squadLeaders: {},
     });
     setPickerState(null);
     setStatusMsg('SLOT CLEARED');
@@ -270,30 +320,55 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     if (!activeLoadout) return;
     const current = activeLoadout.fleetComposition[unitId] || 0;
     const nextVal = Math.max(0, current + delta);
-    
+
     const newComp = { ...activeLoadout.fleetComposition, [unitId]: nextVal };
+    let nextLoadout: LoadoutData = { ...activeLoadout, fleetComposition: newComp };
+
     if (nextVal === 0) {
       delete newComp[unitId];
-      SQUAD_KEYS.forEach(sq => {
-        activeLoadout[sq] = activeLoadout[sq].filter(id => id !== unitId);
+      const nextLeaders = { ...(activeLoadout.squadLeaders || {}) };
+
+      SQUAD_KEYS.forEach((sq) => {
+        const oldList = activeLoadout[sq];
+        const newList: string[] = [];
+        const oldLeaderIdx = nextLeaders[sq];
+        let newLeaderIdx: number | undefined;
+
+        oldList.forEach((id, idx) => {
+          if (id !== unitId) {
+            if (oldLeaderIdx === idx) {
+              newLeaderIdx = newList.length;
+            }
+            newList.push(id);
+          }
+        });
+
+        nextLoadout = { ...nextLoadout, [sq]: newList };
+        if (newLeaderIdx !== undefined) {
+          nextLeaders[sq] = newLeaderIdx;
+        } else {
+          delete nextLeaders[sq];
+        }
       });
+
+      nextLoadout.squadLeaders = nextLeaders;
     }
 
-    setActiveLoadout({ ...activeLoadout, fleetComposition: newComp });
+    setActiveLoadout(nextLoadout);
   };
 
   const calculateTotalWeight = () => {
     if (!activeLoadout) return 0;
     return Object.entries(activeLoadout.fleetComposition).reduce((sum, [uId, count]) => {
-      const u = unitDbState.find(x => x.id === uId);
+      const u = unitDbState.find((x) => x.id === uId);
       return sum + (u ? u.weight * count : 0);
     }, 0);
   };
 
   const getAssignedCount = (unitId: string) => {
     if (!activeLoadout) return 0;
-    const allSquads = SQUAD_KEYS.flatMap(sq => activeLoadout[sq]);
-    return allSquads.filter(id => id === unitId).length;
+    const allSquads = SQUAD_KEYS.flatMap((sq) => activeLoadout[sq]);
+    return allSquads.filter((id) => id === unitId).length;
   };
 
   const assignUnitToSlot = (squadKey: typeof SQUAD_KEYS[number], slotIdx: number, unitId: string) => {
@@ -308,10 +383,12 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     if (!activeLoadout) return;
     const arr = [...activeLoadout[squadKey]];
     arr.splice(slotIdx, 1);
-    
+
     const leaders = { ...(activeLoadout.squadLeaders || {}) };
     if (leaders[squadKey] === slotIdx) {
       delete leaders[squadKey];
+    } else if (leaders[squadKey] !== undefined && leaders[squadKey] > slotIdx) {
+      leaders[squadKey] = leaders[squadKey] - 1;
     }
 
     setActiveLoadout({ ...activeLoadout, [squadKey]: arr, squadLeaders: leaders });
@@ -320,7 +397,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
   const toggleSquadLeader = (squadKey: string, slotIdx: number) => {
     if (!activeLoadout) return;
     const currentLeaders = { ...(activeLoadout.squadLeaders || {}) };
-    
+
     if (currentLeaders[squadKey] === slotIdx) {
       delete currentLeaders[squadKey];
     } else {
@@ -345,13 +422,13 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
         squad2: activeLoadout.squad2,
         squad3: activeLoadout.squad3,
         squad4: activeLoadout.squad4,
-        squadLeaders: activeLoadout.squadLeaders || {}
+        squadLeaders: activeLoadout.squadLeaders || {},
       };
 
       const res = await fetch(`${API_BASE_URL}/api/loadouts/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -367,17 +444,23 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
     }
   };
 
-  if (!activeLoadout) return <div className="text-cyan-400 bg-[#0b0e14] h-screen p-5 font-mono">INITIALIZING HANGAR BAY...</div>;
+  if (!activeLoadout) {
+    return (
+      <div className="text-cyan-400 bg-[#0b0e14] h-screen p-5 font-mono">
+        INITIALIZING HANGAR BAY...
+      </div>
+    );
+  }
 
   const totalWeight = calculateTotalWeight();
   const isOverCapacity = totalWeight > MAX_FLEET_WEIGHT;
 
   return (
     <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-[#0b0e14] text-slate-100 flex flex-col p-2 gap-2 font-mono select-none">
-      
+
       {/* UNIFIED COMPACT COMMAND HEADER */}
       <header className="bg-[#0f1115] border border-slate-800/80 rounded-xl px-3 py-2 flex items-center justify-between shadow-lg shrink-0 gap-4">
-        
+
         {/* Branding & Pilot */}
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-black text-xs">
@@ -392,7 +475,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
         {/* Slot Selector & Fleet Tier Tabs */}
         <div className="flex items-center gap-3">
           <div className="flex bg-[#161922] p-0.5 rounded-lg border border-slate-800 gap-1 shrink-0">
-            {FLEET_SLOTS.map(idx => (
+            {FLEET_SLOTS.map((idx) => (
               <button
                 key={idx}
                 onClick={() => handleSelectSlot(idx)}
@@ -404,7 +487,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
 
           <div className="flex bg-[#161922] p-0.5 rounded-lg border border-slate-800 gap-1 shrink-0">
-            {FLEET_TIERS.map(tier => (
+            {FLEET_TIERS.map((tier) => (
               <button
                 key={tier}
                 onClick={() => setActiveTier(tier)}
@@ -418,9 +501,9 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
         {/* Loadout Name & Weight Bar */}
         <div className="flex items-center gap-3 bg-[#161922] px-3 py-1 rounded-lg border border-slate-800 flex-1 max-w-xs">
-          <input 
-            type="text" 
-            value={activeLoadout.name} 
+          <input
+            type="text"
+            value={activeLoadout.name}
             onChange={(e) => setActiveLoadout({ ...activeLoadout, name: e.target.value })}
             className="bg-transparent text-[11px] font-bold text-cyan-400 focus:outline-none w-28 truncate"
           />
@@ -430,9 +513,9 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
               <span>{totalWeight}/{MAX_FLEET_WEIGHT}</span>
             </div>
             <div className="w-full bg-slate-900 h-1 rounded-full overflow-hidden">
-              <div 
-                className={`h-full transition-all ${isOverCapacity ? 'bg-red-500' : 'bg-cyan-400'}`} 
-                style={{ width: `${Math.min((totalWeight / MAX_FLEET_WEIGHT) * 100, 100)}%` }} 
+              <div
+                className={`h-full transition-all ${isOverCapacity ? 'bg-red-500' : 'bg-cyan-400'}`}
+                style={{ width: `${Math.min((totalWeight / MAX_FLEET_WEIGHT) * 100, 100)}%` }}
               />
             </div>
           </div>
@@ -440,27 +523,27 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 shrink-0">
-          <button 
+          <button
             onClick={handleClearLoadout}
             className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 font-black px-2.5 py-1 rounded-lg text-[10px] uppercase tracking-wider transition-all"
             title="Wipe current loadout"
           >
             Clear
           </button>
-          <button 
-            onClick={saveCurrentLoadout} 
+          <button
+            onClick={saveCurrentLoadout}
             disabled={saving}
             className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-wider transition-all"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
-          <button 
+          <button
             onClick={onNavigateHome}
             className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
           >
             Menu
           </button>
-          <button 
+          <button
             onClick={onLogout}
             className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition-all"
           >
@@ -472,7 +555,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
       {/* MAIN 3-COLUMN GRID */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-2 flex-1 min-h-0">
-        
+
         {/* COLUMN 1: REQUISITION CATALOG (Scrollable) */}
         <div className="md:col-span-3 bg-[#0f1115] border border-slate-800/80 rounded-xl p-2.5 flex flex-col min-h-0 shadow-xl">
           <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-2 shrink-0">
@@ -481,15 +564,15 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-            {unitDbState.map(unit => {
+            {unitDbState.map((unit) => {
               const count = activeLoadout.fleetComposition[unit.id] || 0;
               const assigned = getAssignedCount(unit.id);
               const isSelected = inspectedUnit.id === unit.id;
 
               return (
-                <div 
+                <div
                   key={unit.id}
-                  onClick={() => setInspectedUnit(unit)}
+                  onClick={() => setInspectedUnitId(unit.id)}
                   className={`border rounded-lg p-2 flex justify-between items-center cursor-pointer transition-all ${isSelected ? 'bg-cyan-500/10 border-cyan-400' : 'bg-[#161922] border-slate-800 hover:border-cyan-500/50'}`}
                 >
                   <div>
@@ -499,7 +582,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 bg-[#0f1115] p-0.5 rounded border border-slate-800" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 bg-[#0f1115] p-0.5 rounded border border-slate-800" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => updateFleetQuantity(unit.id, -1)} className="w-4 h-4 bg-slate-800 hover:bg-slate-700 text-red-400 rounded flex items-center justify-center text-[10px] font-bold">-</button>
                     <span className="w-3 text-center text-[10px] font-bold text-white">{count}</span>
                     <button onClick={() => updateFleetQuantity(unit.id, 1)} className="w-4 h-4 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded flex items-center justify-center text-[10px] font-bold">+</button>
@@ -531,14 +614,14 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                   </div>
 
                   <div className="grid grid-cols-5 gap-1.5 flex-1 min-h-0">
-                    {SQUAD_SLOTS.map(slotIdx => {
+                    {SQUAD_SLOTS.map((slotIdx) => {
                       const unitId = sqList[slotIdx];
-                      const unitObj = unitId ? unitDbState.find(u => u.id === unitId) : null;
+                      const unitObj = unitId ? unitDbState.find((u) => u.id === unitId) : null;
                       const isLeader = leaderIdx === slotIdx;
 
                       if (unitObj) {
                         return (
-                          <div 
+                          <div
                             key={slotIdx}
                             onClick={() => setPickerState({ squadKey: sqKey, slotIdx })}
                             className={`border rounded-md p-1.5 flex flex-col justify-between shadow-sm cursor-pointer transition-all ${
@@ -547,7 +630,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                           >
                             <div className="flex justify-between items-center">
                               <span className={`text-[9px] font-black truncate ${isLeader ? 'text-amber-400' : 'text-cyan-400'}`}>{unitObj.shortName}</span>
-                              <button 
+                              <button
                                 onClick={(e) => { e.stopPropagation(); toggleSquadLeader(sqKey, slotIdx); }}
                                 className={`text-[8px] font-bold px-1 rounded transition-all ${
                                   isLeader ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-amber-400'
@@ -560,7 +643,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
                             <div className="flex justify-between items-center text-[8px] text-slate-400 font-bold">
                               <span>[{unitObj.weight}W]</span>
-                              <button 
+                              <button
                                 onClick={(e) => { e.stopPropagation(); removeUnitFromSlot(sqKey, slotIdx); }}
                                 className="text-red-400 hover:text-red-300 font-bold"
                               >
@@ -572,7 +655,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                       }
 
                       return (
-                        <div 
+                        <div
                           key={slotIdx}
                           onClick={() => setPickerState({ squadKey: sqKey, slotIdx })}
                           className="bg-[#0f1115] border border-dashed border-slate-800 rounded-md flex items-center justify-center text-[9px] text-slate-500 font-bold hover:border-cyan-500 hover:text-cyan-400 cursor-pointer"
@@ -607,11 +690,11 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
           </div>
 
           <div className="flex flex-col flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-            
+
             {/* SQUARED ASSET PREVIEW WINDOW */}
             <div className="bg-[#161922] border border-slate-800 rounded-lg aspect-square w-full flex flex-col items-center justify-center relative shrink-0 p-3 shadow-inner">
-              <img 
-                src={new URL(`../assets/${ASSET_FILENAME_MAP[inspectedUnit.id] || 'viper.png'}`, import.meta.url).href} 
+              <img
+                src={new URL(`../assets/${ASSET_FILENAME_MAP[inspectedUnit.id] || 'viper.png'}`, import.meta.url).href}
                 alt={inspectedUnit.name}
                 className="max-h-[90px] max-w-[110px] object-contain drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]"
                 style={{ transform: PREVIEW_ROTATION_CSS[inspectedUnit.id] || 'rotate(0deg)' }}
@@ -746,12 +829,12 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
 
       {/* UNIT SELECTOR MODAL */}
       {pickerState && (
-        <div 
+        <div
           onClick={() => setPickerState(null)}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center items-center p-4"
         >
-          <div 
-            onClick={e => e.stopPropagation()}
+          <div
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm bg-[#0f1115] border border-cyan-400 rounded-xl p-4 flex flex-col gap-3 shadow-2xl"
           >
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -765,11 +848,13 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
               {Object.entries(activeLoadout.fleetComposition).map(([uId, reqCount]) => {
                 const assigned = getAssignedCount(uId);
                 const unassignedStock = reqCount - assigned;
-                
+
                 const isCurrentlyAssignedHere = activeLoadout[pickerState.squadKey][pickerState.slotIdx] === uId;
                 if (unassignedStock <= 0 && !isCurrentlyAssignedHere) return null;
 
-                const u = unitDbState.find(x => x.id === uId)!;
+                const u = unitDbState.find((x) => x.id === uId);
+                if (!u) return null;
+
                 return (
                   <button
                     key={uId}
@@ -782,7 +867,7 @@ export const GarageDashboard: React.FC<GarageProps> = ({ player, onLaunchPractic
                 );
               })}
 
-              {Object.entries(activeLoadout.fleetComposition).every(([uId, reqCount]) => (reqCount - getAssignedCount(uId)) <= 0) && (
+              {Object.entries(activeLoadout.fleetComposition).every(([uId, reqCount]) => reqCount - getAssignedCount(uId) <= 0) && (
                 <div className="text-red-400 text-xs text-center py-4">
                   No unassigned units available in Catalog. Increase stock on the left panel first.
                 </div>
