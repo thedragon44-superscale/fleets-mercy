@@ -1,6 +1,7 @@
 package teamDeathMatch
 
 import (
+	"fmt"
 	"math/rand"
 
 	"space-tactics-server/internal/db"
@@ -35,6 +36,7 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 	}
 
 	var pilotedID string
+	units := r.GetUnits()
 
 	// Spawn Factions: player, enemy
 	factions := []string{"player", "enemy"}
@@ -68,8 +70,7 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 					template = db.Templates[unitType]
 				}
 
-				r.idCounter++
-				id := "tdm-" + faction + "-" + unitType + "-" + string(rune(r.idCounter))
+				id := fmt.Sprintf("tdm-%s-%s-%d", faction, unitType, r.NextUnitID())
 
 				if faction == "player" && unitIndex == 1 {
 					pilotedID = id
@@ -134,7 +135,7 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 					MaxResourceCapacity:          500.0,
 				}
 
-				r.units[unit.ID] = unit
+				units[unit.ID] = unit
 			}
 		}
 	}

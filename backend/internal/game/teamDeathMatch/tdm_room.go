@@ -32,7 +32,7 @@ type TDMRoom struct {
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
 	baseRoom := game.NewGameRoom(mapID, false)
-	
+
 	room := &TDMRoom{
 		GameRoom:        baseRoom,
 		clients:         make(map[*websocket.Conn]bool),
@@ -49,6 +49,7 @@ func (r *TDMRoom) LoadMapStructures() {
 	if targetMapID == 0 {
 		r.SetMapID(1)
 	}
+	r.ReloadMapStructures()
 }
 
 func (r *TDMRoom) ResetMatch() {
@@ -63,30 +64,44 @@ func (r *TDMRoom) ResetMatch() {
 }
 
 func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
+	conn, err := upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		log.Printf("⚠️ TDM WebSocket upgrade failed: %v", err)
+		return
+	}
+	clientAddr := conn.RemoteAddr().String()
+	log.Printf("🔌 Player connected to TDM Room: %s", clientAddr)
+
 	query := req.URL.Query()
+	r.mu.Lock()
+	needsReset := len(r.GetUnits()) == 0
+	mapChanged := false
+
 	if unitType := query.Get("unit"); unitType != "" {
 		r.pilotedUnitType = unitType
+		needsReset = true
 	}
 	if mapStr := query.Get("map"); mapStr != "" {
 		if parsedMap, err := strconv.Atoi(mapStr); err == nil && parsedMap > 0 {
-			r.SetMapID(parsedMap)
+			if parsedMap != r.GetMapID() {
+				r.SetMapID(parsedMap)
+				mapChanged = true
+			}
+			needsReset = true
 		}
 	}
 	if poolStr := query.Get("pool"); poolStr != "" {
 		r.customUnitPool = strings.Split(poolStr, ",")
+		needsReset = true
 	}
 
-	r.mu.Lock()
-	if len(r.GetUnits()) == 0 {
+	if mapChanged {
+		r.ReloadMapStructures()
+	}
+	if needsReset {
 		r.ResetMatch()
 	}
-	r.mu.Unlock()
 
-	conn, _ := upgrader.Upgrade(w, req, nil)
-	clientAddr := conn.RemoteAddr().String()
-	log.Printf("🔌 Player connected to TDM Room: %s", clientAddr)
-
-	r.mu.Lock()
 	r.clients[conn] = true
 	r.mu.Unlock()
 
@@ -100,8 +115,12 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 	for {
 		messageType, msg, err := conn.ReadMessage()
-		if err != nil { break }
-		if messageType != websocket.BinaryMessage { continue }
+		if err != nil {
+			break
+		}
+		if messageType != websocket.BinaryMessage {
+			continue
+		}
 
 		clientInput := SpaceTactics.GetRootAsClientInput(msg, 0)
 
@@ -112,7 +131,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.lastInput.D = clientInput.D()
 		r.lastInput.Angle = clientInput.Angle()
 		r.lastInput.IsFiring = clientInput.IsFiring()
-		
+
 		if clientInput.Reset() {
 			r.ResetMatch()
 		}
@@ -157,7 +176,6 @@ func (r *TDMRoom) Run() {
 						IsFiring: r.lastInput.IsFiring,
 					}, 12000.0, 12000.0)
 					unit.IsFiring = r.lastInput.IsFiring
-					unit.Angle = float64(r.lastInput.Angle)
 				} else {
 					// Autonomous squad AI execution
 					game.RunUnitAI(unit, r.GameRoom, nil)
@@ -179,7 +197,9 @@ func (r *TDMRoom) Run() {
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(units))
 
 		for _, u := range units {
-			if u.IsDestroyed { continue }
+			if u.IsDestroyed {
+				continue
+			}
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)

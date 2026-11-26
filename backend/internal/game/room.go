@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,9 +87,13 @@ func NewGameRoom(mapID int, isSandbox bool) *GameRoom {
 	return room
 }
 
-// Exported getters so sub-packages (like teamDeathMatch) can read room state safely
+// Exported getters & setters so sub-packages (like teamDeathMatch) can read/write room state safely
 func (r *GameRoom) GetUnits() map[string]*models.FleetUnit {
 	return r.units
+}
+
+func (r *GameRoom) SetUnits(units map[string]*models.FleetUnit) {
+	r.units = units
 }
 
 func (r *GameRoom) GetStructures() []models.MapStructure {
@@ -99,23 +104,46 @@ func (r *GameRoom) GetMapID() int {
 	return r.mapID
 }
 
+func (r *GameRoom) SetMapID(id int) {
+	r.mapID = id
+}
+
+func (r *GameRoom) ReloadMapStructures() {
+	r.loadMapStructures()
+}
+
 func (r *GameRoom) GetTick() uint64 {
 	return r.tick
+}
+
+func (r *GameRoom) SetTick(tick uint64) {
+	r.tick = tick
 }
 
 func (r *GameRoom) GetProjectiles() []models.Projectile {
 	return r.projectiles
 }
 
+func (r *GameRoom) SetProjectiles(projectiles []models.Projectile) {
+	r.projectiles = projectiles
+}
+
+func (r *GameRoom) NextUnitID() uint64 {
+	r.idCounter++
+	return r.idCounter
+}
+
 func (r *GameRoom) loadMapStructures() {
 	r.structures = []models.MapStructure{}
-	if r.mapID == 0 { r.mapID = 1 }
+	if r.mapID == 0 {
+		r.mapID = 1
+	}
 
 	rows, err := db.Conn.Query(
 		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
 		 FROM map_structures ms 
 		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
-		 WHERE ms.map_id = $1`, 
+		 WHERE ms.map_id = $1`,
 		r.mapID,
 	)
 	if err != nil {
@@ -139,10 +167,9 @@ func (r *GameRoom) resetWorld() {
 	r.units = make(map[string]*models.FleetUnit)
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
-	
-	r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
-	
+
 	if !r.isSandbox {
+		r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
 		r.spawnUnit("battalion_command_ship", "player", 6000, 9500, "COMMAND")
 		r.spawnUnit("flagship", "enemy", 6000, 2000, "SEEK")
 		r.spawnUnit("battalion_command_ship", "enemy", 6000, 2500, "COMMAND")
@@ -185,7 +212,7 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 			continue
 		}
 
-		// Enforce radar fog-of-war state: must be at least Pinged (1) or Clear (2) to target[cite: 8]
+		// Enforce radar fog-of-war state: must be at least Pinged (1) or Clear (2) to target
 		visibilityState := r.GetUnitVisibilityState(unit.OwnerID, target)
 		if visibilityState == VisibilityShrouded {
 			continue
@@ -195,9 +222,11 @@ func (r *GameRoom) findBestTarget(unit *models.FleetUnit) *models.FleetUnit {
 		dy := target.Pos.Y - unit.Pos.Y
 		dist := math.Hypot(dx, dy)
 
-		if dist > maxRange { continue }
+		if dist > maxRange {
+			continue
+		}
 
-		score := 2000.0 - dist 
+		score := 2000.0 - dist
 
 		if score > bestScore {
 			bestScore = score
@@ -240,11 +269,17 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 	id := fmt.Sprintf("%s-%d", unitType, r.idCounter)
 
 	if unitType == "flagship" {
-		if owner == "player" { id = "player-flagship" } else { id = "enemy-flagship" }
+		if owner == "player" {
+			id = "player-flagship"
+		} else {
+			id = "enemy-flagship"
+		}
 	}
 
 	aiState := template.AIState
-	if overrideAI != "" { aiState = overrideAI }
+	if overrideAI != "" {
+		aiState = overrideAI
+	}
 
 	unit := &models.FleetUnit{
 		ID:                           id,
@@ -302,7 +337,11 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 }
 
 func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
-	conn, _ := upgrader.Upgrade(w, req, nil)
+	conn, err := upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		log.Printf("⚠️ WebSocket upgrade failed: %v", err)
+		return
+	}
 	clientAddr := conn.RemoteAddr().String()
 	log.Printf("🔌 Player connected to room (Sandbox: %v): %s", r.isSandbox, clientAddr)
 
@@ -321,7 +360,9 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 	for {
 		messageType, msg, err := conn.ReadMessage()
-		if err != nil { break }
+		if err != nil {
+			break
+		}
 
 		if messageType != websocket.BinaryMessage {
 			continue
@@ -356,7 +397,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		if rem := clientInput.SandboxRemove(); len(rem) > 0 {
 			remStr := string(rem)
 			for id, u := range r.units {
-				if u.OwnerID == "player" && u.Type == remStr && u.Type != "flagship" {
+				if u.OwnerID == "player" && u.Type == remStr {
 					delete(r.units, id)
 					break
 				}
@@ -382,27 +423,25 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					mapCompoundKey := ownerID + "_" + unitType
 					r.lastInput.SandboxCounts[mapCompoundKey] = targetCount
 
-					if unitType != "flagship" {
-						currentCount := 0
-						for _, u := range r.units {
-							if u.OwnerID == ownerID && u.Type == unitType && !u.IsDestroyed {
-								currentCount++
-							}
+					currentCount := 0
+					for _, u := range r.units {
+						if u.OwnerID == ownerID && u.Type == unitType && !u.IsDestroyed {
+							currentCount++
 						}
-						if targetCount > currentCount {
-							diff := targetCount - currentCount
-							for j := 0; j < diff; j++ {
-								spawnX, spawnY := r.CalculateSpawnPosition(ownerID, j, targetCount)
-								r.spawnUnit(unitType, ownerID, spawnX, spawnY, "GUARD")
-							}
-						} else if targetCount < currentCount {
-							diff := currentCount - targetCount
-							removed := 0
-							for id, u := range r.units {
-								if removed < diff && u.OwnerID == ownerID && u.Type == unitType && u.Type != "flagship" && !u.IsDestroyed {
-									delete(r.units, id)
-									removed++
-								}
+					}
+					if targetCount > currentCount {
+						diff := targetCount - currentCount
+						for j := 0; j < diff; j++ {
+							spawnX, spawnY := r.CalculateSpawnPosition(ownerID, j, targetCount)
+							r.spawnUnit(unitType, ownerID, spawnX, spawnY, "GUARD")
+						}
+					} else if targetCount < currentCount {
+						diff := currentCount - targetCount
+						removed := 0
+						for id, u := range r.units {
+							if removed < diff && u.OwnerID == ownerID && u.Type == unitType && !u.IsDestroyed {
+								delete(r.units, id)
+								removed++
 							}
 						}
 					}
@@ -418,36 +457,80 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				unitType := tType
 				if tmpl, exists := db.Templates[unitType]; exists {
 					// 1. Movement & Physics Dynamics (with safety clamping)
-					if val := configTable.Speed(); val != 0 { tmpl.Speed = math.Min(float64(val), 50.0) }
-					if val := configTable.StrafingSpeed(); val != 0 { tmpl.StrafingSpeed = math.Min(float64(val), 50.0) }
-					if val := configTable.TurnRate(); val != 0 { tmpl.TurnRate = math.Min(float64(val), 15.0) }
-					if val := configTable.AngularVelocity(); val != 0 { tmpl.AngularVelocity = math.Min(float64(val), 15.0) }
-					if val := configTable.AccelerationCurve(); val != 0 { tmpl.AccelerationCurve = math.Min(float64(val), 10.0) }
+					if val := configTable.Speed(); val != 0 {
+						tmpl.Speed = math.Min(float64(val), 50.0)
+					}
+					if val := configTable.StrafingSpeed(); val != 0 {
+						tmpl.StrafingSpeed = math.Min(float64(val), 50.0)
+					}
+					if val := configTable.TurnRate(); val != 0 {
+						tmpl.TurnRate = math.Min(float64(val), 60.0)
+					}
+					if val := configTable.AngularVelocity(); val != 0 {
+						tmpl.AngularVelocity = math.Min(float64(val), 15.0)
+					}
+					if val := configTable.AccelerationCurve(); val != 0 {
+						tmpl.AccelerationCurve = math.Min(float64(val), 10.0)
+					}
 
 					// 2. Combat Output & Ballistics
-					if val := configTable.Dps(); val != 0 { tmpl.DPS = float64(val) }
-					if val := configTable.MaxCooldown(); val != 0 { tmpl.MaxCooldown = int(val) }
-					if val := configTable.ProjectileRange(); val != 0 { tmpl.ProjectileRange = float64(val) }
-					if val := configTable.ProjectileSpeed(); val != 0 { tmpl.ProjectileSpeed = float64(val) }
-					if val := configTable.MaxThermalCapacity(); val != 0 { tmpl.MaxThermalCapacity = float64(val) }
+					if val := configTable.Dps(); val != 0 {
+						tmpl.DPS = float64(val)
+					}
+					if val := configTable.MaxCooldown(); val != 0 {
+						tmpl.MaxCooldown = int(val)
+					}
+					if val := configTable.ProjectileRange(); val != 0 {
+						tmpl.ProjectileRange = float64(val)
+					}
+					if val := configTable.ProjectileSpeed(); val != 0 {
+						tmpl.ProjectileSpeed = float64(val)
+					}
+					if val := configTable.MaxThermalCapacity(); val != 0 {
+						tmpl.MaxThermalCapacity = float64(val)
+					}
 
 					// 3. Vitals, Health & Shield Systems
-					if val := configTable.ShieldBase(); val != 0 { tmpl.ShieldBase = float64(val) }
-					if val := configTable.HullBase(); val != 0 { tmpl.HullBase = float64(val) }
-					if val := configTable.ShieldRegenRate(); val != 0 { tmpl.ShieldRegenRate = float64(val) }
-					if val := configTable.ShieldRechargeDelayTicks(); val != 0 { tmpl.ShieldRechargeDelayTicks = int(val) }
-					if val := configTable.ArmorMitigation(); val != 0 { tmpl.ArmorMitigation = float64(val) }
+					if val := configTable.ShieldBase(); val != 0 {
+						tmpl.ShieldBase = float64(val)
+					}
+					if val := configTable.HullBase(); val != 0 {
+						tmpl.HullBase = float64(val)
+					}
+					if val := configTable.ShieldRegenRate(); val != 0 {
+						tmpl.ShieldRegenRate = float64(val)
+					}
+					if val := configTable.ShieldRechargeDelayTicks(); val != 0 {
+						tmpl.ShieldRechargeDelayTicks = int(val)
+					}
+					if val := configTable.ArmorMitigation(); val != 0 {
+						tmpl.ArmorMitigation = float64(val)
+					}
 
 					// 4. AI & Sensors
-					if val := configTable.VisionRange(); val != 0 { tmpl.VisionRange = int(val) }
-					if val := configTable.SensorRange(); val != 0 { tmpl.SensorRange = float64(val) }
-					if val := configTable.AggroRange(); val != 0 { tmpl.AggroRange = float64(val) }
-					if val := configTable.RetreatMoraleThreshold(); val != 0 { tmpl.RetreatMoraleThreshold = float64(val) }
-					if val := configTable.SquadCohesionLeashRange(); val != 0 { tmpl.SquadCohesionLeashRange = float64(val) }
+					if val := configTable.VisionRange(); val != 0 {
+						tmpl.VisionRange = int(val)
+					}
+					if val := configTable.SensorRange(); val != 0 {
+						tmpl.SensorRange = float64(val)
+					}
+					if val := configTable.AggroRange(); val != 0 {
+						tmpl.AggroRange = float64(val)
+					}
+					if val := configTable.RetreatMoraleThreshold(); val != 0 {
+						tmpl.RetreatMoraleThreshold = float64(val)
+					}
+					if val := configTable.SquadCohesionLeashRange(); val != 0 {
+						tmpl.SquadCohesionLeashRange = float64(val)
+					}
 
 					// 5. Logistics & Special Systems
-					if val := configTable.ResourceHarvestingType(); val != 0 { tmpl.ResourceHarvestingType = int(val) }
-					if val := configTable.WarpCanisterCapacity(); val != 0 { tmpl.WarpCanisterCapacity = int(val) }
+					if val := configTable.ResourceHarvestingType(); val != 0 {
+						tmpl.ResourceHarvestingType = int(val)
+					}
+					if val := configTable.WarpCanisterCapacity(); val != 0 {
+						tmpl.WarpCanisterCapacity = int(val)
+					}
 					tmpl.PortDockingBayStatus = configTable.PortDockingBayStatus()
 					tmpl.StarboardDeploymentBayStatus = configTable.StarboardDeploymentBayStatus()
 					tmpl.SalvageableUponDestruction = configTable.SalvageableUponDestruction()
@@ -459,41 +542,77 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				// Hot-update any active unit instances currently alive in the room
 				for _, u := range r.units {
 					if u.Type == unitType {
-						if val := configTable.Speed(); val != 0 { u.Speed = math.Min(float64(val), 50.0) }
-						if val := configTable.StrafingSpeed(); val != 0 { u.StrafingSpeed = math.Min(float64(val), 50.0) }
-						if val := configTable.TurnRate(); val != 0 { u.TurnRate = math.Min(float64(val), 15.0) }
-						if val := configTable.AngularVelocity(); val != 0 { u.AngularVelocity = math.Min(float64(val), 15.0) }
-						if val := configTable.AccelerationCurve(); val != 0 { u.AccelerationCurve = math.Min(float64(val), 10.0) }
+						if val := configTable.Speed(); val != 0 {
+							u.Speed = math.Min(float64(val), 50.0)
+						}
+						if val := configTable.StrafingSpeed(); val != 0 {
+							u.StrafingSpeed = math.Min(float64(val), 50.0)
+						}
+						if val := configTable.TurnRate(); val != 0 {
+							u.TurnRate = math.Min(float64(val), 60.0)
+						}
+						if val := configTable.AngularVelocity(); val != 0 {
+							u.AngularVelocity = math.Min(float64(val), 15.0)
+						}
+						if val := configTable.AccelerationCurve(); val != 0 {
+							u.AccelerationCurve = math.Min(float64(val), 10.0)
+						}
 
-						if val := configTable.Dps(); val != 0 { u.DPS = float64(val) }
-						if val := configTable.MaxCooldown(); val != 0 { u.MaxCooldown = int(val) }
-						if val := configTable.ProjectileRange(); val != 0 { u.ProjectileRange = float64(val) }
-						if val := configTable.ProjectileSpeed(); val != 0 { u.ProjectileSpeed = float64(val) }
-						if val := configTable.MaxThermalCapacity(); val != 0 { u.MaxThermalCapacity = float64(val) }
+						if val := configTable.Dps(); val != 0 {
+							u.DPS = float64(val)
+						}
+						if val := configTable.MaxCooldown(); val != 0 {
+							u.MaxCooldown = int(val)
+						}
+						if val := configTable.ProjectileRange(); val != 0 {
+							u.ProjectileRange = float64(val)
+						}
+						if val := configTable.ProjectileSpeed(); val != 0 {
+							u.ProjectileSpeed = float64(val)
+						}
+						if val := configTable.MaxThermalCapacity(); val != 0 {
+							u.MaxThermalCapacity = float64(val)
+						}
 
-						if val := configTable.ShieldBase(); val != 0 { 
+						if val := configTable.ShieldBase(); val != 0 {
 							u.ShieldBase = float64(val)
 							u.Shields.Front = float64(val)
 							u.Shields.Rear = float64(val)
 							u.Shields.Port = float64(val)
 							u.Shields.Starboard = float64(val)
 						}
-						if val := configTable.HullBase(); val != 0 { 
+						if val := configTable.HullBase(); val != 0 {
 							u.HullBase = float64(val)
 							u.Hull.Front = float64(val)
 							u.Hull.Rear = float64(val)
 							u.Hull.Port = float64(val)
 							u.Hull.Starboard = float64(val)
 						}
-						if val := configTable.ShieldRegenRate(); val != 0 { u.ShieldRegenRate = float64(val) }
-						if val := configTable.ShieldRechargeDelayTicks(); val != 0 { u.ShieldRechargeDelayTicks = int(val) }
-						if val := configTable.ArmorMitigation(); val != 0 { u.ArmorMitigation = float64(val) }
+						if val := configTable.ShieldRegenRate(); val != 0 {
+							u.ShieldRegenRate = float64(val)
+						}
+						if val := configTable.ShieldRechargeDelayTicks(); val != 0 {
+							u.ShieldRechargeDelayTicks = int(val)
+						}
+						if val := configTable.ArmorMitigation(); val != 0 {
+							u.ArmorMitigation = float64(val)
+						}
 
-						if val := configTable.VisionRange(); val != 0 { u.VisionRange = int(val) }
-						if val := configTable.SensorRange(); val != 0 { u.SensorRange = float64(val) }
-						if val := configTable.AggroRange(); val != 0 { u.AggroRange = float64(val) }
-						if val := configTable.RetreatMoraleThreshold(); val != 0 { u.RetreatMoraleThreshold = float64(val) }
-						if val := configTable.SquadCohesionLeashRange(); val != 0 { u.SquadCohesionLeashRange = float64(val) }
+						if val := configTable.VisionRange(); val != 0 {
+							u.VisionRange = int(val)
+						}
+						if val := configTable.SensorRange(); val != 0 {
+							u.SensorRange = float64(val)
+						}
+						if val := configTable.AggroRange(); val != 0 {
+							u.AggroRange = float64(val)
+						}
+						if val := configTable.RetreatMoraleThreshold(); val != 0 {
+							u.RetreatMoraleThreshold = float64(val)
+						}
+						if val := configTable.SquadCohesionLeashRange(); val != 0 {
+							u.SquadCohesionLeashRange = float64(val)
+						}
 					}
 				}
 				log.Printf("⚙️ Applied binary WebSocket template override for: %s", unitType)
@@ -529,17 +648,25 @@ func (r *GameRoom) IsTargetVisibleToFaction(factionOwner string, target *models.
 }
 
 func (r *GameRoom) runAI() {
-	if r.isSandbox { return }
+	if r.isSandbox {
+		return
+	}
 
 	var ai *models.FleetUnit
 	var player *models.FleetUnit
 
 	for _, u := range r.units {
-		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "enemy" { ai = u }
-		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "player" { player = u }
+		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "enemy" {
+			ai = u
+		}
+		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "player" {
+			player = u
+		}
 	}
 
-	if ai == nil || player == nil || ai.IsDestroyed || player.IsDestroyed { return }
+	if ai == nil || player == nil || ai.IsDestroyed || player.IsDestroyed {
+		return
+	}
 
 	// Enforce radar telemetry: Enemy faction must have visual/radar contact to track and engage
 	if !r.IsTargetVisibleToFaction("enemy", player) {
@@ -564,8 +691,8 @@ func (r *GameRoom) runAI() {
 	if dist < 8000 && rand.Float64() < 0.025 {
 		reserves := []string{"viper_interceptor", "viper_interceptor", "lancer_corvette", "torpedo_bomber", "aegis_wall", "command_escort"}
 		choice := reserves[rand.Intn(len(reserves))]
-		spawnX := ai.Pos.X + (rand.Float64() - 0.5) * 300
-		spawnY := ai.Pos.Y + (rand.Float64() - 0.5) * 300
+		spawnX := ai.Pos.X + (rand.Float64()-0.5)*300
+		spawnY := ai.Pos.Y + (rand.Float64()-0.5)*300
 		r.spawnUnit(choice, "enemy", spawnX, spawnY, "SEEK")
 	}
 }
@@ -612,8 +739,10 @@ func (r *GameRoom) Run() {
 		r.runAI()
 		ProcessLogisticsLoops(r)
 
-		if deployDebounce > 0 { deployDebounce-- }
-		
+		if deployDebounce > 0 {
+			deployDebounce--
+		}
+
 		var flagship *models.FleetUnit = r.units["player-flagship"]
 		if flagship == nil || flagship.IsDestroyed {
 			for _, u := range r.units {
@@ -627,15 +756,17 @@ func (r *GameRoom) Run() {
 		if flagship != nil && !flagship.IsDestroyed && deployDebounce == 0 && len(r.deployQueue) > 0 {
 			toDeploy := r.deployQueue[0]
 			r.deployQueue = r.deployQueue[1:]
-			
-			if len(toDeploy) > 8 && toDeploy[:8] != "SANDBOX:" {
+
+			if !strings.HasPrefix(toDeploy, "SANDBOX:") {
 				r.spawnUnit(toDeploy, "player", flagship.Pos.X, flagship.Pos.Y-100, "GUARD")
-				deployDebounce = 8 
+				deployDebounce = 8
 			}
 		}
 
 		controlledID := r.lastInput.ControlledUnitID
-		if controlledID == "" { controlledID = "player-flagship" }
+		if controlledID == "" {
+			controlledID = "player-flagship"
+		}
 
 		for id, unit := range r.units {
 			if unit.IsDestroyed {
@@ -694,7 +825,9 @@ func (r *GameRoom) Run() {
 
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
 		for _, u := range r.units {
-			if u.IsDestroyed { continue }
+			if u.IsDestroyed {
+				continue
+			}
 			idOffset := builder.CreateString(u.ID)
 			typeOffset := builder.CreateString(u.Type)
 			ownerOffset := builder.CreateString(u.OwnerID)
