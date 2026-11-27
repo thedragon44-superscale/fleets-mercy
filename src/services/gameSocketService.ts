@@ -150,11 +150,13 @@ export class GameSocketService {
 
   // --- PURE BINARY UPSTREAM SENDERS ---
 
-  public sendInput = (actionParams: ClientInputParams) => {
+  public sendInput = (actionParams: ClientInputParams): boolean => {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const binaryPayload = serializeClientInput(actionParams);
       this.ws.send(binaryPayload);
+      return true;
     }
+    return false;
   };
 
   public updateUnitCount = (counts: SandboxCountItem[]) => {

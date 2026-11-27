@@ -29,6 +29,7 @@ type TDMRoom struct {
 	isGameOver      bool
 	winningFaction  string
 	lastInput       game.SandboxClientInput
+	lastInputAt     time.Time
 
 	fbBuilder   *flatbuffers.Builder
 	unitOffsets []flatbuffers.UOffsetT
@@ -98,6 +99,7 @@ func (r *TDMRoom) ResetMatch() {
 	r.isGameOver = false
 	r.winningFaction = ""
 	r.lastInput = game.SandboxClientInput{}
+	r.lastInputAt = time.Time{}
 
 	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType, r.customUnitPool)
 	log.Printf("⚔️ TDM Match Initialized: 20v20 Skirmish spawned. Piloted unit locked to ID: %s", r.pilotedUnitID)
@@ -199,6 +201,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.lastInput.D = clientInput.D()
 		r.lastInput.Angle = clientInput.Angle()
 		r.lastInput.IsFiring = clientInput.IsFiring()
+		r.lastInputAt = time.Now()
 		controlledID := string(clientInput.ControlledUnitId())
 		r.lastInput.ControlledUnitID = controlledID
 
@@ -211,6 +214,11 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				if candidate, ok := units[controlledID]; ok && candidate != nil && !candidate.IsDestroyed && candidate.OwnerID == "player" {
 					r.pilotedUnitID = controlledID
 					candidate.CurrentAngularVel = 0
+					r.lastInput.W = false
+					r.lastInput.S = false
+					r.lastInput.A = false
+					r.lastInput.D = false
+					r.lastInput.IsFiring = false
 					log.Printf("🔄 TDM Pilot transferred to surviving ally: %s (%s)", candidate.ID, candidate.Type)
 				}
 			}
@@ -243,6 +251,17 @@ func (r *TDMRoom) Run() {
 
 		arenaW, arenaH := r.GetArenaSize()
 
+		// Watchdog: while any movement/fire input is held, the client streams heartbeats ~60Hz.
+		// If no input packet arrives for >500ms, clear latched keys so runaway thrust is impossible.
+		if (r.lastInput.W || r.lastInput.S || r.lastInput.A || r.lastInput.D || r.lastInput.IsFiring) &&
+			!r.lastInputAt.IsZero() && time.Since(r.lastInputAt) > 500*time.Millisecond {
+			r.lastInput.W = false
+			r.lastInput.S = false
+			r.lastInput.A = false
+			r.lastInput.D = false
+			r.lastInput.IsFiring = false
+		}
+
 		// 2. Run Game Physics & AI Simulation Loops
 		if !r.isGameOver {
 			if envW := r.GetEnvWorld(); envW != nil {
@@ -254,6 +273,10 @@ func (r *TDMRoom) Run() {
 				if unit.IsDestroyed {
 					if id == r.pilotedUnitID {
 						r.pilotedUnitID = ""
+						r.lastInput.W = false
+						r.lastInput.S = false
+						r.lastInput.A = false
+						r.lastInput.D = false
 						r.lastInput.IsFiring = false
 					}
 					delete(units, id)

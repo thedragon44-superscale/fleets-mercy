@@ -80,8 +80,8 @@ export const useGameSocket = (serverUrl: string) => {
     return serviceRef.current?.consumeLatestSnapshot() ?? null;
   }, []);
 
-  const sendInput = useCallback((params: ClientInputParams) => {
-    serviceRef.current?.sendInput(params);
+  const sendInput = useCallback((params: ClientInputParams): boolean => {
+    return serviceRef.current?.sendInput(params) ?? false;
   }, []);
 
   const updateUnitCount = useCallback((counts: SandboxCountItem[]) => {

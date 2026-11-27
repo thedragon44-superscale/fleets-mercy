@@ -148,19 +148,19 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
       if (!unit) {
         const hadPreviousPilot = pilotedIdRef.current !== null;
-        if (!hadPreviousPilot) {
-          unit =
-            units.find(
-              (u) => u.ownerId === 'player' && u.id.startsWith('tdm-pilot-') && !u.isDestroyed
-            ) || findNearestAlly(units, renderPosRef.current.x, renderPosRef.current.y);
-        } else {
-          unit = findNearestAlly(units, renderPosRef.current.x, renderPosRef.current.y);
-        }
+        // Always prefer the authoritative server-designated tdm-pilot-* unit if it is alive
+        // so match resets can never latch onto an AI-controlled ally.
+        const designatedPilot = units.find(
+          (u) => u.ownerId === 'player' && u.id.startsWith('tdm-pilot-') && !u.isDestroyed
+        );
+        unit =
+          designatedPilot ||
+          findNearestAlly(units, renderPosRef.current.x, renderPosRef.current.y);
 
         const nextId = unit ? unit.id : null;
         if (pilotedIdRef.current !== nextId) {
           pilotedIdRef.current = nextId;
-          if (!hadPreviousPilot) {
+          if (!hadPreviousPilot || designatedPilot) {
             isInitializedRef.current = false;
           } else if (unit) {
             renderPosRef.current = { x: unit.pos.x, y: unit.pos.y };
@@ -185,7 +185,9 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
             currentId: payload.currentId || null,
           })
         );
+        return true;
       }
+      return false;
     },
     onCustomKeyDown: (e) => {
       if (!e.repeat && e.key.toLowerCase() === 'r') {
@@ -638,6 +640,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
       pilotedIdRef.current = null;
       pendingPilotSyncRef.current = false;
       transferNoticeRef.current = null;
+      pendingBufferRef.current = null;
+      snapshotRef.current = null;
       serverHistoryRef.current = [];
       isInitializedRef.current = false;
       clearInputs();
@@ -649,10 +653,12 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     <div
       ref={containerRef}
       className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none"
+      onContextMenu={(e) => e.preventDefault()}
     >
       <canvas
         ref={canvasRef}
         onWheel={handleCanvasWheel}
+        onContextMenu={(e) => e.preventDefault()}
         className="w-full h-full block cursor-crosshair"
       />
 

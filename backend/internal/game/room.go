@@ -72,6 +72,7 @@ type GameRoom struct {
 	units       map[string]*models.FleetUnit
 	projectiles []models.Projectile
 	lastInput   ClientStateInput
+	lastInputAt time.Time
 	tick        uint64
 	idCounter   uint64
 
@@ -171,6 +172,7 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	r.lastInput = ClientStateInput{}
+	r.lastInputAt = time.Time{}
 	r.tickAccumulator = 0
 }
 
@@ -399,6 +401,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			r.lastInput.D = clientInput.D()
 			r.lastInput.Angle = clientInput.Angle()
 			r.lastInput.IsFiring = clientInput.IsFiring()
+			r.lastInputAt = time.Now()
 		}
 		if clientInput.Reset() {
 			r.lastInput.Reset = true
@@ -712,6 +715,17 @@ func (r *GameRoom) Run() {
 			r.lastInput.Reset = false
 			r.mu.Unlock()
 			continue
+		}
+
+		// Watchdog: clear latched keys if client heartbeats stop for >500ms while unpaused.
+		if !r.isPaused &&
+			(r.lastInput.W || r.lastInput.S || r.lastInput.A || r.lastInput.D || r.lastInput.IsFiring) &&
+			!r.lastInputAt.IsZero() && time.Since(r.lastInputAt) > 500*time.Millisecond {
+			r.lastInput.W = false
+			r.lastInput.S = false
+			r.lastInput.A = false
+			r.lastInput.D = false
+			r.lastInput.IsFiring = false
 		}
 
 		// Determine simulation steps for this 16ms frame (supports sandbox pause & 0.25x-2.0x scaling)

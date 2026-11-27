@@ -13,6 +13,14 @@ const CODE_TO_FLIGHT_KEY: Record<string, 'w' | 'a' | 's' | 'd'> = {
   KeyD: 'd',
 };
 
+const resolveFlightKey = (e: KeyboardEvent): 'w' | 'a' | 's' | 'd' | undefined => {
+  const byCode = CODE_TO_FLIGHT_KEY[e.code];
+  if (byCode) return byCode;
+  const k = e.key?.toLowerCase();
+  if (k === 'w' || k === 'a' || k === 's' || k === 'd') return k;
+  return undefined;
+};
+
 export interface FlightInputPayload {
   keys: { [key: string]: boolean };
   angle: number;
@@ -29,8 +37,8 @@ interface UseFlightControlsOptions {
   canControl?: boolean;
   /** Resolves the active piloted unit from the current snapshot */
   resolvePilotedUnit: (units: SnapshotUnit[]) => SnapshotUnit | undefined;
-  /** Transport callback (useGameSocket.sendInput or TDM WebSocket sender) */
-  onSendInput: (payload: FlightInputPayload) => void;
+  /** Transport callback (useGameSocket.sendInput or TDM WebSocket sender). Return false if socket not open. */
+  onSendInput: (payload: FlightInputPayload) => boolean | void;
   /** Optional mode-specific hotkeys (return true to consume the event) */
   onCustomKeyDown?: (e: KeyboardEvent) => boolean | void;
 }
@@ -146,7 +154,7 @@ export const useFlightControls = ({
       }
 
       onSendInputRef.current({
-        keys: activeControl ? keysRef.current : {},
+        keys: activeControl ? { ...keysRef.current } : {},
         angle,
         isFiring: activeControl && isFiringRef.current && !!unit,
         currentId: unit?.id || '',
@@ -196,18 +204,21 @@ export const useFlightControls = ({
         currentTime - lastSendTimeRef.current >= INPUT_SEND_INTERVAL_MS;
 
       if (immediateFlush || periodicSend) {
-        inputDirtyRef.current = false;
-        mouseDirtyRef.current = false;
-        lastSendTimeRef.current = currentTime;
-        lastSentUnitIdRef.current = unit?.id || '';
-
         const angle = computeAimAngle(unit);
-        onSendInputRef.current({
-          keys: activeControl ? keysRef.current : {},
+        const sent = onSendInputRef.current({
+          keys: activeControl ? { ...keysRef.current } : {},
           angle,
           isFiring: activeControl && isFiringRef.current && !!unit,
           currentId: unit?.id || '',
         });
+
+        // Only clear dirty flags if the socket actually accepted the packet
+        if (sent !== false) {
+          inputDirtyRef.current = false;
+          mouseDirtyRef.current = false;
+          lastSendTimeRef.current = currentTime;
+          lastSentUnitIdRef.current = unit?.id || '';
+        }
       }
 
       return unit;
@@ -235,7 +246,7 @@ export const useFlightControls = ({
         return;
       }
 
-      const flightKey = CODE_TO_FLIGHT_KEY[e.code];
+      const flightKey = resolveFlightKey(e);
       if (flightKey && !keysRef.current[flightKey]) {
         keysRef.current[flightKey] = true;
         inputDirtyRef.current = true;
@@ -244,7 +255,7 @@ export const useFlightControls = ({
 
     const onKeyUp = (e: KeyboardEvent) => {
       // Never swallow keyup for already-held flight keys even if focus moved into an input
-      if (e.code === 'Space') {
+      if (e.code === 'Space' || e.key === ' ') {
         if (isFiringRef.current) {
           isFiringRef.current = false;
           inputDirtyRef.current = true;
@@ -252,7 +263,7 @@ export const useFlightControls = ({
         return;
       }
 
-      const flightKey = CODE_TO_FLIGHT_KEY[e.code];
+      const flightKey = resolveFlightKey(e);
       if (flightKey && keysRef.current[flightKey]) {
         keysRef.current[flightKey] = false;
         inputDirtyRef.current = true;
@@ -291,20 +302,34 @@ export const useFlightControls = ({
       clearInputs();
     };
 
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        clearInputs();
+      }
+    };
+
+    const onContextMenu = () => {
+      clearInputs();
+    };
+
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('blur', onBlur);
+    window.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('blur', onBlur);
+      window.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [canvasRef, clearInputs]);
 
