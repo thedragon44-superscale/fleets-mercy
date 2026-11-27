@@ -20,8 +20,8 @@ const (
 	spGameMode          = "space_pirates"
 	defaultTableID      = "sp-table-1"
 	payoutEventTTLTicks = 12 // ~200ms at 60Hz; clients deduplicate by event_id
-	dbWriteBufferSize   = 256
-	clientSendQueueSize = 4
+	dbWriteBufferSize   = 1024
+	clientSendQueueSize = 1
 )
 
 var spUpgrader = websocket.Upgrader{
@@ -65,15 +65,42 @@ func HandleTableWS(w http.ResponseWriter, req *http.Request) {
 // --- INTERNAL TYPES ---
 
 type spClient struct {
-	conn      *websocket.Conn
-	send      chan []byte
-	closeOnce sync.Once
+	conn   *websocket.Conn
+	mu     sync.Mutex
+	send   chan []byte
+	closed bool
+}
+
+// enqueue delivers payload using head-drop (latest-frame-wins) semantics so slow LAN links
+// never build up stale frames and concurrent closeSend() can never panic on a closed channel.
+func (c *spClient) enqueue(payload []byte) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	select {
+	case c.send <- payload:
+	default:
+		select {
+		case <-c.send:
+		default:
+		}
+		select {
+		case c.send <- payload:
+		default:
+		}
+	}
+	c.mu.Unlock()
 }
 
 func (c *spClient) closeSend() {
-	c.closeOnce.Do(func() {
+	c.mu.Lock()
+	if !c.closed {
+		c.closed = true
 		close(c.send)
-	})
+	}
+	c.mu.Unlock()
 }
 
 func (c *spClient) writePump() {
@@ -219,9 +246,12 @@ func (r *SpacePiratesRoom) enqueueDBOp(op dbWriteOp) {
 	select {
 	case r.dbWriteCh <- op:
 	default:
-		// Channel saturated — fall back to a goroutine so no ledger/session write is silently dropped.
-		log.Printf("⚠️ SpacePirates[%s] dbWriteCh full; dispatching async fallback for op=%d", r.tableID, op.kind)
-		go r.executeDBOp(op)
+		// Channel saturated — queue asynchronously back into dbWriteCh so single-writer
+		// FIFO ordering in dbWriterLoop is preserved without blocking the 60Hz tick.
+		log.Printf("⚠️ SpacePirates[%s] dbWriteCh full; queuing async handoff for op=%d", r.tableID, op.kind)
+		go func(pending dbWriteOp) {
+			r.dbWriteCh <- pending
+		}(op)
 	}
 }
 
@@ -717,7 +747,13 @@ func (r *SpacePiratesRoom) stepTick() {
 	// 9. Advance payout event TTLs and collect active events for snapshot
 	activePayouts := r.collectPayoutEventsLocked()
 
-	// 10. Serialize pure binary FlatBuffers snapshot & broadcast non-blockingly
+	// Skip FlatBuffers encoding & broadcast when no clients are connected
+	if len(r.clients) == 0 {
+		r.mu.Unlock()
+		return
+	}
+
+	// 10. Serialize pure binary FlatBuffers snapshot, release lock, then fan out non-blockingly
 	snap := ServerStateSnapshot{
 		Tick:                     r.tick,
 		TableID:                  r.tableID,
@@ -733,14 +769,15 @@ func (r *SpacePiratesRoom) stepTick() {
 	}
 	frame := r.codec.EncodeServerState(snap)
 
+	clients := make([]*spClient, 0, len(r.clients))
 	for c := range r.clients {
-		select {
-		case c.send <- frame:
-		default:
-			// Drop stale frame for lagging client so 60Hz never blocks
-		}
+		clients = append(clients, c)
 	}
 	r.mu.Unlock()
+
+	for _, c := range clients {
+		c.enqueue(frame)
+	}
 }
 
 // --- HOUSE SPAWNERS & BOSS METER ---

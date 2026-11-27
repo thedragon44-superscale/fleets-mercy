@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"space-tactics-server/internal/game"
+	"space-tactics-server/internal/game/envphysics"
 	SpaceTactics "space-tactics-server/internal/generated/SpaceTactics"
 	"space-tactics-server/internal/models"
 
@@ -74,11 +75,20 @@ func (r *TDMRoom) Stop() {
 }
 
 func (r *TDMRoom) LoadMapStructures() {
+	r.mu.Lock()
 	targetMapID := r.GetMapID()
 	if targetMapID == 0 {
-		r.SetMapID(1)
+		targetMapID = 1
+		r.SetMapID(targetMapID)
 	}
-	r.ReloadMapStructures()
+	r.mu.Unlock()
+
+	// Load authored map from PostgreSQL outside r.mu so the 60Hz tick is never stalled.
+	nextWorld := envphysics.NewAuthoredWorld(targetMapID)
+
+	r.mu.Lock()
+	r.SetEnvWorld(nextWorld)
+	r.mu.Unlock()
 }
 
 func (r *TDMRoom) ResetMatch() {
@@ -107,6 +117,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	needsReset := len(r.GetUnits()) == 0
 	mapChanged := false
+	targetMapID := r.GetMapID()
 
 	if unitType := query.Get("unit"); unitType != "" && unitType != r.pilotedUnitType {
 		r.pilotedUnitType = unitType
@@ -120,6 +131,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		if parsedMap, err := strconv.Atoi(mapStr); err == nil && parsedMap > 0 {
 			if parsedMap != r.GetMapID() {
 				r.SetMapID(parsedMap)
+				targetMapID = parsedMap
 				mapChanged = true
 				needsReset = true
 			}
@@ -132,9 +144,17 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			needsReset = true
 		}
 	}
+	r.mu.Unlock()
 
+	// Perform any PostgreSQL map reload outside r.mu so the 60Hz tick is never blocked.
+	var nextWorld *envphysics.World
 	if mapChanged {
-		r.ReloadMapStructures()
+		nextWorld = envphysics.NewAuthoredWorld(targetMapID)
+	}
+
+	r.mu.Lock()
+	if nextWorld != nil {
+		r.SetEnvWorld(nextWorld)
 	}
 	if needsReset {
 		r.ResetMatch()

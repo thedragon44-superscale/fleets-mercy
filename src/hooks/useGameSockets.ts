@@ -15,27 +15,60 @@ export const useGameSocket = (serverUrl: string) => {
   const [tickMs, setTickMs] = useState<number>(16.0);
 
   useEffect(() => {
+    let closedByCleanup = false;
+    let uiDirty = false;
+    let urgentTimer: number | null = null;
+
     latestStateRef.current = null;
     lastUiSyncRef.current = 0;
     lastUnitCountRef.current = -1;
     setUiState(null);
 
+    const flushUi = (svc: GameSocketService) => {
+      if (closedByCleanup) return;
+      const snap = latestStateRef.current;
+      if (!snap) return;
+      uiDirty = false;
+      lastUiSyncRef.current = performance.now();
+      lastUnitCountRef.current = snap.units.length;
+      setUiState(snap);
+      setTickMs(svc.getTickMs());
+    };
+
     const svc = new GameSocketService(serverUrl, (snap) => {
+      if (closedByCleanup) return;
       latestStateRef.current = snap;
 
-      const now = performance.now();
+      // Never trigger React setState synchronously inside the 60Hz render loop.
       const unitCount = snap.units.length;
       const urgent = lastUnitCountRef.current !== unitCount || lastUiSyncRef.current === 0;
-      if (urgent || now - lastUiSyncRef.current >= UI_SYNC_INTERVAL_MS) {
-        lastUiSyncRef.current = now;
-        lastUnitCountRef.current = unitCount;
-        setUiState(snap);
-        setTickMs(svc.getTickMs());
+      if (urgent) {
+        if (urgentTimer === null) {
+          urgentTimer = window.setTimeout(() => {
+            urgentTimer = null;
+            flushUi(svc);
+          }, 0);
+        }
+      } else {
+        uiDirty = true;
       }
     });
     serviceRef.current = svc;
 
+    const uiIntervalId = window.setInterval(() => {
+      if (closedByCleanup) return;
+      if (uiDirty) {
+        flushUi(svc);
+      }
+    }, UI_SYNC_INTERVAL_MS);
+
     return () => {
+      closedByCleanup = true;
+      window.clearInterval(uiIntervalId);
+      if (urgentTimer !== null) {
+        window.clearTimeout(urgentTimer);
+        urgentTimer = null;
+      }
       svc.close();
       if (serviceRef.current === svc) {
         serviceRef.current = null;

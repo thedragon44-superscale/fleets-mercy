@@ -1,6 +1,7 @@
 // src/hooks/useFlightControls.ts
 import { useEffect, useRef, useCallback } from 'react';
 import { SnapshotUnit } from '../parsers/binaryCodec';
+import { screenToWorld } from '../renderer/viewportCamera';
 
 const DEADZONE_RADIUS = 35.0;
 const INPUT_SEND_INTERVAL_MS = 16; // ~60Hz
@@ -87,10 +88,7 @@ export const useFlightControls = ({
       const z = zoomRef?.current ?? 1.0;
       const cssW = canvas.clientWidth || canvas.width;
       const cssH = canvas.clientHeight || canvas.height;
-      return {
-        x: (cx - cssW / 2) / z + cam.x,
-        y: (cy - cssH / 2) / z + cam.y,
-      };
+      return screenToWorld(cx, cy, { mode: 'camera', x: cam.x, y: cam.y, zoom: z }, cssW, cssH);
     },
     [canvasRef, cameraPosRef, zoomRef]
   );

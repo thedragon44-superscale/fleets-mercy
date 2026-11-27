@@ -58,6 +58,7 @@ function seatsChangedSignificantly(prev: SPSeatSnapshot[], next: SPSeatSnapshot[
 export interface UseSpacePiratesSocketResult {
   status: SPConnectionStatus;
   latestStateRef: React.MutableRefObject<SPServerStateSnapshot | null>;
+  consumeLatestSnapshot: () => SPServerStateSnapshot | null;
   hud: SPHudState;
   mySeat: SPSeatSnapshot | null;
   joinSeat: (playerId: number, seatIndex?: number) => void;
@@ -71,55 +72,109 @@ export function useSpacePiratesSocket(
   playerId: number
 ): UseSpacePiratesSocketResult {
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingBufferRef = useRef<ArrayBuffer | null>(null);
   const latestStateRef = useRef<SPServerStateSnapshot | null>(null);
   const lastHudSyncMsRef = useRef<number>(0);
   const lastHudSnapshotRef = useRef<SPHudState>(INITIAL_HUD);
+  const hudDirtyRef = useRef<boolean>(false);
+  const urgentTimerRef = useRef<number | null>(null);
+  const tableIdRef = useRef<string>(tableId);
+  tableIdRef.current = tableId;
 
   const [status, setStatus] = useState<SPConnectionStatus>('connecting');
   const [hud, setHud] = useState<SPHudState>({ ...INITIAL_HUD, tableId });
 
+  const syncHudFromDecoded = useCallback((decoded: SPServerStateSnapshot, force = false) => {
+    const now = performance.now();
+    const prev = lastHudSnapshotRef.current;
+    const urgentChange =
+      prev.bossActive !== decoded.bossActive ||
+      prev.bossMeterCurrent !== decoded.bossMeterCurrent ||
+      seatsChangedSignificantly(prev.seats, decoded.seats);
+
+    if (!force && !urgentChange && now - lastHudSyncMsRef.current < 150) {
+      hudDirtyRef.current = true;
+      return;
+    }
+
+    hudDirtyRef.current = false;
+    const nextHud: SPHudState = {
+      tick: decoded.tick,
+      tableId: decoded.tableId || tableIdRef.current,
+      arenaWidth: decoded.arenaWidth,
+      arenaHeight: decoded.arenaHeight,
+      seats: decoded.seats,
+      bossMeterCurrent: decoded.bossMeterCurrent,
+      bossMeterThreshold: decoded.bossMeterThreshold,
+      bossActive: decoded.bossActive,
+      bossEscapeTicksRemaining: decoded.bossEscapeTicksRemaining,
+    };
+    lastHudSyncMsRef.current = now;
+    lastHudSnapshotRef.current = nextHud;
+    setHud(nextHud);
+  }, []);
+
+  /**
+   * Single-consumer pull decoder invoked at the top of the viewport's render tick.
+   * Eliminates competing double-rAF loops while keeping HUD React updates deferred off the render frame.
+   */
+  const consumeLatestSnapshot = useCallback((): SPServerStateSnapshot | null => {
+    const buf = pendingBufferRef.current;
+    if (!buf) return latestStateRef.current;
+    pendingBufferRef.current = null;
+
+    const decoded = decodeSPServerState(buf);
+    if (!decoded) return latestStateRef.current;
+
+    latestStateRef.current = decoded;
+
+    const prev = lastHudSnapshotRef.current;
+    const urgentChange =
+      prev.bossActive !== decoded.bossActive ||
+      prev.bossMeterCurrent !== decoded.bossMeterCurrent ||
+      seatsChangedSignificantly(prev.seats, decoded.seats);
+
+    if (urgentChange) {
+      if (urgentTimerRef.current === null) {
+        urgentTimerRef.current = window.setTimeout(() => {
+          urgentTimerRef.current = null;
+          if (latestStateRef.current) {
+            syncHudFromDecoded(latestStateRef.current, true);
+          }
+        }, 0);
+      }
+    } else {
+      hudDirtyRef.current = true;
+    }
+
+    return decoded;
+  }, [syncHudFromDecoded]);
+
   useEffect(() => {
     let closedByCleanup = false;
     let reconnectTimer: number | null = null;
-    let pendingBuffer: ArrayBuffer | null = null;
-    let decodeRafId: number | null = null;
+    pendingBufferRef.current = null;
+    latestStateRef.current = null;
+    hudDirtyRef.current = false;
+    lastHudSyncMsRef.current = 0;
 
-    const flushPendingBuffer = () => {
-      decodeRafId = null;
-      const buf = pendingBuffer;
-      if (!buf || closedByCleanup) return;
-      pendingBuffer = null;
-
-      const decoded = decodeSPServerState(buf);
-      if (!decoded) return;
-
-      // Always update 60Hz canvas ref immediately (zero React overhead)
-      latestStateRef.current = decoded;
-
-      const now = performance.now();
-      const prev = lastHudSnapshotRef.current;
-      const urgentChange =
-        prev.bossActive !== decoded.bossActive ||
-        prev.bossMeterCurrent !== decoded.bossMeterCurrent ||
-        seatsChangedSignificantly(prev.seats, decoded.seats);
-
-      if (urgentChange || now - lastHudSyncMsRef.current >= 120) {
-        const nextHud: SPHudState = {
-          tick: decoded.tick,
-          tableId: decoded.tableId || tableId,
-          arenaWidth: decoded.arenaWidth,
-          arenaHeight: decoded.arenaHeight,
-          seats: decoded.seats,
-          bossMeterCurrent: decoded.bossMeterCurrent,
-          bossMeterThreshold: decoded.bossMeterThreshold,
-          bossActive: decoded.bossActive,
-          bossEscapeTicksRemaining: decoded.bossEscapeTicksRemaining,
-        };
-        lastHudSyncMsRef.current = now;
-        lastHudSnapshotRef.current = nextHud;
-        setHud(nextHud);
+    // Low-frequency HUD sync & fallback decoder when the viewport hasn't started ticking yet
+    const hudIntervalId = window.setInterval(() => {
+      if (closedByCleanup) return;
+      if (pendingBufferRef.current) {
+        const buf = pendingBufferRef.current;
+        pendingBufferRef.current = null;
+        const decoded = decodeSPServerState(buf);
+        if (decoded) {
+          latestStateRef.current = decoded;
+          syncHudFromDecoded(decoded, true);
+          return;
+        }
       }
-    };
+      if (hudDirtyRef.current && latestStateRef.current) {
+        syncHudFromDecoded(latestStateRef.current, false);
+      }
+    }, 150);
 
     const connect = () => {
       if (closedByCleanup) return;
@@ -131,7 +186,7 @@ export function useSpacePiratesSocket(
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (closedByCleanup) {
+        if (closedByCleanup || wsRef.current !== ws) {
           ws.close();
           return;
         }
@@ -139,16 +194,14 @@ export function useSpacePiratesSocket(
       };
 
       ws.onmessage = (event: MessageEvent) => {
+        if (closedByCleanup || wsRef.current !== ws) return;
         if (!(event.data instanceof ArrayBuffer)) return;
-        // Latest-frame coalescing: drop stale queued packets before decoding
-        pendingBuffer = event.data;
-        if (decodeRafId === null) {
-          decodeRafId = window.requestAnimationFrame(flushPendingBuffer);
-        }
+        // O(1) latest-frame coalescing; decoded once per render tick by consumeLatestSnapshot()
+        pendingBufferRef.current = event.data;
       };
 
       ws.onerror = () => {
-        if (!closedByCleanup) {
+        if (!closedByCleanup && wsRef.current === ws) {
           setStatus('error');
         }
       };
@@ -168,10 +221,11 @@ export function useSpacePiratesSocket(
 
     return () => {
       closedByCleanup = true;
-      pendingBuffer = null;
-      if (decodeRafId !== null) {
-        window.cancelAnimationFrame(decodeRafId);
-        decodeRafId = null;
+      pendingBufferRef.current = null;
+      window.clearInterval(hudIntervalId);
+      if (urgentTimerRef.current !== null) {
+        window.clearTimeout(urgentTimerRef.current);
+        urgentTimerRef.current = null;
       }
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
@@ -185,7 +239,7 @@ export function useSpacePiratesSocket(
         wsRef.current = null;
       }
     };
-  }, [tableId]);
+  }, [tableId, syncHudFromDecoded]);
 
   const sendBinary = useCallback((payload: Uint8Array<ArrayBuffer>) => {
     const ws = wsRef.current;
@@ -225,6 +279,7 @@ export function useSpacePiratesSocket(
   return {
     status,
     latestStateRef,
+    consumeLatestSnapshot,
     hud,
     mySeat,
     joinSeat,

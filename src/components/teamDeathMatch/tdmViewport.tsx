@@ -1,6 +1,5 @@
 // src/components/teamDeathMatch/tdmViewport.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { Application, Container, Graphics } from 'pixi.js';
 import { WS_BASE_URL } from '../../config';
 import {
   unpackServerBinaryMessage,
@@ -11,18 +10,14 @@ import {
 import { fetchMapDetail, MapDefinition } from '../../services/mapService';
 import { useUnitTemplates } from '../../hooks/useUnitTemplates';
 import { useFlightControls } from '../../hooks/useFlightControls';
-import {
-  PixiUnitSpriteLayer,
-  SpriteSyncItem,
-  getPixiUnitSize,
-  getPixiUnitTexture,
-  loadPixiUnitTextures,
-} from '../../renderer/pixiSprites';
-import {
-  PixiEnvLayer,
-  drawPixiDashedCircle,
-  drawPixiShieldArcs,
-} from '../../renderer/pixiEnvRenderer';
+import { Canvas2DRenderer } from '../../renderer/canvas2dRenderer';
+import { getUnitSpriteSize } from '../../renderer/spriteRegistry';
+import type {
+  RenderProjectile,
+  RenderUnit,
+  ViewportFrameState,
+  ViewportRenderer,
+} from '../../renderer/viewportRenderer';
 import { drawEnvObjectsOnRadar } from '../../utils/envRenderer';
 import { getInterpolatedUnits } from '../../renderer/interpolation';
 import { TacticalRadar } from '../common/TacticalRadar';
@@ -215,6 +210,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
   // Connect to TDM WebSocket (O(1) latest-frame coalescing in ws.onmessage)
   useEffect(() => {
+    let closedByCleanup = false;
     pilotedIdRef.current = null;
     pendingPilotSyncRef.current = false;
     transferNoticeRef.current = null;
@@ -234,10 +230,15 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (closedByCleanup || wsRef.current !== ws) {
+        ws.close();
+        return;
+      }
       setIsConnected(true);
     };
 
     ws.onmessage = (event) => {
+      if (closedByCleanup || wsRef.current !== ws) return;
       if (event.data instanceof ArrayBuffer) {
         // Coalesce: keep only the newest binary frame; decode once per render tick
         pendingBufferRef.current = event.data;
@@ -245,445 +246,373 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     };
 
     ws.onclose = () => {
-      setIsConnected(false);
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
+      if (!closedByCleanup) {
+        setIsConnected(false);
+      }
     };
 
     return () => {
+      closedByCleanup = true;
       pendingBufferRef.current = null;
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
       ws.close();
     };
   }, [mapId, pilotedUnit, customPool, clearInputs]);
 
-  // Pixi.js v8 WebGL 60Hz Render & Input Loop (Cached EnvObjects + Pooled Sprites + Throttled Radar)
+  // Swappable ViewportRenderer (Canvas2DRenderer) — Single 60Hz rAF loop, zero WebGL context loss
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
     let destroyed = false;
-    let initialized = false;
-    let resizeObserver: ResizeObserver | null = null;
-    const app = new Application();
+    let rafId = 0;
+    let viewW = 1;
+    let viewH = 1;
 
-    (async () => {
+    const renderer: ViewportRenderer = new Canvas2DRenderer();
+    renderer.init(canvas, { backgroundColor: '#050811' });
+
+    const syncSize = () => {
+      if (destroyed) return;
+      const r = container.getBoundingClientRect();
+      viewW = Math.max(1, Math.floor(r.width));
+      viewH = Math.max(1, Math.floor(r.height));
+      renderer.resize(viewW, viewH);
+    };
+    syncSize();
+    const resizeObserver = new ResizeObserver(syncSize);
+    resizeObserver.observe(container);
+
+    // Preallocated scratch structures
+    const liveUnitMap = new Map<string, SnapshotUnit>();
+
+    let lastRadarDrawMs = 0;
+    let lastErrLogMs = 0;
+    let lastTime = performance.now();
+    let lastHudSyncTime = lastTime;
+    let lastSyncedNotice = '';
+    let fpsAvg = 60;
+
+    const renderLoop = () => {
+      if (destroyed) return;
+      rafId = requestAnimationFrame(renderLoop);
+
       try {
-        const rect = container.getBoundingClientRect();
-        const initW = Math.max(1, Math.floor(rect.width));
-        const initH = Math.max(1, Math.floor(rect.height));
+        const currentTime = performance.now();
+        const rawDt = (currentTime - lastTime) / 1000;
+        const dt = Math.min(Math.max(rawDt, 0.001), 0.1);
+        lastTime = currentTime;
 
-        await app.init({
-          canvas,
-          width: initW,
-          height: initH,
-          background: 0x050811,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
-          autoDensity: true,
-          antialias: true,
-          roundPixels: false,
-        });
-
-        if (destroyed) {
-          app.destroy(false, { children: true, texture: false, textureSource: false });
-          return;
+        if (rawDt > 0 && rawDt < 0.5) {
+          fpsAvg = fpsAvg * 0.92 + (1 / rawDt) * 0.08;
         }
-        initialized = true;
+        const currentFps = Math.max(1, Math.round(fpsAvg));
 
-        loadPixiUnitTextures();
-
-        const worldContainer = new Container();
-        const gridGfx = new Graphics();
-        const envLayer = new PixiEnvLayer();
-        const unitBackGfx = new Graphics();
-        const unitSprites = new PixiUnitSpriteLayer();
-        const unitFrontGfx = new Graphics();
-
-        worldContainer.addChild(
-          gridGfx,
-          envLayer.softContainer,
-          envLayer.dynamicGfx,
-          envLayer.solidContainer,
-          unitBackGfx,
-          unitSprites.container,
-          unitFrontGfx
-        );
-
-        app.stage.addChild(worldContainer);
-
-        // Preallocated scratch structures
-        const liveUnitMap = new Map<string, SnapshotUnit>();
-        const spriteItems: SpriteSyncItem[] = [];
-
-        let cachedGridW = 0;
-        let cachedGridH = 0;
-        let lastRadarDrawMs = 0;
-        let lastErrLogMs = 0;
-
-        const syncSize = () => {
-          if (destroyed) return;
-          const r = container.getBoundingClientRect();
-          const w = Math.max(1, Math.floor(r.width));
-          const h = Math.max(1, Math.floor(r.height));
-          if (app.screen.width !== w || app.screen.height !== h) {
-            app.renderer.resize(w, h);
-          }
-        };
-        syncSize();
-        resizeObserver = new ResizeObserver(syncSize);
-        resizeObserver.observe(container);
-
-        let lastTime = performance.now();
-        let lastHudSyncTime = lastTime;
-        let lastSyncedNotice = '';
-        let fpsAvg = 60;
-
-        app.ticker.add(() => {
-          try {
-            const currentTime = performance.now();
-            const rawDt = (currentTime - lastTime) / 1000;
-            const dt = Math.min(Math.max(rawDt, 0.001), 0.1);
-            lastTime = currentTime;
-
-            if (rawDt > 0 && rawDt < 0.5) {
-              fpsAvg = fpsAvg * 0.92 + (1 / rawDt) * 0.08;
-            }
-            const currentFps = Math.max(1, Math.round(fpsAvg));
-
-            // 0. Decode ONLY the latest arrived binary frame (drops any stale queued packets)
-            const pendingBuf = pendingBufferRef.current;
-            if (pendingBuf) {
-              pendingBufferRef.current = null;
-              const parsedState = unpackServerBinaryMessage(pendingBuf);
-              if (parsedState) {
-                snapshotRef.current = parsedState;
-                if (!parsedState.units || parsedState.units.length === 0) {
-                  serverHistoryRef.current = [];
-                  isInitializedRef.current = false;
-                } else {
-                  serverHistoryRef.current.push({
-                    timestamp: currentTime,
-                    units: parsedState.units,
-                  });
-                  if (serverHistoryRef.current.length > 20) {
-                    serverHistoryRef.current.shift();
-                  }
-                }
-              }
-            }
-
-            const snapshot = snapshotRef.current;
-            if (!snapshot) return;
-
-            const mapDetails = mapDetailsRef.current;
-            const mapW = snapshot.mapBounds?.width || mapDetails?.width || 12000;
-            const mapH = snapshot.mapBounds?.height || mapDetails?.height || 12000;
-            const viewW = app.screen.width;
-            const viewH = app.screen.height;
-
-            const liveUnits = snapshot.units || [];
-            liveUnitMap.clear();
-            let playerAlive = 0;
-            let enemyAlive = 0;
-            for (let i = 0; i < liveUnits.length; i++) {
-              const u = liveUnits[i];
-              liveUnitMap.set(u.id, u);
-              if (!u.isDestroyed) {
-                if (u.ownerId === 'player') playerAlive++;
-                else enemyAlive++;
-              }
-            }
-
-            const playerUnit = tickFlightInput(currentTime, liveUnits);
-
-            if (pendingPilotSyncRef.current) {
-              pendingPilotSyncRef.current = false;
-              if (playerUnit) {
-                sendImmediate(liveUnits);
-              }
-            }
-
-            if (playerUnit) {
-              if (!isInitializedRef.current) {
-                renderPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
-                cameraPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
-                isInitializedRef.current = true;
-              }
-              const lerpRate = 1.0 - Math.pow(0.0001, dt);
-              renderPosRef.current.x += (playerUnit.pos.x - renderPosRef.current.x) * lerpRate;
-              renderPosRef.current.y += (playerUnit.pos.y - renderPosRef.current.y) * lerpRate;
-
-              const camLerp = 1.0 - Math.exp(-12.0 * dt);
-              cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
-              cameraPosRef.current.y += (renderPosRef.current.y - cameraPosRef.current.y) * camLerp;
-            }
-
-            const cameraX = cameraPosRef.current.x;
-            const cameraY = cameraPosRef.current.y;
-            const z = zoomRef.current;
-            worldContainer.scale.set(z);
-            worldContainer.position.set(viewW / 2 - cameraX * z, viewH / 2 - cameraY * z);
-
-            // 1. Cached Tactical Sector Grid
-            if (cachedGridW !== mapW || cachedGridH !== mapH) {
-              cachedGridW = mapW;
-              cachedGridH = mapH;
-              gridGfx.clear();
-              for (let gx = 0; gx <= mapW; gx += GRID_SPACING) {
-                gridGfx.moveTo(gx, 0).lineTo(gx, mapH);
-              }
-              for (let gy = 0; gy <= mapH; gy += GRID_SPACING) {
-                gridGfx.moveTo(0, gy).lineTo(mapW, gy);
-              }
-              gridGfx.stroke({ width: 1, color: 0x00f3ff, alpha: 0.055 });
-              gridGfx.rect(0, 0, mapW, mapH).stroke({ width: 4, color: 0xa855f7, alpha: 0.9 });
-            }
-
-            // 2. Cached Universal Environmental Objects (O(1) transform updates)
-            const liveEnvObjects = snapshot.envObjects || [];
-            envLayer.sync(liveEnvObjects, currentTime, mapW, mapH);
-
-            // 3. Interpolated Fleet Units -> Pooled Mipmapped Pixi Sprites
-            const interpolatedUnits =
-              liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
-            const unitsToDraw =
-              interpolatedUnits && interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
-
-            unitBackGfx.clear();
-            unitFrontGfx.clear();
-            spriteItems.length = 0;
-
-            for (let i = 0; i < unitsToDraw.length; i++) {
-              const u = unitsToDraw[i];
-              const latest = liveUnitMap.get(u.id);
-              if (!latest || latest.isDestroyed) continue;
-
-              const isPiloted = playerUnit?.id === latest.id;
-              const rx = isPiloted ? renderPosRef.current.x : u.pos.x;
-              const ry = isPiloted ? renderPosRef.current.y : u.pos.y;
-              const angle = u.angle;
-              const size = getPixiUnitSize(latest.type);
-              const halfH = size / 2;
-              const isFlagship =
-                latest.type === 'flagship' || latest.type === 'battalion_command_ship';
-              const factionColor = latest.ownerId === 'player' ? 0x22d3ee : 0xfb7185;
-
-              if (isPiloted) {
-                unitBackGfx
-                  .circle(rx, ry, Math.max(34, halfH + 8))
-                  .stroke({ width: 2, color: 0x22d3ee, alpha: 0.8 });
-              } else {
-                unitBackGfx
-                  .circle(rx, ry, Math.max(20, halfH + 4))
-                  .stroke({ width: 1.4, color: factionColor, alpha: 0.35 });
-              }
-
-              // Vector hull fallback if the PNG texture is still loading
-              if (!getPixiUnitTexture(latest.type)) {
-                const cos = Math.cos(angle);
-                const sin = Math.sin(angle);
-                const r = Math.max(12, halfH * 0.65);
-                unitBackGfx
-                  .poly(
-                    [
-                      rx + cos * r,
-                      ry + sin * r,
-                      rx - cos * r * 0.7 - sin * r * 0.6,
-                      ry - sin * r * 0.7 + cos * r * 0.6,
-                      rx - cos * r * 0.7 + sin * r * 0.6,
-                      ry - sin * r * 0.7 - cos * r * 0.6,
-                    ],
-                    true
-                  )
-                  .fill({ color: factionColor, alpha: 0.85 });
-              }
-
-              if (latest.isStealthed) {
-                drawPixiDashedCircle(unitBackGfx, rx, ry, halfH + 8, 6, 6, 0xc084fc, 0.72, 2);
-              }
-
-              if (isFlagship) {
-                const cos = Math.cos(angle);
-                const sin = Math.sin(angle);
-                if (isPiloted && keysRef.current['w']) {
-                  const flameLen = 22 + Math.random() * 14;
-                  for (const side of [-12, 12]) {
-                    const bx = rx - cos * 38 - sin * side;
-                    const by = ry - sin * 38 + cos * side;
-                    const tx = rx - cos * (38 + flameLen) - sin * side;
-                    const ty = ry - sin * (38 + flameLen) + cos * side;
-                    unitBackGfx
-                      .moveTo(bx, by)
-                      .lineTo(tx, ty)
-                      .stroke({ width: 6, color: 0x38bdf8, alpha: 0.85, cap: 'round' });
-                  }
-                }
-                if (latest.isFiring) {
-                  for (const side of [-11, 11]) {
-                    const fx = rx + cos * 38 - sin * side;
-                    const fy = ry + sin * 38 + cos * side;
-                    const ex = rx + cos * 58 - sin * side;
-                    const ey = ry + sin * 58 + cos * side;
-                    unitFrontGfx
-                      .moveTo(fx, fy)
-                      .lineTo(ex, ey)
-                      .stroke({ width: 3, color: 0xf59e0b, alpha: 0.95 });
-                  }
-                }
-                drawPixiShieldArcs(unitFrontGfx, rx, ry, angle, latest.shields, 52);
-              }
-
-              spriteItems.push({
-                id: latest.id,
-                unitType: latest.type,
-                x: rx,
-                y: ry,
-                angle,
-                size,
-                alpha: latest.isStealthed ? 0.48 : 1,
+        // 0. Decode ONLY the latest arrived binary frame (drops any stale queued packets)
+        const pendingBuf = pendingBufferRef.current;
+        if (pendingBuf) {
+          pendingBufferRef.current = null;
+          const parsedState = unpackServerBinaryMessage(pendingBuf);
+          if (parsedState) {
+            snapshotRef.current = parsedState;
+            if (!parsedState.units || parsedState.units.length === 0) {
+              serverHistoryRef.current = [];
+              isInitializedRef.current = false;
+            } else {
+              serverHistoryRef.current.push({
+                timestamp: currentTime,
+                units: parsedState.units,
               });
+              if (serverHistoryRef.current.length > 20) {
+                serverHistoryRef.current.shift();
+              }
             }
+          }
+        }
 
-            unitSprites.sync(spriteItems);
+        const snapshot = snapshotRef.current;
+        if (!snapshot) return;
 
-            // 4. Projectiles
-            const projectiles = snapshot.projectiles || [];
-            for (let i = 0; i < projectiles.length; i++) {
-              const p = projectiles[i];
-              unitFrontGfx
-                .circle(p.pos.x, p.pos.y, 3)
-                .fill({ color: p.type === 'player' ? 0x00f3ff : 0xff2a6d, alpha: 1 });
-            }
+        const mapDetails = mapDetailsRef.current;
+        const mapW = snapshot.mapBounds?.width || mapDetails?.width || 12000;
+        const mapH = snapshot.mapBounds?.height || mapDetails?.height || 12000;
 
-            // 5. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
-            if (currentTime - lastRadarDrawMs >= RADAR_REDRAW_INTERVAL_MS) {
-              lastRadarDrawMs = currentTime;
-              const radarCanvas = radarCanvasRef.current;
-              const radarCtx = radarCanvas?.getContext('2d');
-              if (radarCtx && radarCanvas) {
-                const rw = radarCanvas.width;
-                const rh = radarCanvas.height;
-                const scaleX = rw / mapW;
-                const scaleY = rh / mapH;
+        const liveUnits = snapshot.units || [];
+        liveUnitMap.clear();
+        let playerAlive = 0;
+        let enemyAlive = 0;
+        for (let i = 0; i < liveUnits.length; i++) {
+          const u = liveUnits[i];
+          liveUnitMap.set(u.id, u);
+          if (!u.isDestroyed) {
+            if (u.ownerId === 'player') playerAlive++;
+            else enemyAlive++;
+          }
+        }
 
-                radarCtx.fillStyle = 'rgba(5, 8, 17, 0.95)';
-                radarCtx.fillRect(0, 0, rw, rh);
-                radarCtx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
-                radarCtx.lineWidth = 1.5;
-                radarCtx.strokeRect(0, 0, rw, rh);
+        const playerUnit = tickFlightInput(currentTime, liveUnits);
 
-                drawEnvObjectsOnRadar(radarCtx, liveEnvObjects, scaleX, scaleY);
+        if (pendingPilotSyncRef.current) {
+          pendingPilotSyncRef.current = false;
+          if (playerUnit) {
+            sendImmediate(liveUnits);
+          }
+        }
 
-                for (let j = 0; j < liveUnits.length; j++) {
-                  const u = liveUnits[j];
-                  if (u.isDestroyed) continue;
-                  const isPiloted = playerUnit?.id === u.id;
-                  const ux = (isPiloted ? renderPosRef.current.x : u.pos.x) * scaleX;
-                  const uy = (isPiloted ? renderPosRef.current.y : u.pos.y) * scaleY;
-                  const weight = templatesRef.current[u.type]?.weightClass ?? 1;
+        if (playerUnit) {
+          if (!isInitializedRef.current) {
+            renderPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
+            cameraPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
+            isInitializedRef.current = true;
+          }
+          const lerpRate = 1.0 - Math.pow(0.0001, dt);
+          renderPosRef.current.x += (playerUnit.pos.x - renderPosRef.current.x) * lerpRate;
+          renderPosRef.current.y += (playerUnit.pos.y - renderPosRef.current.y) * lerpRate;
 
-                  radarCtx.fillStyle = isPiloted
-                    ? '#ffffff'
-                    : u.ownerId === 'player'
-                    ? '#22d3ee'
-                    : '#fb7185';
-                  radarCtx.beginPath();
-                  radarCtx.arc(ux, uy, isPiloted ? 3.5 : weight >= 3 ? 2.5 : 1.8, 0, Math.PI * 2);
-                  radarCtx.fill();
+          const camLerp = 1.0 - Math.exp(-12.0 * dt);
+          cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
+          cameraPosRef.current.y += (renderPosRef.current.y - cameraPosRef.current.y) * camLerp;
+        }
+
+        const cameraX = cameraPosRef.current.x;
+        const cameraY = cameraPosRef.current.y;
+        const z = zoomRef.current;
+
+        // 1. Cached Universal Environmental Objects
+        const liveEnvObjects = snapshot.envObjects || [];
+        renderer.setEnvObjects(liveEnvObjects);
+
+        // 2. Interpolated Fleet Units -> ViewportFrameState
+        const interpolatedUnits =
+          liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
+        const unitsToDraw =
+          interpolatedUnits && interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
+
+        const renderUnits: RenderUnit[] = [];
+        for (let i = 0; i < unitsToDraw.length; i++) {
+          const u = unitsToDraw[i];
+          const latest = liveUnitMap.get(u.id);
+          if (!latest || latest.isDestroyed) continue;
+
+          const isPiloted = playerUnit?.id === latest.id;
+          const rx = isPiloted ? renderPosRef.current.x : u.pos.x;
+          const ry = isPiloted ? renderPosRef.current.y : u.pos.y;
+          const angle = u.angle;
+          const size = getUnitSpriteSize(latest.type);
+          const halfH = size / 2;
+          const isFlagship =
+            latest.type === 'flagship' || latest.type === 'battalion_command_ship';
+          const factionColor = latest.ownerId === 'player' ? '#22d3ee' : '#fb7185';
+
+          renderUnits.push({
+            id: latest.id,
+            unitType: latest.type,
+            x: rx,
+            y: ry,
+            angle,
+            size,
+            alpha: latest.isStealthed ? 0.48 : 1,
+            fallbackColor: factionColor,
+            ring: isPiloted
+              ? {
+                  radius: Math.max(34, halfH + 8),
+                  strokeColor: '#22d3ee',
+                  strokeAlpha: 0.8,
+                  lineWidth: 2,
                 }
-
-                const camViewW = (viewW / z) * scaleX;
-                const camViewH = (viewH / z) * scaleY;
-                const camViewX = cameraX * scaleX - camViewW / 2;
-                const camViewY = cameraY * scaleY - camViewH / 2;
-                radarCtx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
-                radarCtx.lineWidth = 1;
-                radarCtx.strokeRect(camViewX, camViewY, camViewW, camViewH);
-              }
-            }
-
-            // 6. Low-frequency HUD state sync (~4Hz, or immediately on transfer notice / match end)
-            let activeTransferNotice = '';
-            if (transferNoticeRef.current) {
-              if (currentTime < transferNoticeRef.current.expiresAt) {
-                activeTransferNotice = transferNoticeRef.current.text;
-              } else {
-                transferNoticeRef.current = null;
-              }
-            }
-
-            if (
-              currentTime - lastHudSyncTime >= 250 ||
-              snapshot.isGameOver ||
-              activeTransferNotice !== lastSyncedNotice
-            ) {
-              lastHudSyncTime = currentTime;
-              lastSyncedNotice = activeTransferNotice;
-              const zoomPercent = Math.round(z * 100);
-              const nextPilotedType = playerUnit ? playerUnit.type : '';
-              const nextShields: TdmShieldHud | null = playerUnit
+              : {
+                  radius: Math.max(20, halfH + 4),
+                  strokeColor: factionColor,
+                  strokeAlpha: 0.35,
+                  lineWidth: 1.4,
+                },
+            stealthRingRadius: latest.isStealthed ? halfH + 8 : undefined,
+            thrustFlames: isFlagship && isPiloted && !!keysRef.current['w'],
+            flagshipMuzzleFlash: isFlagship && !!latest.isFiring,
+            shieldArcs:
+              isFlagship && latest.shields
                 ? {
-                    front: round1(playerUnit.shields?.front),
-                    rear: round1(playerUnit.shields?.rear),
-                    port: round1(playerUnit.shields?.port),
-                    starboard: round1(playerUnit.shields?.starboard),
+                    radius: 52,
+                    front: latest.shields.front,
+                    rear: latest.shields.rear,
+                    port: latest.shields.port,
+                    starboard: latest.shields.starboard,
                   }
-                : null;
+                : undefined,
+          });
+        }
 
-              setHud((prev) => {
-                const shieldsSame =
-                  prev.shields === nextShields ||
-                  (prev.shields !== null &&
-                    nextShields !== null &&
-                    prev.shields.front === nextShields.front &&
-                    prev.shields.rear === nextShields.rear &&
-                    prev.shields.port === nextShields.port &&
-                    prev.shields.starboard === nextShields.starboard);
-                if (
-                  prev.fps === currentFps &&
-                  prev.playerAlive === playerAlive &&
-                  prev.enemyAlive === enemyAlive &&
-                  prev.isGameOver === !!snapshot.isGameOver &&
-                  prev.winningFaction === (snapshot.winningFaction || '') &&
-                  prev.pilotedAlive === !!playerUnit &&
-                  prev.pilotedType === nextPilotedType &&
-                  prev.transferNotice === activeTransferNotice &&
-                  prev.zoomPercent === zoomPercent &&
-                  shieldsSame
-                ) {
-                  return prev;
-                }
-                return {
-                  fps: currentFps,
-                  playerAlive,
-                  enemyAlive,
-                  isGameOver: !!snapshot.isGameOver,
-                  winningFaction: snapshot.winningFaction || '',
-                  pilotedAlive: !!playerUnit,
-                  pilotedType: nextPilotedType,
-                  transferNotice: activeTransferNotice,
-                  zoomPercent,
-                  shields: nextShields,
-                };
-              });
-            }
-          } catch (err) {
-            const now = performance.now();
-            if (now - lastErrLogMs > 2000) {
-              lastErrLogMs = now;
-              console.error('[TDM PIXI] Render tick error:', err);
-            }
-          }
+        // 3. Projectiles
+        const rawProjectiles = snapshot.projectiles || [];
+        const renderProjectiles: RenderProjectile[] = [];
+        for (let i = 0; i < rawProjectiles.length; i++) {
+          const p = rawProjectiles[i];
+          renderProjectiles.push({
+            x: p.pos.x,
+            y: p.pos.y,
+            kind: 'dot',
+            color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
+            radius: 3,
+          });
+        }
+
+        const frame: ViewportFrameState = {
+          now: currentTime,
+          worldWidth: mapW,
+          worldHeight: mapH,
+          backgroundColor: '#050811',
+          backdrop: {
+            kind: 'grid',
+            spacing: GRID_SPACING,
+            lineColor: 'rgba(0, 243, 255, 0.055)',
+            borderColor: 'rgba(168, 85, 247, 0.9)',
+            borderWidth: 4,
+          },
+          units: renderUnits,
+          projectiles: renderProjectiles,
+        };
+
+        renderer.render(frame, {
+          mode: 'camera',
+          x: cameraX,
+          y: cameraY,
+          zoom: z,
         });
+
+        // 4. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
+        if (currentTime - lastRadarDrawMs >= RADAR_REDRAW_INTERVAL_MS) {
+          lastRadarDrawMs = currentTime;
+          const radarCanvas = radarCanvasRef.current;
+          const radarCtx = radarCanvas?.getContext('2d');
+          if (radarCtx && radarCanvas) {
+            const rw = radarCanvas.width;
+            const rh = radarCanvas.height;
+            const scaleX = rw / mapW;
+            const scaleY = rh / mapH;
+
+            radarCtx.fillStyle = 'rgba(5, 8, 17, 0.95)';
+            radarCtx.fillRect(0, 0, rw, rh);
+            radarCtx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
+            radarCtx.lineWidth = 1.5;
+            radarCtx.strokeRect(0, 0, rw, rh);
+
+            drawEnvObjectsOnRadar(radarCtx, liveEnvObjects, scaleX, scaleY);
+
+            for (let j = 0; j < liveUnits.length; j++) {
+              const u = liveUnits[j];
+              if (u.isDestroyed) continue;
+              const isPiloted = playerUnit?.id === u.id;
+              const ux = (isPiloted ? renderPosRef.current.x : u.pos.x) * scaleX;
+              const uy = (isPiloted ? renderPosRef.current.y : u.pos.y) * scaleY;
+              const weight = templatesRef.current[u.type]?.weightClass ?? 1;
+
+              radarCtx.fillStyle = isPiloted
+                ? '#ffffff'
+                : u.ownerId === 'player'
+                ? '#22d3ee'
+                : '#fb7185';
+              radarCtx.beginPath();
+              radarCtx.arc(ux, uy, isPiloted ? 3.5 : weight >= 3 ? 2.5 : 1.8, 0, Math.PI * 2);
+              radarCtx.fill();
+            }
+
+            const camViewW = (viewW / z) * scaleX;
+            const camViewH = (viewH / z) * scaleY;
+            const camViewX = cameraX * scaleX - camViewW / 2;
+            const camViewY = cameraY * scaleY - camViewH / 2;
+            radarCtx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+            radarCtx.lineWidth = 1;
+            radarCtx.strokeRect(camViewX, camViewY, camViewW, camViewH);
+          }
+        }
+
+        // 5. Low-frequency HUD state sync (~4Hz, or immediately on transfer notice / match end)
+        let activeTransferNotice = '';
+        if (transferNoticeRef.current) {
+          if (currentTime < transferNoticeRef.current.expiresAt) {
+            activeTransferNotice = transferNoticeRef.current.text;
+          } else {
+            transferNoticeRef.current = null;
+          }
+        }
+
+        if (
+          currentTime - lastHudSyncTime >= 250 ||
+          snapshot.isGameOver ||
+          activeTransferNotice !== lastSyncedNotice
+        ) {
+          lastHudSyncTime = currentTime;
+          lastSyncedNotice = activeTransferNotice;
+          const zoomPercent = Math.round(z * 100);
+          const nextPilotedType = playerUnit ? playerUnit.type : '';
+          const nextShields: TdmShieldHud | null = playerUnit
+            ? {
+                front: round1(playerUnit.shields?.front),
+                rear: round1(playerUnit.shields?.rear),
+                port: round1(playerUnit.shields?.port),
+                starboard: round1(playerUnit.shields?.starboard),
+              }
+            : null;
+
+          setHud((prev) => {
+            const shieldsSame =
+              prev.shields === nextShields ||
+              (prev.shields !== null &&
+                nextShields !== null &&
+                prev.shields.front === nextShields.front &&
+                prev.shields.rear === nextShields.rear &&
+                prev.shields.port === nextShields.port &&
+                prev.shields.starboard === nextShields.starboard);
+            if (
+              prev.fps === currentFps &&
+              prev.playerAlive === playerAlive &&
+              prev.enemyAlive === enemyAlive &&
+              prev.isGameOver === !!snapshot.isGameOver &&
+              prev.winningFaction === (snapshot.winningFaction || '') &&
+              prev.pilotedAlive === !!playerUnit &&
+              prev.pilotedType === nextPilotedType &&
+              prev.transferNotice === activeTransferNotice &&
+              prev.zoomPercent === zoomPercent &&
+              shieldsSame
+            ) {
+              return prev;
+            }
+            return {
+              fps: currentFps,
+              playerAlive,
+              enemyAlive,
+              isGameOver: !!snapshot.isGameOver,
+              winningFaction: snapshot.winningFaction || '',
+              pilotedAlive: !!playerUnit,
+              pilotedType: nextPilotedType,
+              transferNotice: activeTransferNotice,
+              zoomPercent,
+              shields: nextShields,
+            };
+          });
+        }
       } catch (err) {
-        console.error('[TDM PIXI] Application init failed:', err);
+        const now = performance.now();
+        if (now - lastErrLogMs > 2000) {
+          lastErrLogMs = now;
+          console.error('[TDM CANVAS2D] Render tick error:', err);
+        }
       }
-    })();
+    };
+
+    rafId = requestAnimationFrame(renderLoop);
 
     return () => {
       destroyed = true;
-      resizeObserver?.disconnect();
-      if (initialized) {
-        app.destroy(false, { children: true, texture: false, textureSource: false });
-      }
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      renderer.destroy();
     };
   }, [pilotedUnit, templatesRef, tickFlightInput, sendImmediate]);
 

@@ -127,14 +127,22 @@ func (r *GameRoom) SetMapID(id int) {
 	r.mapID = id
 }
 
+// SetEnvWorld swaps the shared universal envphysics.World pointer (caller holds room lock).
+func (r *GameRoom) SetEnvWorld(world *envphysics.World) {
+	r.envWorld = world
+}
+
 func (r *GameRoom) ReloadMapStructures() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.envWorld == nil {
-		r.envWorld = envphysics.NewAuthoredWorld(r.mapID)
-	} else {
-		r.envWorld.LoadAuthoredMap(r.mapID)
-	}
+	mapID := r.mapID
+	r.mu.Unlock()
+
+	// Load authored map from PostgreSQL outside r.mu so the 60Hz tick is never stalled.
+	nextWorld := envphysics.NewAuthoredWorld(mapID)
+
+	r.mu.Lock()
+	r.envWorld = nextWorld
+	r.mu.Unlock()
 }
 
 func (r *GameRoom) GetTick() uint64 {
@@ -248,7 +256,7 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		}
 	}
 
-	template, exists := db.Templates[unitType]
+	template, exists := db.GetTemplate(unitType)
 	if !exists {
 		log.Printf("⚠️ Warning: Blueprint '%s' not found in DB", unitType)
 		return
@@ -482,7 +490,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				clampedAngVel := math.Max(0, math.Min(float64(cfg.AngularVelocity()), 60.0))
 				clampedAccel := math.Max(0, math.Min(float64(cfg.AccelerationCurve()), 10.0))
 
-				if tmpl, exists := db.Templates[unitType]; exists {
+				if tmpl, exists := db.GetTemplate(unitType); exists {
 					// 1. Core & General
 					if wc := int(cfg.WeightClass()); wc > 0 {
 						tmpl.WeightClass = wc
@@ -540,7 +548,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					tmpl.SalvageableUponDestruction = cfg.SalvageableUponDestruction()
 					tmpl.RequiresReconTelemetry = cfg.RequiresReconTelemetry()
 
-					db.Templates[unitType] = tmpl
+					db.SetTemplate(unitType, tmpl)
 				}
 
 				// Hot-update all live unit instances of this type in the room

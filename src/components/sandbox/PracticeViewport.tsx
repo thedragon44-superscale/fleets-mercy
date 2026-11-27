@@ -1,25 +1,22 @@
 // src/components/sandbox/PracticeViewport.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Application, BitmapText, Container, Graphics, Sprite } from 'pixi.js';
 import { useGameSocket } from '../../hooks/useGameSockets';
 import { useUnitTemplates } from '../../hooks/useUnitTemplates';
 import { useFlightControls } from '../../hooks/useFlightControls';
 import { DebugOverlayFlags, UNIT_SCALES } from '../../renderer/vectorAssets';
-import {
-  PixiUnitSpriteLayer,
-  SpriteSyncItem,
-  getPixiUnitRotationOffset,
-  getPixiUnitSize,
-  getPixiUnitTexture,
-  loadPixiUnitTextures,
-} from '../../renderer/pixiSprites';
-import {
-  PixiEnvLayer,
-  TACTICAL_BITMAP_FONT,
-  drawPixiDashedCircle,
-  drawPixiShieldArcs,
-  ensurePixiBitmapFont,
-} from '../../renderer/pixiEnvRenderer';
+import { Canvas2DRenderer } from '../../renderer/canvas2dRenderer';
+import { getUnitSpriteSize } from '../../renderer/spriteRegistry';
+import { hitTestUnits } from '../../renderer/viewportCamera';
+import type {
+  RenderGhostSprite,
+  RenderProjectile,
+  RenderUnit,
+  RenderUnitBar,
+  RenderUnitLabel,
+  RenderUnitRangeCircle,
+  ViewportFrameState,
+  ViewportRenderer,
+} from '../../renderer/viewportRenderer';
 import { drawEnvObjectsOnRadar } from '../../utils/envRenderer';
 import { getInterpolatedUnits } from '../../renderer/interpolation';
 import { SnapshotUnit, ServerStateSnapshot } from '../../parsers/binaryCodec';
@@ -247,16 +244,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
   useEffect(() => {
     if (!mapId) return;
-    fetchMapDetail(mapId).then((data) => {
-      if (data) {
+    let active = true;
+    fetchMapDetail(mapId)
+      .then((data) => {
+        if (!active || !data) return;
         mapDetailsRef.current = data;
         setMapDetails(data);
-        const centerX = data.width / 2;
-        const centerY = data.height / 2;
-        cameraPos.current = { x: centerX, y: centerY };
-        renderPos.current = { x: centerX, y: centerY };
-      }
-    });
+        if (!isInitialized.current) {
+          const centerX = data.width / 2;
+          const centerY = data.height / 2;
+          cameraPos.current = { x: centerX, y: centerY };
+          renderPos.current = { x: centerX, y: centerY };
+        }
+      })
+      .catch((err) => {
+        console.warn('Sandbox map detail fetch failed:', err);
+      });
+    return () => {
+      active = false;
+    };
   }, [mapId]);
 
   useEffect(() => {
@@ -386,19 +392,10 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
     if (canvasModeRef.current === 'select' || e.shiftKey) {
       const units = serverState.current?.units || [];
-      let closest: SnapshotUnit | null = null;
-      let bestDist = Infinity;
-
-      for (const u of units) {
-        if (u.isDestroyed) continue;
+      const closest = hitTestUnits(worldPos.x, worldPos.y, units, (u) => {
         const scale = UNIT_SCALES[u.type] || UNIT_SCALES.default;
-        const hitRadius = Math.max(scale.w, scale.h) * 0.6;
-        const d = Math.hypot(u.pos.x - worldPos.x, u.pos.y - worldPos.y);
-        if (d <= hitRadius && d < bestDist) {
-          bestDist = d;
-          closest = u;
-        }
-      }
+        return Math.max(scale.w, scale.h) * 0.6;
+      });
 
       if (closest) {
         setSelectedWorldUnitId(closest.id);
@@ -414,7 +411,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
     }
   };
 
-  // Pixi.js v8 WebGL Renderer + 60Hz Loop (Zero 60Hz React renders, cached EnvObjects, BitmapText labels)
+  // Swappable ViewportRenderer (Canvas2DRenderer) — Single 60Hz rAF loop, zero WebGL context loss
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -442,109 +439,36 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
     window.addEventListener('blur', onPanBlur);
 
     let destroyed = false;
-    let initialized = false;
-    let resizeObserver: ResizeObserver | null = null;
-    const app = new Application();
+    let rafId = 0;
+    let viewW = 1;
+    let viewH = 1;
 
-    (async () => {
-      const rect = container.getBoundingClientRect();
-      const initW = Math.max(1, Math.floor(rect.width));
-      const initH = Math.max(1, Math.floor(rect.height));
+    const renderer: ViewportRenderer = new Canvas2DRenderer();
+    renderer.init(canvas, { backgroundColor: '#050811' });
 
-      await app.init({
-        canvas,
-        width: initW,
-        height: initH,
-        background: 0x050811,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-        autoDensity: true,
-        antialias: true,
-        roundPixels: false,
-      });
+    const syncSize = () => {
+      if (destroyed) return;
+      const r = container.getBoundingClientRect();
+      viewW = Math.max(1, Math.floor(r.width));
+      viewH = Math.max(1, Math.floor(r.height));
+      renderer.resize(viewW, viewH);
+    };
+    syncSize();
+    const resizeObserver = new ResizeObserver(syncSize);
+    resizeObserver.observe(container);
 
-      if (destroyed) {
-        app.destroy(false, { children: true, texture: false, textureSource: false });
-        return;
-      }
-      initialized = true;
+    // Preallocated scratch map
+    const liveUnitMap = new Map<string, SnapshotUnit>();
 
-      ensurePixiBitmapFont();
-      loadPixiUnitTextures();
+    let lastRadarDrawMs = 0;
+    let lastTime = performance.now();
+    let lastErrLogMs = 0;
 
-      // World Scene Graph (cached per-object EnvObjects + mipmapped unit sprites + BitmapText labels)
-      const worldContainer = new Container();
-      const gridGfx = new Graphics();
-      const envLayer = new PixiEnvLayer();
-      const unitBackGfx = new Graphics();
-      const unitSprites = new PixiUnitSpriteLayer();
-      const unitFrontGfx = new Graphics();
-      const spawnGhostSprite = new Sprite();
-      spawnGhostSprite.anchor.set(0.5);
-      spawnGhostSprite.visible = false;
-      const labelsContainer = new Container();
+    const renderLoop = () => {
+      if (destroyed) return;
+      rafId = requestAnimationFrame(renderLoop);
 
-      worldContainer.addChild(
-        gridGfx,
-        envLayer.softContainer,
-        envLayer.dynamicGfx,
-        envLayer.solidContainer,
-        unitBackGfx,
-        unitSprites.container,
-        unitFrontGfx,
-        spawnGhostSprite,
-        labelsContainer
-      );
-
-      app.stage.addChild(worldContainer);
-
-      // Pooled BitmapText labels (all share 1 single GPU font atlas = 1 draw call!)
-      const labelPool = new Map<string, BitmapText>();
-      const activeLabelKeys = new Set<string>();
-      const getOrCreateLabel = (key: string, fontSize: number, tint: number): BitmapText => {
-        activeLabelKeys.add(key);
-        let t = labelPool.get(key);
-        if (!t) {
-          t = new BitmapText({
-            text: '',
-            style: {
-              fontFamily: TACTICAL_BITMAP_FONT,
-              fontSize,
-            },
-          });
-          t.anchor.set(0.5, 0.5);
-          t.tint = tint;
-          labelPool.set(key, t);
-          labelsContainer.addChild(t);
-        } else if (t.tint !== tint) {
-          t.tint = tint;
-        }
-        return t;
-      };
-
-      // Preallocated scratch collections (zero per-frame Map/Array allocations)
-      const liveUnitMap = new Map<string, SnapshotUnit>();
-      const spriteItems: SpriteSyncItem[] = [];
-
-      let cachedGridW = 0;
-      let cachedGridH = 0;
-      let lastRadarDrawMs = 0;
-
-      const syncSize = () => {
-        if (destroyed) return;
-        const r = container.getBoundingClientRect();
-        const w = Math.max(1, Math.floor(r.width));
-        const h = Math.max(1, Math.floor(r.height));
-        if (app.screen.width !== w || app.screen.height !== h) {
-          app.renderer.resize(w, h);
-        }
-      };
-      syncSize();
-      resizeObserver = new ResizeObserver(syncSize);
-      resizeObserver.observe(container);
-
-      let lastTime = performance.now();
-
-      app.ticker.add(() => {
+      try {
         const currentTime = performance.now();
         const rawDt = (currentTime - lastTime) / 1000;
         const dt = Math.min(Math.max(rawDt, 0.001), 0.1);
@@ -581,27 +505,37 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
             }
 
             let foundControlled = false;
-            let firstPlayerUnit: SnapshotUnit | null = null;
+            let bestFallbackUnit: SnapshotUnit | null = null;
             for (let i = 0; i < freshSnap.units.length; i++) {
               const u = freshSnap.units[i];
               if (u.ownerId === 'player' && !u.isDestroyed) {
-                if (!firstPlayerUnit) firstPlayerUnit = u;
+                if (
+                  !bestFallbackUnit ||
+                  u.id === 'player-flagship' ||
+                  (bestFallbackUnit.id !== 'player-flagship' && u.id < bestFallbackUnit.id)
+                ) {
+                  bestFallbackUnit = u;
+                }
                 if (u.id === controlledUnitIdRef.current) {
                   foundControlled = true;
                   if (!isInitialized.current) {
                     renderPos.current.x = u.pos.x;
                     renderPos.current.y = u.pos.y;
+                    cameraPos.current.x = u.pos.x;
+                    cameraPos.current.y = u.pos.y;
                     isInitialized.current = true;
                   }
                 }
               }
             }
-            if (!foundControlled && firstPlayerUnit) {
-              controlledUnitIdRef.current = firstPlayerUnit.id;
-              renderPos.current.x = firstPlayerUnit.pos.x;
-              renderPos.current.y = firstPlayerUnit.pos.y;
+            if (!foundControlled && bestFallbackUnit) {
+              controlledUnitIdRef.current = bestFallbackUnit.id;
+              renderPos.current.x = bestFallbackUnit.pos.x;
+              renderPos.current.y = bestFallbackUnit.pos.y;
+              cameraPos.current.x = bestFallbackUnit.pos.x;
+              cameraPos.current.y = bestFallbackUnit.pos.y;
               isInitialized.current = true;
-              setControlledUnitId(firstPlayerUnit.id);
+              setControlledUnitId(bestFallbackUnit.id);
             }
           }
         }
@@ -613,10 +547,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         const mapH = snap.mapBounds?.height || mapDetailsRef.current?.height || 0;
         if (mapW === 0 || mapH === 0) return;
 
-        const viewW = app.screen.width;
-        const viewH = app.screen.height;
         const liveUnits = snap.units || [];
-
         liveUnitMap.clear();
         for (let i = 0; i < liveUnits.length; i++) {
           liveUnitMap.set(liveUnits[i].id, liveUnits[i]);
@@ -670,43 +601,19 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         }
 
         const z = zoomRef.current;
-        worldContainer.scale.set(z);
-        worldContainer.position.set(
-          viewW / 2 - cameraPos.current.x * z,
-          viewH / 2 - cameraPos.current.y * z
-        );
 
-        // 1. Rebuild cached tactical grid only when map dimensions change
-        if (cachedGridW !== mapW || cachedGridH !== mapH) {
-          cachedGridW = mapW;
-          cachedGridH = mapH;
-          gridGfx.clear();
-          for (let gx = 0; gx <= mapW; gx += GRID_SPACING) {
-            gridGfx.moveTo(gx, 0).lineTo(gx, mapH);
-          }
-          for (let gy = 0; gy <= mapH; gy += GRID_SPACING) {
-            gridGfx.moveTo(0, gy).lineTo(mapW, gy);
-          }
-          gridGfx.stroke({ width: 1.2, color: 0x00f3ff, alpha: 0.06 });
-          gridGfx.rect(0, 0, mapW, mapH).stroke({ width: 4, color: 0xa855f7, alpha: 0.9 });
-        }
-
-        // 2. Cached Universal Environmental Objects (O(1) position/rotation updates — ZERO per-frame tessellation)
+        // 1. Cached Universal Environmental Objects
         const liveEnvObjects = snap.envObjects || [];
-        envLayer.sync(liveEnvObjects, currentTime, mapW, mapH);
+        renderer.setEnvObjects(liveEnvObjects);
 
-        // 3. Interpolated Units -> Pooled Mipmapped Pixi Sprites + Lightweight Debug Overlays
+        // 2. Interpolated Units -> ViewportFrameState
         const interpolatedUnits =
           liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
         const unitsToDraw =
           interpolatedUnits && interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
 
-        unitBackGfx.clear();
-        unitFrontGfx.clear();
-        activeLabelKeys.clear();
-        spriteItems.length = 0;
-
         const flags = debugFlagsRef.current;
+        const renderUnits: RenderUnit[] = [];
 
         for (let i = 0; i < unitsToDraw.length; i++) {
           const u = unitsToDraw[i];
@@ -718,100 +625,48 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
           const angle = u.angle;
-          const size = getPixiUnitSize(latest.type);
+          const size = getUnitSpriteSize(latest.type);
           const halfH = size / 2;
           const isFlagship =
             latest.type === 'flagship' || latest.type === 'battalion_command_ship';
-
-          if (latest.isStealthed) {
-            drawPixiDashedCircle(unitBackGfx, rx, ry, halfH + 8, 6, 6, 0xc084fc, 0.72, 2);
-          }
-
-          if (isControlled || isSelected) {
-            const ringR = size * 0.65;
-            if (isControlled) {
-              unitBackGfx.circle(rx, ry, ringR).stroke({ width: 2, color: 0x38bdf8, alpha: 0.9 });
-            } else {
-              drawPixiDashedCircle(unitBackGfx, rx, ry, ringR, 6, 5, 0xf59e0b, 0.9, 2);
-            }
-          }
-
-          if (flags.showHitboxes) {
-            unitBackGfx
-              .rect(rx - halfH, ry - halfH, size, size)
-              .stroke({ width: 1, color: 0xf59e0b, alpha: 0.85 });
-          }
-
+          const fallbackColor = latest.ownerId === 'player' ? '#22d3ee' : '#fb7185';
           const tmpl = templatesRef.current[latest.type];
+
+          let ranges: RenderUnitRangeCircle[] | undefined;
           if (flags.showRanges && tmpl) {
-            if (tmpl.sensorRange && tmpl.sensorRange > 0)
-              unitBackGfx.circle(rx, ry, tmpl.sensorRange).stroke({ width: 1, color: 0x22d3ee, alpha: 0.35 });
-            if (tmpl.visionRange && tmpl.visionRange > 0)
-              unitBackGfx.circle(rx, ry, tmpl.visionRange).stroke({ width: 1, color: 0x60a5fa, alpha: 0.35 });
-            if (tmpl.aggroRange && tmpl.aggroRange > 0)
-              unitBackGfx.circle(rx, ry, tmpl.aggroRange).stroke({ width: 1, color: 0xf59e0b, alpha: 0.35 });
-            if (tmpl.maxRange && tmpl.maxRange > 0)
-              unitBackGfx.circle(rx, ry, tmpl.maxRange).stroke({ width: 1, color: 0xef4444, alpha: 0.3 });
-            if (tmpl.optimalRange && tmpl.optimalRange > 0)
-              unitBackGfx.circle(rx, ry, tmpl.optimalRange).stroke({ width: 1, color: 0x22c55e, alpha: 0.35 });
+            ranges = [];
+            if (tmpl.sensorRange && tmpl.sensorRange > 0) {
+              ranges.push({ radius: tmpl.sensorRange, color: '#22d3ee', alpha: 0.35 });
+            }
+            if (tmpl.visionRange && tmpl.visionRange > 0) {
+              ranges.push({ radius: tmpl.visionRange, color: '#60a5fa', alpha: 0.35 });
+            }
+            if (tmpl.aggroRange && tmpl.aggroRange > 0) {
+              ranges.push({ radius: tmpl.aggroRange, color: '#f59e0b', alpha: 0.35 });
+            }
+            if (tmpl.maxRange && tmpl.maxRange > 0) {
+              ranges.push({ radius: tmpl.maxRange, color: '#ef4444', alpha: 0.3 });
+            }
+            if (tmpl.optimalRange && tmpl.optimalRange > 0) {
+              ranges.push({ radius: tmpl.optimalRange, color: '#22c55e', alpha: 0.35 });
+            }
           }
 
-          if (isFlagship) {
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
-            if (isControlled && keysRef.current['w']) {
-              const flameLen = 22 + Math.random() * 14;
-              for (const side of [-12, 12]) {
-                const bx = rx - cos * 38 - sin * side;
-                const by = ry - sin * 38 + cos * side;
-                const tx = rx - cos * (38 + flameLen) - sin * side;
-                const ty = ry - sin * (38 + flameLen) + cos * side;
-                unitBackGfx
-                  .moveTo(bx, by)
-                  .lineTo(tx, ty)
-                  .stroke({ width: 6, color: 0x38bdf8, alpha: 0.85, cap: 'round' });
-              }
-            }
-            if (latest.isFiring) {
-              for (const side of [-11, 11]) {
-                const fx = rx + cos * 38 - sin * side;
-                const fy = ry + sin * 38 + cos * side;
-                const ex = rx + cos * 58 - sin * side;
-                const ey = ry + sin * 58 + cos * side;
-                unitFrontGfx
-                  .moveTo(fx, fy)
-                  .lineTo(ex, ey)
-                  .stroke({ width: 3, color: 0xf59e0b, alpha: 0.95 });
-              }
-            }
-            drawPixiShieldArcs(unitFrontGfx, rx, ry, angle, latest.shields, 52);
-          }
-
-          spriteItems.push({
-            id: latest.id,
-            unitType: latest.type,
-            x: rx,
-            y: ry,
-            angle,
-            size,
-            alpha: latest.isStealthed ? 0.48 : 1,
-          });
-
+          let velocityVector: RenderUnit['velocityVector'];
           if (flags.showVelocity && latest.vel) {
             const vx = latest.vel.x || 0;
             const vy = latest.vel.y || 0;
             if (Math.hypot(vx, vy) > 0.05) {
-              unitFrontGfx
-                .moveTo(rx, ry)
-                .lineTo(rx + vx * 14, ry + vy * 14)
-                .stroke({ width: 1.75, color: 0xa3e635, alpha: 0.9 });
+              velocityVector = { vx, vy, scale: 14, color: 'rgba(163, 230, 53, 0.9)' };
             }
           }
 
+          let bars: RenderUnitBar[] | undefined;
+          let labels: RenderUnitLabel[] | undefined;
           if (flags.showVitals) {
             const barW = Math.max(40, size * 0.9);
             const barH = 4;
-            const topY = ry - halfH - 18;
+            const topYOffset = -halfH - 18;
 
             const totalShield = latest.shields
               ? latest.shields.front +
@@ -830,25 +685,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
               : 0;
             const maxHull = Math.max(1, (tmpl?.hullBase || 100) * 4);
             const hullPct = Math.max(0, Math.min(1, totalHull / maxHull));
+            const hullColor =
+              hullPct > 0.5 ? '#22c55e' : hullPct > 0.25 ? '#f59e0b' : '#ef4444';
 
-            unitFrontGfx
-              .rect(rx - barW / 2, topY, barW, barH)
-              .fill({ color: 0x0f172a, alpha: 0.85 });
-            if (shieldPct > 0) {
-              unitFrontGfx
-                .rect(rx - barW / 2, topY, barW * shieldPct, barH)
-                .fill({ color: 0x38bdf8, alpha: 1 });
-            }
-
-            const hullColor = hullPct > 0.5 ? 0x22c55e : hullPct > 0.25 ? 0xf59e0b : 0xef4444;
-            unitFrontGfx
-              .rect(rx - barW / 2, topY + 5, barW, barH)
-              .fill({ color: 0x0f172a, alpha: 0.85 });
-            if (hullPct > 0) {
-              unitFrontGfx
-                .rect(rx - barW / 2, topY + 5, barW * hullPct, barH)
-                .fill({ color: hullColor, alpha: 1 });
-            }
+            bars = [
+              {
+                yOffset: topYOffset,
+                width: barW,
+                height: barH,
+                ratio: shieldPct,
+                fillColor: '#38bdf8',
+              },
+              {
+                yOffset: topYOffset + 5,
+                width: barW,
+                height: barH,
+                ratio: hullPct,
+                fillColor: hullColor,
+              },
+            ];
 
             const maxThermal = tmpl?.maxThermalCapacity || 0;
             if (maxThermal > 0 && (latest.currentThermal ?? 0) > 0) {
@@ -856,12 +711,13 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
                 0,
                 Math.min(1, (latest.currentThermal || 0) / maxThermal)
               );
-              unitFrontGfx
-                .rect(rx - barW / 2, topY + 10, barW, 3)
-                .fill({ color: 0x0f172a, alpha: 0.85 });
-              unitFrontGfx
-                .rect(rx - barW / 2, topY + 10, barW * thermalPct, 3)
-                .fill({ color: thermalPct > 0.8 ? 0xef4444 : 0xf97316, alpha: 1 });
+              bars.push({
+                yOffset: topYOffset + 10,
+                width: barW,
+                height: 3,
+                ratio: thermalPct,
+                fillColor: thermalPct > 0.8 ? '#ef4444' : '#f97316',
+              });
             }
 
             const squadTag =
@@ -872,82 +728,133 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
                 : '';
             const stateTag = latest.aiState ? `[${latest.aiState}]` : '';
             const topStr = `${stateTag}${squadTag}`.trim() || latest.type;
-            const topLabel = getOrCreateLabel(
-              `top:${latest.id}`,
-              10,
-              latest.ownerId === 'player' ? 0x4ade80 : 0xf87171
-            );
-            if (topLabel.text !== topStr) topLabel.text = topStr;
-            topLabel.position.set(rx, topY - 8);
-
             const ammoText =
               (tmpl?.ammoCapacity ?? -1) > 0 && latest.currentAmmo !== undefined
                 ? ` | AMMO:${latest.currentAmmo}`
                 : '';
             const botStr = `${latest.id}${ammoText}`;
-            const botLabel = getOrCreateLabel(`bot:${latest.id}`, 9, 0xe2e8f0);
-            if (botLabel.text !== botStr) botLabel.text = botStr;
-            botLabel.position.set(rx, ry + halfH + 12);
+
+            labels = [
+              {
+                text: topStr,
+                yOffset: topYOffset - 8,
+                color: latest.ownerId === 'player' ? '#4ade80' : '#f87171',
+                fontSize: 10,
+                bold: true,
+              },
+              {
+                text: botStr,
+                yOffset: halfH + 12,
+                color: '#e2e8f0',
+                fontSize: 9,
+                bold: true,
+              },
+            ];
           }
+
+          renderUnits.push({
+            id: latest.id,
+            unitType: latest.type,
+            x: rx,
+            y: ry,
+            angle,
+            size,
+            alpha: latest.isStealthed ? 0.48 : 1,
+            fallbackColor,
+            ring: isControlled
+              ? {
+                  radius: size * 0.65,
+                  strokeColor: '#38bdf8',
+                  strokeAlpha: 0.9,
+                  lineWidth: 2,
+                }
+              : isSelected
+              ? {
+                  radius: size * 0.65,
+                  strokeColor: '#f59e0b',
+                  strokeAlpha: 0.9,
+                  lineWidth: 2,
+                  dashed: true,
+                }
+              : undefined,
+            stealthRingRadius: latest.isStealthed ? halfH + 8 : undefined,
+            hitbox: flags.showHitboxes,
+            ranges,
+            thrustFlames: isFlagship && isControlled && !!keysRef.current['w'],
+            flagshipMuzzleFlash: isFlagship && !!latest.isFiring,
+            shieldArcs:
+              isFlagship && latest.shields
+                ? {
+                    radius: 52,
+                    front: latest.shields.front,
+                    rear: latest.shields.rear,
+                    port: latest.shields.port,
+                    starboard: latest.shields.starboard,
+                  }
+                : undefined,
+            velocityVector,
+            bars,
+            labels,
+          });
         }
 
-        unitSprites.sync(spriteItems);
-
-        for (const [key, t] of labelPool) {
-          if (!activeLabelKeys.has(key)) {
-            labelsContainer.removeChild(t);
-            t.destroy();
-            labelPool.delete(key);
-          }
+        // 3. Projectiles
+        const rawProjectiles = snap.projectiles || [];
+        const renderProjectiles: RenderProjectile[] = [];
+        for (let i = 0; i < rawProjectiles.length; i++) {
+          const p = rawProjectiles[i];
+          renderProjectiles.push({
+            x: p.pos.x,
+            y: p.pos.y,
+            kind: 'dot',
+            color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
+            radius: 3,
+          });
         }
 
-        // 4. Projectiles
-        const projectiles = snap.projectiles || [];
-        for (let i = 0; i < projectiles.length; i++) {
-          const p = projectiles[i];
-          unitFrontGfx
-            .circle(p.pos.x, p.pos.y, 3)
-            .fill({ color: p.type === 'player' ? 0x00f3ff : 0xff2a6d, alpha: 1 });
-        }
-
-        // 5. Click-to-Spawn Ghost Preview
+        // 4. Click-to-Spawn Ghost Preview
+        let ghostSprite: RenderGhostSprite | null = null;
         if (canvasModeRef.current === 'spawn') {
           const worldMouse = canvasToWorld(
             mouseCanvasPosRef.current.x,
             mouseCanvasPosRef.current.y
           );
           const spawnType = selectedCatalogUnitIdRef.current;
-          const ghostSize = getPixiUnitSize(spawnType);
-          const ghostTex = getPixiUnitTexture(spawnType);
-          const ghostColor = spawnerFactionRef.current === 'player' ? 0x22c55e : 0xef4444;
-
-          if (ghostTex) {
-            spawnGhostSprite.texture = ghostTex;
-            spawnGhostSprite.position.set(worldMouse.x, worldMouse.y);
-            spawnGhostSprite.rotation = getPixiUnitRotationOffset(spawnType);
-            spawnGhostSprite.width = ghostSize;
-            spawnGhostSprite.height = ghostSize;
-            spawnGhostSprite.alpha = 0.55;
-            spawnGhostSprite.visible = true;
-          } else {
-            spawnGhostSprite.visible = false;
-          }
-          drawPixiDashedCircle(
-            unitFrontGfx,
-            worldMouse.x,
-            worldMouse.y,
-            ghostSize * 0.65,
-            6,
-            5,
-            ghostColor,
-            0.9,
-            1.5
-          );
-        } else {
-          spawnGhostSprite.visible = false;
+          ghostSprite = {
+            unitType: spawnType,
+            x: worldMouse.x,
+            y: worldMouse.y,
+            size: getUnitSpriteSize(spawnType),
+            ringColor: spawnerFactionRef.current === 'player' ? '#22c55e' : '#ef4444',
+            alpha: 0.55,
+          };
         }
 
-        // 6. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
+        const frame: ViewportFrameState = {
+          now: currentTime,
+          worldWidth: mapW,
+          worldHeight: mapH,
+          backgroundColor: '#050811',
+          backdrop: {
+            kind: 'grid',
+            spacing: GRID_SPACING,
+            lineColor: 'rgba(0, 243, 255, 0.06)',
+            borderColor: 'rgba(168, 85, 247, 0.9)',
+            borderWidth: 4,
+          },
+          units: renderUnits,
+          projectiles: renderProjectiles,
+          ghostSprite,
+        };
+
+        renderer.render(frame, {
+          mode: 'camera',
+          x: cameraPos.current.x,
+          y: cameraPos.current.y,
+          zoom: z,
+        });
+
+        // 5. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
         if (currentTime - lastRadarDrawMs >= RADAR_REDRAW_INTERVAL_MS) {
           lastRadarDrawMs = currentTime;
           const radarCanvas = radarCanvasRef.current;
@@ -1052,18 +959,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
             radarCtx.strokeRect(camViewX, camViewY, camViewW, camViewH);
           }
         }
-      });
-    })();
+      } catch (err) {
+        const errNow = performance.now();
+        if (errNow - lastErrLogMs > 2000) {
+          lastErrLogMs = errNow;
+          console.error('[SANDBOX CANVAS2D] Render tick error:', err);
+        }
+      }
+    };
+
+    rafId = requestAnimationFrame(renderLoop);
 
     return () => {
       destroyed = true;
-      resizeObserver?.disconnect();
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
       window.removeEventListener('mousemove', onPanMouseMove);
       window.removeEventListener('mouseup', onPanMouseUp);
       window.removeEventListener('blur', onPanBlur);
-      if (initialized) {
-        app.destroy(false, { children: true, texture: false, textureSource: false });
-      }
+      renderer.destroy();
     };
   }, [consumeLatestSnapshot, templatesRef, tickFlightInput, canvasToWorld]);
 

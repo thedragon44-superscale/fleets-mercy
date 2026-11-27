@@ -1,5 +1,5 @@
 // src/components/casino/spacePirates/SpacePiratesTableView.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSpacePiratesSocket } from '../../../hooks/useSpacePiratesSocket';
 import { SPConfigResponse, fetchSPConfig } from '../../../services/clusterService';
 import { PlayerSession } from '../../../services/walletService';
@@ -26,6 +26,7 @@ export const SpacePiratesTableView: React.FC<SpacePiratesTableViewProps> = ({
   const {
     status,
     latestStateRef,
+    consumeLatestSnapshot,
     hud,
     mySeat,
     joinSeat,
@@ -51,12 +52,42 @@ export const SpacePiratesTableView: React.FC<SpacePiratesTableViewProps> = ({
     };
   }, []);
 
-  // Propagate live server-synced balance back up to App session state
+  // Debounce root App balance sync so combat wallet updates don't re-render the root App tree on every shot/kill
+  const latestSeatBalanceRef = useRef<number | null>(null);
+  const lastSyncedBalanceRef = useRef<number>(player.balanceCents);
+  const onBalanceSyncRef = useRef(onBalanceSync);
+  onBalanceSyncRef.current = onBalanceSync;
+
   useEffect(() => {
-    if (mySeat && mySeat.balanceCents !== player.balanceCents) {
-      onBalanceSync(mySeat.balanceCents);
-    }
-  }, [mySeat, player.balanceCents, onBalanceSync]);
+    if (!mySeat) return;
+    latestSeatBalanceRef.current = mySeat.balanceCents;
+    if (mySeat.balanceCents === lastSyncedBalanceRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      if (
+        latestSeatBalanceRef.current !== null &&
+        latestSeatBalanceRef.current !== lastSyncedBalanceRef.current
+      ) {
+        lastSyncedBalanceRef.current = latestSeatBalanceRef.current;
+        onBalanceSyncRef.current(latestSeatBalanceRef.current);
+      }
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [mySeat]);
+
+  // Flush final wallet balance up to App immediately when exiting the table
+  useEffect(() => {
+    return () => {
+      if (
+        latestSeatBalanceRef.current !== null &&
+        latestSeatBalanceRef.current !== lastSyncedBalanceRef.current
+      ) {
+        lastSyncedBalanceRef.current = latestSeatBalanceRef.current;
+        onBalanceSyncRef.current(latestSeatBalanceRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 w-screen h-screen flex flex-col bg-[#03060c] overflow-hidden">
@@ -69,6 +100,7 @@ export const SpacePiratesTableView: React.FC<SpacePiratesTableViewProps> = ({
       <div className="relative flex-1 min-h-0 flex">
         <SpacePiratesViewport
           latestStateRef={latestStateRef}
+          consumeLatestSnapshot={consumeLatestSnapshot}
           resources={config?.resources || {}}
         />
 
