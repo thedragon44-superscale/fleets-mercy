@@ -1,6 +1,48 @@
 // src/renderer/pixiSprites.ts
-// Shared Pixi.js v8 WebGL mipmapped unit sprite loader, scale calibration, and pooled Sprite layer.
-import { Assets, Container, Sprite, Texture } from 'pixi.js';
+// Shared Pixi.js v8 WebGL unit sprite loader (main-thread HTMLImageElement for WebKitGTK/Linux stability),
+// scale calibration, and pooled Sprite layer.
+import { Container, ImageSource, Sprite, Texture } from 'pixi.js';
+import aegisUrl from '../assets/aegis.png';
+import assaultUrl from '../assets/assault.png';
+import cryoUrl from '../assets/cryo.png';
+import flagshipUrl from '../assets/flagship.png';
+import gravUrl from '../assets/grav.png';
+import ionUrl from '../assets/ion.png';
+import lancerUrl from '../assets/lancer.png';
+import miningUrl from '../assets/mining.png';
+import phantomUrl from '../assets/phantom.png';
+import plasmaUrl from '../assets/plasma.png';
+import reconUrl from '../assets/recon.png';
+import specterUrl from '../assets/specter.png';
+import supplyUrl from '../assets/supply.png';
+import torpedoUrl from '../assets/torpedo.png';
+import turretUrl from '../assets/turret.png';
+import viperUrl from '../assets/viper.png';
+import vortexUrl from '../assets/vortex.png';
+import wallUrl from '../assets/wall.png';
+import warpUrl from '../assets/warp.png';
+
+const UNIT_ASSET_URLS: Record<string, string> = {
+  'aegis.png': aegisUrl,
+  'assault.png': assaultUrl,
+  'cryo.png': cryoUrl,
+  'flagship.png': flagshipUrl,
+  'grav.png': gravUrl,
+  'ion.png': ionUrl,
+  'lancer.png': lancerUrl,
+  'mining.png': miningUrl,
+  'phantom.png': phantomUrl,
+  'plasma.png': plasmaUrl,
+  'recon.png': reconUrl,
+  'specter.png': specterUrl,
+  'supply.png': supplyUrl,
+  'torpedo.png': torpedoUrl,
+  'turret.png': turretUrl,
+  'viper.png': viperUrl,
+  'vortex.png': vortexUrl,
+  'wall.png': wallUrl,
+  'warp.png': warpUrl,
+};
 
 export const UNIT_ASSET_FILENAMES: Record<string, string> = {
   flagship: 'flagship.png',
@@ -94,9 +136,27 @@ export const UNIT_ROTATION_OFFSETS: Record<string, number> = {
 const textureByFilename = new Map<string, Texture>();
 let loadAllPromise: Promise<void> | null = null;
 
+function loadHtmlImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.decoding = 'async';
+    img.onload = () => {
+      if (typeof img.decode === 'function') {
+        img.decode().then(() => resolve(img)).catch(() => resolve(img));
+      } else {
+        resolve(img);
+      }
+    };
+    img.onerror = (err) => reject(err);
+    img.src = url;
+  });
+}
+
 /**
- * Loads all 19 optimized power-of-two unit PNGs into Pixi.js v8 GPU textures
- * with autoGenerateMipmaps + linear filtering + 4x anisotropic filtering enabled.
+ * Loads all 19 optimized power-of-two unit PNGs into Pixi.js v8 GPU textures via main-thread
+ * HTMLImageElement (bypassing Web Worker createImageBitmap transfer and mipmap/anisotropy
+ * driver bugs on Linux WebKitGTK / hybrid GPUs).
  * Safe to call multiple times across modes; resolves from cache after first load.
  */
 export function loadPixiUnitTextures(): Promise<void> {
@@ -106,21 +166,22 @@ export function loadPixiUnitTextures(): Promise<void> {
   loadAllPromise = Promise.all(
     uniqueFiles.map(async (filename) => {
       try {
-        const srcUrl = new URL(`../assets/${filename}`, import.meta.url).href;
-        const tex = await Assets.load<Texture>({
-          src: srcUrl,
-          data: {
-            autoGenerateMipmaps: true,
-            scaleMode: 'linear',
-            maxAnisotropy: 4,
-          },
-        });
-        if (tex?.source) {
-          tex.source.autoGenerateMipmaps = true;
-          tex.source.scaleMode = 'linear';
-          tex.source.maxAnisotropy = 4;
-          tex.source.updateMipmaps();
+        const srcUrl = UNIT_ASSET_URLS[filename];
+        if (!srcUrl) {
+          console.warn(`[PIXI SPRITES] Missing static asset import for ${filename}`);
+          return;
         }
+        const img = await loadHtmlImage(srcUrl);
+        const source = new ImageSource({
+          resource: img,
+          autoGenerateMipmaps: false,
+          scaleMode: 'linear',
+          maxAnisotropy: 1,
+          alphaMode: 'premultiply-alpha-on-upload',
+          label: filename,
+        });
+        source.autoGarbageCollect = false;
+        const tex = new Texture({ source, label: filename });
         textureByFilename.set(filename, tex);
       } catch (err) {
         console.warn(`[PIXI SPRITES] Failed to load texture ${filename}:`, err);
