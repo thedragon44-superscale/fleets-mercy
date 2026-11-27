@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"space-tactics-server/internal/db"
-	SpacePirates "space-tactics-server/internal/generated/SpacePirates"
 )
 
 // UnitCurrentBountyCents computes the live 1x bounty (in cents) for any House unit.

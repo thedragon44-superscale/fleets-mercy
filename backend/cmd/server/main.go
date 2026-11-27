@@ -10,6 +10,7 @@ import (
 	"space-tactics-server/internal/api"
 	"space-tactics-server/internal/db"
 	"space-tactics-server/internal/game"
+	"space-tactics-server/internal/game/spacePirates"
 	"space-tactics-server/internal/game/teamDeathMatch"
 )
 
@@ -81,6 +82,9 @@ func main() {
 		room.HandleWS(w, r)
 	})
 
+	// Dedicated pure-FlatBuffers WebSocket route for Space Pirates Casino Mode
+	http.HandleFunc("/ws/casino/space-pirates", spacePirates.HandleTableWS)
+
 	// --- AUTH, WALLET & ADMIN ROUTES ---
 
 	http.HandleFunc("/api/login", api.CasinoLoginHandler)
@@ -117,6 +121,6 @@ func main() {
 		}
 	})
 
-	log.Println("Fleet's Mercy Server running on :8080 (Dynamic Map WS, TDM, Casino Auth/Wallet & Space Pirates Config enabled)")
+	log.Println("Fleet's Mercy Server running on :8080 (Dynamic Map WS, TDM, Casino Auth/Wallet & Space Pirates WS/Config enabled)")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -9,7 +9,11 @@ import { DeveloperSettingsDashboard } from './components/system/DeveloperSetting
 import { TdmUnitSelectionScreen } from './components/teamDeathMatch/unitSelection';
 import { TdmMapSelectionScreen } from './components/teamDeathMatch/mapSelection';
 import { TdmViewport } from './components/teamDeathMatch/tdmViewport';
+import { CasinoLobby } from './components/casino/CasinoLobby';
+import { ClusterDesignerView } from './components/casino/clusterEditor/ClusterDesignerView';
+import { SpacePiratesTableView } from './components/casino/spacePirates/SpacePiratesTableView';
 import { fetchMaps, MapDefinition } from './services/mapService';
+import { fetchWallet, formatCents, PlayerSession } from './services/walletService';
 import { refreshUnitTemplates } from './hooks/useUnitTemplates';
 
 export type AppView =
@@ -24,16 +28,20 @@ export type AppView =
   | 'developer-settings'
   | 'tdm-unit-select'
   | 'tdm-map-select'
-  | 'tdm-viewport';
+  | 'tdm-viewport'
+  | 'casino-lobby'
+  | 'space-pirates'
+  | 'cluster-designer';
 
 export default function App() {
-  const [player, setPlayer] = useState<{ id: number; username: string } | null>(null);
+  const [player, setPlayer] = useState<PlayerSession | null>(null);
   const [view, setView] = useState<AppView>('login');
   const [activeLoadout, setActiveLoadout] = useState<LoadoutData | null>(null);
   const [selectedMapId, setSelectedMapId] = useState<number>(1);
   const [editorTargetMapId, setEditorTargetMapId] = useState<number | null>(null);
   const [maps, setMaps] = useState<MapDefinition[]>([]);
   const [isSandboxLaunch, setIsSandboxLaunch] = useState<boolean>(false);
+  const [activeCasinoTableId, setActiveCasinoTableId] = useState<string>('sp-table-1');
 
   // TDM State Management
   const [tdmPilotedUnit, setTdmPilotedUnit] = useState<string>('viper_interceptor');
@@ -53,8 +61,32 @@ export default function App() {
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        setPlayer(parsed);
+        const restored: PlayerSession = {
+          id: parsed.id,
+          username: parsed.username,
+          role: parsed.role === 'house_admin' ? 'house_admin' : 'player',
+          walletId: parsed.walletId,
+          balanceCents: typeof parsed.balanceCents === 'number' ? parsed.balanceCents : 0,
+        };
+        setPlayer(restored);
         setView('main-menu');
+
+        // Refresh real role & balance from PostgreSQL on restore
+        fetchWallet(restored.id)
+          .then(({ wallet }) => {
+            const synced: PlayerSession = {
+              id: wallet.playerId,
+              username: wallet.username,
+              role: wallet.role,
+              walletId: wallet.walletId,
+              balanceCents: wallet.balanceCents,
+            };
+            localStorage.setItem('spacetactics_user', JSON.stringify(synced));
+            setPlayer(synced);
+          })
+          .catch(() => {
+            // Keep restored session if backend is temporarily unreachable
+          });
       } catch {
         localStorage.removeItem('spacetactics_user');
       }
@@ -70,10 +102,19 @@ export default function App() {
     }
   }, [player]);
 
-  const handleLoginSuccess = (user: { id: number; username: string }) => {
+  const handleLoginSuccess = (user: PlayerSession) => {
     setPlayer(user);
     setView('main-menu');
   };
+
+  const handleBalanceSync = useCallback((balanceCents: number) => {
+    setPlayer((prev) => {
+      if (!prev || prev.balanceCents === balanceCents) return prev;
+      const next = { ...prev, balanceCents };
+      localStorage.setItem('spacetactics_user', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('spacetactics_user');
@@ -110,6 +151,14 @@ export default function App() {
           </p>
 
           <div className="flex flex-col gap-2.5 w-full">
+            {/* Casino Suite (Space Pirates + Cluster Designer + House Treasury) */}
+            <button
+              onClick={() => setView('casino-lobby')}
+              className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black py-3 rounded-lg text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-900/30 cursor-pointer"
+            >
+              🏴‍☠️ Casino Hub · Space Pirates ({formatCents(player.balanceCents)})
+            </button>
+
             {/* TDM Matchmaking Entry */}
             <button
               onClick={() => setView('tdm-unit-select')}
@@ -399,6 +448,39 @@ export default function App() {
   // Developer Settings Dashboard View
   if (view === 'developer-settings') {
     return <DeveloperSettingsDashboard onNavigateHome={() => setView('main-menu')} />;
+  }
+
+  // Casino Suite Lobby (Space Pirates + Cluster Designer + House Admin Treasury)
+  if (view === 'casino-lobby') {
+    return (
+      <CasinoLobby
+        player={player}
+        onBalanceSync={handleBalanceSync}
+        onOpenSpacePirates={(tableId) => {
+          setActiveCasinoTableId(tableId);
+          setView('space-pirates');
+        }}
+        onOpenClusterDesigner={() => setView('cluster-designer')}
+        onBackToMenu={() => setView('main-menu')}
+      />
+    );
+  }
+
+  // Space Pirates 60Hz Multiplayer Casino Table
+  if (view === 'space-pirates') {
+    return (
+      <SpacePiratesTableView
+        tableId={activeCasinoTableId}
+        player={player}
+        onBalanceSync={handleBalanceSync}
+        onExitToLobby={() => setView('casino-lobby')}
+      />
+    );
+  }
+
+  // Asteroid Cluster Designer Studio
+  if (view === 'cluster-designer') {
+    return <ClusterDesignerView onBack={() => setView('casino-lobby')} />;
   }
 
   return null;

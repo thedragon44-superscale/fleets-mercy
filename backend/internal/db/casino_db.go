@@ -16,6 +16,7 @@ var (
 	ErrInsufficientFunds = errors.New("insufficient wallet balance")
 	ErrPlayerNotFound    = errors.New("player not found")
 	ErrUnauthorizedAdmin = errors.New("house_admin role required")
+	ErrTableNotFound     = errors.New("casino table not found or inactive")
 )
 
 // Thread-safe in-memory cache for Space Pirates configs (refreshed on startup & editor save)
@@ -226,6 +227,63 @@ func ListAllPlayerWallets() ([]models.WalletSummary, error) {
 		list = append(list, w)
 	}
 	return list, nil
+}
+
+// OpenTableSession validates the target casino table is active and inserts a new table_sessions row.
+func OpenTableSession(tableID string, playerID int, seatIndex int8, startingBalanceCents int64) (int64, error) {
+	var active bool
+	err := Conn.QueryRow(
+		`SELECT is_active FROM casino_tables WHERE table_id = $1`,
+		tableID,
+	).Scan(&active)
+	if err == sql.ErrNoRows || (err == nil && !active) {
+		return 0, ErrTableNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("lookup casino_table %q: %w", tableID, err)
+	}
+
+	var sessionID int64
+	err = Conn.QueryRow(
+		`INSERT INTO table_sessions (table_id, player_id, seat_index, starting_balance_cents)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING session_id`,
+		tableID, playerID, seatIndex, startingBalanceCents,
+	).Scan(&sessionID)
+	if err != nil {
+		return 0, fmt.Errorf("open table_session: %w", err)
+	}
+	return sessionID, nil
+}
+
+// CloseTableSession finalizes an open table_sessions row with ending balance and RTP counters.
+// Idempotent: only updates rows where left_at IS NULL.
+func CloseTableSession(
+	sessionID int64,
+	endingBalanceCents int64,
+	totalWageredCents int64,
+	totalWonCents int64,
+	unitsDeployed int,
+	unitsForfeited int,
+) error {
+	if sessionID <= 0 {
+		return nil
+	}
+	_, err := Conn.Exec(
+		`UPDATE table_sessions
+		 SET left_at = NOW(),
+		     ending_balance_cents = $2,
+		     total_wagered_cents = $3,
+		     total_won_cents = $4,
+		     units_deployed = $5,
+		     units_forfeited = $6
+		 WHERE session_id = $1 AND left_at IS NULL`,
+		sessionID, endingBalanceCents, totalWageredCents, totalWonCents, unitsDeployed, unitsForfeited,
+	)
+	if err != nil {
+		return fmt.Errorf("close table_session %d: %w", sessionID, err)
+	}
+	return nil
 }
 
 // LoadSPConfigCache loads all Space Pirates rulesets, unit configs, resources, and cluster variants from PostgreSQL.
