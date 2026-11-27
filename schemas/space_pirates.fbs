@@ -1,0 +1,154 @@
+// schemas/space_pirates.fbs
+namespace SpacePirates;
+
+// --- ENUMS ---
+
+enum ResourceType : ubyte {
+  None = 0,
+  Metal = 1,
+  Ore = 2,
+  Isotope = 3,
+  PlasmaGas = 4,
+  GravitonCore = 5
+}
+
+enum ClientActionType : ubyte {
+  None = 0,
+  JoinSeat = 1,
+  LeaveSeat = 2,
+  SetMultiplier = 3,
+  DeployUnit = 4
+}
+
+// --- SHARED STRUCTS ---
+
+struct Vec2 {
+  x: float;
+  y: float;
+}
+
+struct Shields {
+  front: float;
+  rear: float;
+  port: float;
+  starboard: float;
+}
+
+struct Hull {
+  front: float;
+  rear: float;
+  port: float;
+  starboard: float;
+}
+
+// --- DOWNSTREAM: SERVER STATE (60Hz Binary Broadcast) ---
+
+table SPUnit {
+  id: string;
+  unit_type: string;          // e.g. "viper_interceptor", "mining_barge", "flagship"
+  owner_id: string;           // "house" or "seat-0".."seat-3"
+  seat_index: byte = -1;      // -1 = House (red glow), 0..3 = Player seat color
+  is_house: bool;
+
+  pos: Vec2;
+  vel: Vec2;
+  angle: float;
+  shields: Shields;
+  hull: Hull;
+
+  is_firing: bool;
+  is_squad_leader: bool;
+  squad_id: int;
+  ai_state: string;
+
+  // Player Combatant Telemetry
+  current_ammo: int;
+  max_ammo: int;
+  bet_multiplier: ubyte;      // 1, 2, 5, 10, 25
+
+  // House Harvester & Bounty Telemetry
+  resource_type: ResourceType;
+  cargo_ratio: float;         // 0.0 -> 1.0 (drives visual cargo ring)
+  current_bounty_cents: long; // Live 1x bounty in cents (integer math)
+}
+
+table SPProjectile {
+  id: string;
+  owner_id: string;
+  seat_index: byte = -1;
+  is_house: bool;
+  proj_type: string;          // "laser", "railgun", "torpedo", "cryo"
+  pos: Vec2;
+  vel: Vec2;
+  bet_multiplier: ubyte;
+}
+
+table SPAsteroidNode {
+  id: uint;
+  cluster_id: uint;
+  pos: Vec2;
+  vel: Vec2;
+  radius: float;
+  resource_type: ResourceType;
+}
+
+table SPCryoCloud {
+  id: uint;
+  owner_id: string;
+  seat_index: byte = -1;
+  pos: Vec2;
+  radius: float;
+  remaining_ticks: ushort;
+  max_ticks: ushort;
+}
+
+table SPSeatState {
+  seat_index: byte;           // 0 = NW, 1 = NE, 2 = SW, 3 = SE
+  occupied: bool;
+  player_id: string;
+  username: string;
+  balance_cents: long;
+  active_multiplier: ubyte;   // 1, 2, 5, 10, 25
+  active_unit_count: ushort;
+}
+
+table SPPayoutEvent {
+  event_id: ulong;
+  seat_index: byte;
+  unit_type: string;
+  pos: Vec2;
+  payout_cents: long;         // Final multiplied payout in cents
+  multiplier: ubyte;
+  was_boss: bool;
+}
+
+table SPServerState {
+  tick: ulong;
+  arena_width: float;
+  arena_height: float;
+
+  units: [SPUnit];
+  projectiles: [SPProjectile];
+  asteroids: [SPAsteroidNode];
+  cryo_clouds: [SPCryoCloud];
+  seats: [SPSeatState];
+  payout_events: [SPPayoutEvent];
+
+  // Table-Wide Boss Meter & Escape Timer
+  boss_meter_current: uint;
+  boss_meter_threshold: uint;
+  boss_active: bool;
+  boss_escape_ticks_remaining: uint;
+}
+
+// --- UPSTREAM: CLIENT ACTIONS (Binary WebSocket Messages) ---
+
+table SPClientAction {
+  action: ClientActionType;
+  seat_index: byte = -1;      // Optional preferred corner (0..3) or -1 for auto-assign
+  username: string;
+  multiplier: ubyte;          // Used with SetMultiplier (1, 2, 5, 10, 25)
+  unit_type: string;          // Used with DeployUnit ("viper_interceptor", etc.)
+}
+
+root_type SPServerState;

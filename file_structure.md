@@ -94,252 +94,260 @@ find . -maxdepth 4 -not -path '*/.*' -not -path './node_modules*' -not -path './
 
 ## Project Directory Structure
 
-```text
 .
-├── 001.md
-├── AAA-roadmap.md
-├── all_files.md
 ├── backend
-│   ├── backendArchitecture.md
-│   ├── cmd
-│   │   └── server
-│   │       └── main.go
-│   ├── dbArchitecture.md
-│   ├── go.mod
-│   ├── go.sum
-│   ├── internal
-│   │   ├── api
-│   │   │   └── handlers.go
-│   │   ├── db
-│   │   │   └── postgres.go
-│   │   ├── game
-│   │   │   ├── ai_behaviors.go
-│   │   │   ├── ballistics.go
-│   │   │   ├── collisions.go
-│   │   │   ├── logistics.go
-│   │   │   ├── movement.go
-│   │   │   ├── physics.go
-│   │   │   ├── radar.go
-│   │   │   ├── room.go
-│   │   │   └── teamDeathMatch
-│   │   ├── generated
-│   │   │   └── SpaceTactics
-│   │   └── models
-│   │       └── structs.go
-│   └── unit_templates.md
-├── file-structure.md
+│   ├── backendArchitecture.md
+│   ├── cmd
+│   │   ├── dump_db
+│   │   │   ├── db_dump_output.sql
+│   │   │   └── main.go
+│   │   └── server
+│   │       └── main.go
+│   ├── dbArchitecture.md
+│   ├── go.mod
+│   ├── go.sum
+│   ├── internal
+│   │   ├── api
+│   │   │   └── handlers.go
+│   │   ├── db
+│   │   │   └── postgres.go
+│   │   ├── game
+│   │   │   ├── ai_behaviors.go
+│   │   │   ├── ballistics.go
+│   │   │   ├── collisions.go
+│   │   │   ├── logistics.go
+│   │   │   ├── movement.go
+│   │   │   ├── physics.go
+│   │   │   ├── radar.go
+│   │   │   ├── room.go
+│   │   │   └── teamDeathMatch
+│   │   ├── generated
+│   │   │   └── SpaceTactics
+│   │   └── models
+│   │       └── structs.go
+│   └── unit_templates.md
+├── file_structure.md
 ├── game-mechanics
-│   ├── enviornment
-│   │   ├── 01-major-worlds-terrestrial-crusts.md
-│   │   ├── 02-drifting-mineral-planetoids.md
-│   │   ├── 03-gas-giant-atmospheres.md
-│   │   ├── 04-deep-nebula-plasma.md
-│   │   ├── 05-spatial-singularity-rifts.md
-│   │   ├── 06-moons-satellites.md
-│   │   ├── 07-dense-asteroid-belts.md
-│   │   ├── 09-comets.md
-│   │   └── environmentsMaster.md
-│   ├── formations.md
-│   ├── lore.md
-│   ├── mechanicsArchitecture.md
-│   ├── radar.md
-│   ├── resource-enonomy
-│   │   ├── resource-list.md
-│   │   └── wreckage.md
-│   ├── unit-config
-│   │   ├── aegis_repair.md
-│   │   ├── aegis_wall.md
-│   │   ├── assault_gunship.md
-│   │   ├── battalion_command_ship.md
-│   │   ├── command_escort.md
-│   │   ├── cryo_flak.md
-│   │   ├── flagship.md
-│   │   ├── grav_extractor.md
-│   │   ├── gun_emplacement.md
-│   │   ├── ion_interceptor.md
-│   │   ├── lancer_corvette.md
-│   │   ├── MASTER-UNIT-CONFIG.md
-│   │   ├── mining_barge.md
-│   │   ├── phantom_transport.md
-│   │   ├── plasma_skimmer.md
-│   │   ├── recon_probe.md
-│   │   ├── specter_jammer.md
-│   │   ├── supply_tender.md
-│   │   ├── torpedo_bomber.md
-│   │   ├── viper_interceptor.md
-│   │   ├── vortex_minelayer.md
-│   │   └── warp_frigate.md
-│   ├── unitConfigTree.md
-│   ├── unit-specs
-│   │   ├── aegis-repair.md
-│   │   ├── aegis-wall.md
-│   │   ├── assault-gunship.md
-│   │   ├── battalion-command.md
-│   │   ├── command-escort.md
-│   │   ├── cryo-flak.md
-│   │   ├── flagship.md
-│   │   ├── grav-extractor.md
-│   │   ├── gun-emplacement.md
-│   │   ├── ion-disabler.md
-│   │   ├── lancer-corvette.md
-│   │   ├── MASTER_UNIT_BEHAVIORS.md
-│   │   ├── mining-barge.md
-│   │   ├── phantom.md
-│   │   ├── plasma-skimmer.md
-│   │   ├── recon.md
-│   │   ├── specter-jammer.md
-│   │   ├── supply-tender.md
-│   │   ├── torpedo-bomber.md
-│   │   ├── unit-list.md
-│   │   ├── units-by-weight.md
-│   │   ├── viper.md
-│   │   ├── vortex-minelayer.md
-│   │   └── warp-frigate.md
-│   └── unit-stat-variables.md
-├── huge-updates.md
+│   ├── enviornment
+│   │   ├── 01-major-worlds-terrestrial-crusts.md
+│   │   ├── 02-drifting-mineral-planetoids.md
+│   │   ├── 03-gas-giant-atmospheres.md
+│   │   ├── 04-deep-nebula-plasma.md
+│   │   ├── 05-spatial-singularity-rifts.md
+│   │   ├── 06-moons-satellites.md
+│   │   ├── 07-dense-asteroid-belts.md
+│   │   ├── 09-comets.md
+│   │   └── environmentsMaster.md
+│   ├── formations.md
+│   ├── lore.md
+│   ├── mechanicsArchitecture.md
+│   ├── radar.md
+│   ├── resource-enonomy
+│   │   ├── resource-list.md
+│   │   └── wreckage.md
+│   ├── unit-config
+│   │   ├── aegis_repair.md
+│   │   ├── aegis_wall.md
+│   │   ├── assault_gunship.md
+│   │   ├── battalion_command_ship.md
+│   │   ├── command_escort.md
+│   │   ├── cryo_flak.md
+│   │   ├── flagship.md
+│   │   ├── grav_extractor.md
+│   │   ├── gun_emplacement.md
+│   │   ├── ion_interceptor.md
+│   │   ├── lancer_corvette.md
+│   │   ├── MASTER-UNIT-CONFIG.md
+│   │   ├── mining_barge.md
+│   │   ├── phantom_transport.md
+│   │   ├── plasma_skimmer.md
+│   │   ├── recon_probe.md
+│   │   ├── specter_jammer.md
+│   │   ├── supply_tender.md
+│   │   ├── torpedo_bomber.md
+│   │   ├── viper_interceptor.md
+│   │   ├── vortex_minelayer.md
+│   │   └── warp_frigate.md
+│   ├── unitConfigTree.md
+│   ├── unit-specs
+│   │   ├── aegis-repair.md
+│   │   ├── aegis-wall.md
+│   │   ├── assault-gunship.md
+│   │   ├── battalion-command.md
+│   │   ├── command-escort.md
+│   │   ├── cryo-flak.md
+│   │   ├── flagship.md
+│   │   ├── grav-extractor.md
+│   │   ├── gun-emplacement.md
+│   │   ├── ion-disabler.md
+│   │   ├── lancer-corvette.md
+│   │   ├── MASTER_UNIT_BEHAVIORS.md
+│   │   ├── mining-barge.md
+│   │   ├── phantom.md
+│   │   ├── plasma-skimmer.md
+│   │   ├── recon.md
+│   │   ├── specter-jammer.md
+│   │   ├── supply-tender.md
+│   │   ├── torpedo-bomber.md
+│   │   ├── unit-list.md
+│   │   ├── units-by-weight.md
+│   │   ├── viper.md
+│   │   ├── vortex-minelayer.md
+│   │   └── warp-frigate.md
+│   └── unit-stat-variables.md
 ├── index.html
 ├── package.json
 ├── package-lock.json
 ├── postcss.config.js
 ├── public
-│   ├── tauri.svg
-│   └── vite.svg
+│   ├── tauri.svg
+│   └── vite.svg
 ├── README.md
 ├── schemas
-│   └── game_state.fbs
+│   └── game_state.fbs
 ├── src
-│   ├── App.css
-│   ├── App.tsx
-│   ├── assets
-│   │   ├── aegis.png
-│   │   ├── assault.png
-│   │   ├── asset-gen.txt
-│   │   ├── cryo.png
-│   │   ├── dragon_logo.png
-│   │   ├── flagship.png
-│   │   ├── grav.png
-│   │   ├── ion.png
-│   │   ├── lancer.png
-│   │   ├── mining.png
-│   │   ├── phantom.png
-│   │   ├── plasma.png
-│   │   ├── recon.png
-│   │   ├── specter.png
-│   │   ├── supply.png
-│   │   ├── torpedo.png
-│   │   ├── turret.png
-│   │   ├── viper.png
-│   │   ├── vortex.png
-│   │   ├── wall.png
-│   │   └── warp.png
-│   ├── components
-│   │   ├── common
-│   │   │   └── LoadingIndicator.tsx
-│   │   ├── DeveloperSettingsDashboard.tsx
-│   │   ├── DockingModal.tsx
-│   │   ├── GameViewport.tsx
-│   │   ├── GarageDashboard.tsx
-│   │   ├── LoginScreen.tsx
-│   │   ├── MapEditorViewport.tsx
-│   │   ├── PilotSwitcherModal.tsx
-│   │   ├── PracticeViewport.tsx
-│   │   ├── teamDeathMatch
-│   │   │   ├── mapSelection.tsx
-│   │   │   ├── tdmViewport.tsx
-│   │   │   └── unitSelection.tsx
-│   │   ├── UnitConfig
-│   │   │   ├── common
-│   │   │   ├── index.ts
-│   │   │   ├── tabs
-│   │   │   ├── types.ts
-│   │   │   ├── UnitConfigContainer.tsx
-│   │   │   ├── UnitConfigHeader.tsx
-│   │   │   └── UnitConfigTabs.tsx
-│   │   └── VariableInfoModal.tsx
-│   ├── config
-│   │   └── settingsStore.ts
-│   ├── config.ts
-│   ├── constants
-│   │   └── variableDocs.ts
-│   ├── frontendArchitecture.md
-│   ├── generated
-│   │   ├── game_state_generated.ts
-│   │   └── space-tactics
-│   │       ├── behavior-config-update.ts
-│   │       ├── client-input.ts
-│   │       ├── fleet-unit.ts
-│   │       ├── hull.ts
-│   │       ├── projectile.ts
-│   │       ├── sandbox-count-pair.ts
-│   │       ├── server-state.ts
-│   │       ├── shields.ts
-│   │       ├── unit-config-update.ts
-│   │       ├── unit-grouping-payload.ts
-│   │       └── vector2d.ts
-│   ├── hooks
-│   │   └── useGameSockets.ts
-│   ├── main.tsx
-│   ├── parsers
-│   │   └── binaryCodec.ts
-│   ├── renderer
-│   │   ├── interpolation.ts
-│   │   └── vectorAssets.ts
-│   ├── services
-│   │   ├── gameSocketService.ts
-│   │   └── mapService.ts
-│   ├── types
-│   │   └── unitConfig.ts
-│   ├── utils
-│   │   └── groupingColors.ts
-│   └── vite-env.d.ts
+│   ├── App.css
+│   ├── App.tsx
+│   ├── assets
+│   │   ├── aegis.png
+│   │   ├── assault.png
+│   │   ├── asset-gen.txt
+│   │   ├── cryo.png
+│   │   ├── dragon_logo.png
+│   │   ├── flagship.png
+│   │   ├── grav.png
+│   │   ├── ion.png
+│   │   ├── lancer.png
+│   │   ├── mining.png
+│   │   ├── phantom.png
+│   │   ├── plasma.png
+│   │   ├── recon.png
+│   │   ├── specter.png
+│   │   ├── supply.png
+│   │   ├── torpedo.png
+│   │   ├── turret.png
+│   │   ├── viper.png
+│   │   ├── vortex.png
+│   │   ├── wall.png
+│   │   └── warp.png
+│   ├── components
+│   │   ├── common
+│   │   │   ├── LoadingIndicator.tsx
+│   │   │   ├── TacticalRadar.tsx
+│   │   │   ├── TacticalSelect.tsx
+│   │   │   └── VariableInfoModal.tsx
+│   │   ├── game
+│   │   │   └── GameViewport.tsx
+│   │   ├── garage
+│   │   │   └── GarageDashboard.tsx
+│   │   ├── mapEditor
+│   │   │   └── MapEditorViewport.tsx
+│   │   ├── sandbox
+│   │   │   ├── constants.ts
+│   │   │   ├── modals
+│   │   │   ├── PracticeViewport.tsx
+│   │   │   ├── SandboxCommandMenu.tsx
+│   │   │   └── UnitConfig
+│   │   ├── system
+│   │   │   ├── DeveloperSettingsDashboard.tsx
+│   │   │   └── LoginScreen.tsx
+│   │   ├── teamDeathMatch
+│   │   │   ├── mapSelection.tsx
+│   │   │   ├── tdmViewport.tsx
+│   │   │   └── unitSelection.tsx
+│   │   └── viewport
+│   │       ├── CanvasToolBar.tsx
+│   │       └── ViewportTopBar.tsx
+│   ├── config
+│   │   └── settingsStore.ts
+│   ├── config.ts
+│   ├── constants
+│   │   └── variableDocs.ts
+│   ├── frontendArchitecture.md
+│   ├── generated
+│   │   ├── game_state_generated.ts
+│   │   └── space-tactics
+│   │       ├── behavior-config-update.ts
+│   │       ├── client-input.ts
+│   │       ├── fleet-unit.ts
+│   │       ├── hull.ts
+│   │       ├── projectile.ts
+│   │       ├── sandbox-count-pair.ts
+│   │       ├── sandbox-time-control.ts
+│   │       ├── server-state.ts
+│   │       ├── shields.ts
+│   │       ├── unit-config-update.ts
+│   │       ├── unit-grouping-payload.ts
+│   │       └── vector2d.ts
+│   ├── hooks
+│   │   ├── useFlightControls.ts
+│   │   ├── useGameSockets.ts
+│   │   └── useUnitTemplates.ts
+│   ├── main.tsx
+│   ├── parsers
+│   │   └── binaryCodec.ts
+│   ├── renderer
+│   │   ├── interpolation.ts
+│   │   └── vectorAssets.ts
+│   ├── services
+│   │   ├── gameSocketService.ts
+│   │   └── mapService.ts
+│   ├── types
+│   │   └── unitConfig.ts
+│   ├── utils
+│   │   └── groupingColors.ts
+│   └── vite-env.d.ts
 ├── src-tauri
-│   ├── build.rs
-│   ├── capabilities
-│   │   └── default.json
-│   ├── Cargo.lock
-│   ├── Cargo.toml
-│   ├── gen
-│   │   └── schemas
-│   │       ├── acl-manifests.json
-│   │       ├── capabilities.json
-│   │       ├── desktop-schema.json
-│   │       └── linux-schema.json
-│   ├── icons
-│   │   ├── 128x128@2x.png
-│   │   ├── 128x128.png
-│   │   ├── 32x32.png
-│   │   ├── icon.icns
-│   │   ├── icon.ico
-│   │   ├── icon.png
-│   │   ├── Square107x107Logo.png
-│   │   ├── Square142x142Logo.png
-│   │   ├── Square150x150Logo.png
-│   │   ├── Square284x284Logo.png
-│   │   ├── Square30x30Logo.png
-│   │   ├── Square310x310Logo.png
-│   │   ├── Square44x44Logo.png
-│   │   ├── Square71x71Logo.png
-│   │   ├── Square89x89Logo.png
-│   │   └── StoreLogo.png
-│   ├── src
-│   │   ├── lib.rs
-│   │   └── main.rs
-│   └── tauri.conf.json
+│   ├── build.rs
+│   ├── capabilities
+│   │   └── default.json
+│   ├── Cargo.lock
+│   ├── Cargo.toml
+│   ├── gen
+│   │   └── schemas
+│   │       ├── acl-manifests.json
+│   │       ├── capabilities.json
+│   │       ├── desktop-schema.json
+│   │       └── linux-schema.json
+│   ├── icons
+│   │   ├── 128x128@2x.png
+│   │   ├── 128x128.png
+│   │   ├── 32x32.png
+│   │   ├── icon.icns
+│   │   ├── icon.ico
+│   │   ├── icon.png
+│   │   ├── Square107x107Logo.png
+│   │   ├── Square142x142Logo.png
+│   │   ├── Square150x150Logo.png
+│   │   ├── Square284x284Logo.png
+│   │   ├── Square30x30Logo.png
+│   │   ├── Square310x310Logo.png
+│   │   ├── Square44x44Logo.png
+│   │   ├── Square71x71Logo.png
+│   │   ├── Square89x89Logo.png
+│   │   └── StoreLogo.png
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── main.rs
+│   └── tauri.conf.json
 ├── tailwind.config.js
 ├── tsconfig.json
 ├── tsconfig.node.json
-├── update-logs.md
 ├── update-roadmaps
-│   ├── ai_behaviors_02.md
-│   ├── ai_behaviors.md
-│   ├── ballistics_ammo.md
-│   ├── downstream_payloads_02.md
-│   ├── downstream-payloads.md
-│   ├── economy.md
-│   ├── map-objects.md
-│   └── payload_upgrade_roadmap.md
-├── updates
+│   ├── ai_behaviors_02.md
+│   ├── ai_behaviors.md
+│   ├── backend_bugs.md
+│   ├── ballistics_ammo.md
+│   ├── component_restructure.md
+│   ├── downstream_payloads_02.md
+│   ├── downstream-payloads.md
+│   ├── economy.md
+│   ├── frontend_upgrades.md
+│   ├── map-objects.md
+│   ├── payload_upgrade_roadmap.md
+│   ├── type_error_fixes.md
+│   └── UI_updates.md
 └── vite.config.ts
 
-44 directories, 201 files
-```
+50 directories, 204 files
+
