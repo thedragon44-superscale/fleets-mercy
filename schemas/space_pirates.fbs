@@ -20,6 +20,34 @@ enum ClientActionType : ubyte {
   DeployUnit = 4
 }
 
+enum EnvObjectType : ubyte {
+  Unknown = 0,
+  MajorWorld = 1,
+  MineralPlanetoid = 2,
+  GasGiant = 3,
+  NebulaField = 4,
+  SingularityRift = 5,
+  Moon = 6,
+  AsteroidBelt = 7,
+  AsteroidCluster = 8,
+  Comet = 9
+}
+
+enum EnvComponentKind : ubyte {
+  SolidRock = 0,
+  ResourceNode = 1,
+  SolidCore = 2,
+  CaveMouth = 3,
+  CraterNode = 4,
+  GasCore = 5,
+  GasDeep = 6,
+  GasOuter = 7,
+  NebulaBlob = 8,
+  RiftCore = 9,
+  RiftField = 10,
+  CometCore = 11
+}
+
 // --- SHARED STRUCTS ---
 
 struct Vec2 {
@@ -70,6 +98,7 @@ table SPUnit {
   resource_type: ResourceType;
   cargo_ratio: float;         // 0.0 -> 1.0 (drives visual cargo ring)
   current_bounty_cents: long; // Live 1x bounty in cents
+  is_stealthed: bool;         // True inside Nebula or Gas Giant Deep Atmosphere
 }
 
 table SPProjectile {
@@ -91,6 +120,31 @@ table SPAsteroidNode {
   radius: float;
   is_node: bool;              // false = tactical cover rock, true = unlimited resource node
   resource_type: ResourceType;
+}
+
+table SPEnvComponent {
+  id: uint;
+  kind: EnvComponentKind;
+  pos: Vec2;
+  vel: Vec2;
+  radius: float;
+  inner_radius: float;
+  is_node: bool;
+  resource_type: ResourceType;
+  color_hex: string;
+}
+
+table SPEnvObject {
+  id: uint;
+  blueprint_id: int;
+  object_type: EnvObjectType;
+  pos: Vec2;
+  vel: Vec2;
+  angle: float;
+  bounding_radius: float;
+  parent_object_id: uint;
+  orbit_radius: float;
+  components: [SPEnvComponent];
 }
 
 table SPCryoCloud {
@@ -141,6 +195,9 @@ table SPServerState {
   boss_meter_threshold: uint;
   boss_active: bool;
   boss_escape_ticks_remaining: uint;
+
+  // Universal Environmental Objects (all 9 celestial archetypes)
+  env_objects: [SPEnvObject];
 }
 
 // --- UPSTREAM: CLIENT ACTIONS (Binary WebSocket Messages) ---

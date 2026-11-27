@@ -689,7 +689,17 @@ func (r *SpacePiratesRoom) stepTick() {
 	// 3. Autonomous AI (House Harvesters, Escorts, Boss, Per-Seat Player Dynamic Squads)
 	StepAI(r.units, r.world, detachedClusters, r.bossEscapeTicksRemaining)
 
-	// 4. Asymmetric WeightClass Ship-to-Ship Shoving Collisions (zero collision damage)
+	// 4. Universal 60Hz Environmental Physics (Gravity, Repulsion, Gas Giant layers, Nebula stealth/drag, Belts, Comets)
+	for _, u := range r.units {
+		if u.IsDestroyed {
+			continue
+		}
+		if StepUnitEnvPhysics(u, r.world) && !u.IsHouse && !r.bossActive {
+			r.bossMeterCurrent++
+		}
+	}
+
+	// 5. Asymmetric WeightClass Ship-to-Ship Shoving Collisions (zero collision damage)
 	r.resolveShipShovingLocked()
 
 	// 5. Weapons firing & player finite-ammo self-destruct
@@ -781,15 +791,15 @@ func (r *SpacePiratesRoom) pickAvailableHarvesterClassLocked() string {
 	db.SPCache.Mu.RUnlock()
 
 	candidates := make([]string, 0, 12)
-	for _, cl := range r.world.Clusters {
-		for _, n := range cl.Nodes {
-			if !n.IsNode || n.ResourceKey == "" {
+	for _, obj := range r.world.EnvObjects {
+		for _, c := range obj.Components {
+			if !c.IsNode || c.ResourceKey == "" {
 				continue
 			}
-			if n.Pos.X < 60 || n.Pos.X > r.world.ArenaWidth-60 || n.Pos.Y < 60 || n.Pos.Y > r.world.ArenaHeight-60 {
+			if c.Pos.X < 60 || c.Pos.X > r.world.ArenaWidth-60 || c.Pos.Y < 60 || c.Pos.Y > r.world.ArenaHeight-60 {
 				continue
 			}
-			if res, ok := resources[n.ResourceKey]; ok && res.HarvesterUnitClass != "" {
+			if res, ok := resources[c.ResourceKey]; ok && res.HarvesterUnitClass != "" {
 				candidates = append(candidates, res.HarvesterUnitClass)
 			}
 		}
@@ -1074,8 +1084,8 @@ func (r *SpacePiratesRoom) stepProjectilesLocked() {
 			continue
 		}
 
-		// Tactical Cover: asteroid rocks physically block projectiles
-		if r.world.CheckProjectileHit(p.Pos) {
+		// Tactical Cover & Singularity Rift Projectile Refraction
+		if ApplyProjectileEnvPhysics(p, r.world) {
 			continue
 		}
 

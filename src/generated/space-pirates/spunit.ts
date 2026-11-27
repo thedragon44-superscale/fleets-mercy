@@ -134,8 +134,13 @@ currentBountyCents():bigint {
   return offset ? this.bb!.readInt64(this.bb_pos + offset) : BigInt('0');
 }
 
+isStealthed():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 44);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
 static startSPUnit(builder:flatbuffers.Builder) {
-  builder.startObject(20);
+  builder.startObject(21);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -216,6 +221,10 @@ static addCargoRatio(builder:flatbuffers.Builder, cargoRatio:number) {
 
 static addCurrentBountyCents(builder:flatbuffers.Builder, currentBountyCents:bigint) {
   builder.addFieldInt64(19, currentBountyCents, BigInt('0'));
+}
+
+static addIsStealthed(builder:flatbuffers.Builder, isStealthed:boolean) {
+  builder.addFieldInt8(20, +isStealthed, +false);
 }
 
 static endSPUnit(builder:flatbuffers.Builder):flatbuffers.Offset {

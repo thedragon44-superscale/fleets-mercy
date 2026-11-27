@@ -39,36 +39,37 @@ type DecodedClientAction struct {
 }
 
 // Codec reuses a FlatBuffers builder and scratch offset slices to keep 60Hz encoding low-allocation.
-// It is intended to be owned by a single room goroutine (not safe for concurrent Encode calls).
 type Codec struct {
-	builder     *flatbuffers.Builder
-	unitOffsets []flatbuffers.UOffsetT
-	projOffsets []flatbuffers.UOffsetT
-	rockOffsets []flatbuffers.UOffsetT
-	cryoOffsets []flatbuffers.UOffsetT
-	seatOffsets [MaxSeats]flatbuffers.UOffsetT
-	payOffsets  []flatbuffers.UOffsetT
+	builder        *flatbuffers.Builder
+	unitOffsets    []flatbuffers.UOffsetT
+	projOffsets    []flatbuffers.UOffsetT
+	rockOffsets    []flatbuffers.UOffsetT
+	envObjOffsets  []flatbuffers.UOffsetT
+	envCompOffsets []flatbuffers.UOffsetT
+	cryoOffsets    []flatbuffers.UOffsetT
+	seatOffsets    [MaxSeats]flatbuffers.UOffsetT
+	payOffsets     []flatbuffers.UOffsetT
 }
 
-// NewCodec allocates a reusable Space Pirates FlatBuffers codec.
 func NewCodec() *Codec {
 	return &Codec{
-		builder:     flatbuffers.NewBuilder(8192),
-		unitOffsets: make([]flatbuffers.UOffsetT, 0, 64),
-		projOffsets: make([]flatbuffers.UOffsetT, 0, 128),
-		rockOffsets: make([]flatbuffers.UOffsetT, 0, 48),
-		cryoOffsets: make([]flatbuffers.UOffsetT, 0, 16),
-		payOffsets:  make([]flatbuffers.UOffsetT, 0, 16),
+		builder:        flatbuffers.NewBuilder(12288),
+		unitOffsets:    make([]flatbuffers.UOffsetT, 0, 64),
+		projOffsets:    make([]flatbuffers.UOffsetT, 0, 128),
+		rockOffsets:    make([]flatbuffers.UOffsetT, 0, 48),
+		envObjOffsets:  make([]flatbuffers.UOffsetT, 0, 16),
+		envCompOffsets: make([]flatbuffers.UOffsetT, 0, 16),
+		cryoOffsets:    make([]flatbuffers.UOffsetT, 0, 16),
+		payOffsets:     make([]flatbuffers.UOffsetT, 0, 16),
 	}
 }
 
 // EncodeServerState serializes a tick snapshot into a standalone binary SPServerState payload.
-// Returns a fresh copy of the finished bytes so concurrent WebSocket fan-out cannot race with Reset().
 func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 	b := c.builder
 	b.Reset()
 
-	// 1. Units (also tallies active player unit counts per seat in the same pass)
+	// 1. Units (also tallies active player unit counts per seat)
 	c.unitOffsets = c.unitOffsets[:0]
 	var activeCounts [MaxSeats]uint16
 
@@ -134,6 +135,7 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 		SpacePirates.SPUnitAddResourceType(b, u.ResourceType)
 		SpacePirates.SPUnitAddCargoRatio(b, cargoRatio)
 		SpacePirates.SPUnitAddCurrentBountyCents(b, bountyCents)
+		SpacePirates.SPUnitAddIsStealthed(b, u.IsStealthed)
 		c.unitOffsets = append(c.unitOffsets, SpacePirates.SPUnitEnd(b))
 	}
 
@@ -171,8 +173,9 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 	}
 	projectilesVec := b.EndVector(len(c.projOffsets))
 
-	// 3. Asteroids & 4. Cryo Clouds (from WorldState)
+	// 3. Universal EnvObjects (plus legacy SPAsteroidNode projection) & 4. Cryo Clouds
 	c.rockOffsets = c.rockOffsets[:0]
+	c.envObjOffsets = c.envObjOffsets[:0]
 	c.cryoOffsets = c.cryoOffsets[:0]
 	var arenaW, arenaH float32
 
@@ -180,24 +183,61 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 		arenaW = float32(snap.World.ArenaWidth)
 		arenaH = float32(snap.World.ArenaHeight)
 
-		for _, cl := range snap.World.Clusters {
-			if cl == nil {
+		for _, obj := range snap.World.EnvObjects {
+			if obj == nil {
 				continue
 			}
-			for _, n := range cl.Nodes {
-				if n == nil {
+
+			c.envCompOffsets = c.envCompOffsets[:0]
+			for _, comp := range obj.Components {
+				if comp == nil {
 					continue
 				}
-				SpacePirates.SPAsteroidNodeStart(b)
-				SpacePirates.SPAsteroidNodeAddId(b, n.ID)
-				SpacePirates.SPAsteroidNodeAddClusterId(b, n.ClusterID)
-				SpacePirates.SPAsteroidNodeAddPos(b, SpacePirates.CreateVec2(b, float32(n.Pos.X), float32(n.Pos.Y)))
-				SpacePirates.SPAsteroidNodeAddVel(b, SpacePirates.CreateVec2(b, float32(n.Vel.X), float32(n.Vel.Y)))
-				SpacePirates.SPAsteroidNodeAddRadius(b, float32(n.Radius))
-				SpacePirates.SPAsteroidNodeAddIsNode(b, n.IsNode)
-				SpacePirates.SPAsteroidNodeAddResourceType(b, n.ResourceType)
-				c.rockOffsets = append(c.rockOffsets, SpacePirates.SPAsteroidNodeEnd(b))
+				colorOff := b.CreateString(comp.ColorHex)
+				SpacePirates.SPEnvComponentStart(b)
+				SpacePirates.SPEnvComponentAddId(b, comp.ID)
+				SpacePirates.SPEnvComponentAddKind(b, comp.KindEnum)
+				SpacePirates.SPEnvComponentAddPos(b, SpacePirates.CreateVec2(b, float32(comp.Pos.X), float32(comp.Pos.Y)))
+				SpacePirates.SPEnvComponentAddVel(b, SpacePirates.CreateVec2(b, float32(comp.Vel.X), float32(comp.Vel.Y)))
+				SpacePirates.SPEnvComponentAddRadius(b, float32(comp.Radius))
+				SpacePirates.SPEnvComponentAddInnerRadius(b, float32(comp.InnerRadius))
+				SpacePirates.SPEnvComponentAddIsNode(b, comp.IsNode)
+				SpacePirates.SPEnvComponentAddResourceType(b, comp.ResourceType)
+				SpacePirates.SPEnvComponentAddColorHex(b, colorOff)
+				c.envCompOffsets = append(c.envCompOffsets, SpacePirates.SPEnvComponentEnd(b))
+
+				// Backward-compatible asteroid projection for cluster rocks
+				if obj.ObjectType == "asteroid_cluster" {
+					SpacePirates.SPAsteroidNodeStart(b)
+					SpacePirates.SPAsteroidNodeAddId(b, comp.ID)
+					SpacePirates.SPAsteroidNodeAddClusterId(b, obj.ID)
+					SpacePirates.SPAsteroidNodeAddPos(b, SpacePirates.CreateVec2(b, float32(comp.Pos.X), float32(comp.Pos.Y)))
+					SpacePirates.SPAsteroidNodeAddVel(b, SpacePirates.CreateVec2(b, float32(comp.Vel.X), float32(comp.Vel.Y)))
+					SpacePirates.SPAsteroidNodeAddRadius(b, float32(comp.Radius))
+					SpacePirates.SPAsteroidNodeAddIsNode(b, comp.IsNode)
+					SpacePirates.SPAsteroidNodeAddResourceType(b, comp.ResourceType)
+					c.rockOffsets = append(c.rockOffsets, SpacePirates.SPAsteroidNodeEnd(b))
+				}
 			}
+
+			SpacePirates.SPEnvObjectStartComponentsVector(b, len(c.envCompOffsets))
+			for i := len(c.envCompOffsets) - 1; i >= 0; i-- {
+				b.PrependUOffsetT(c.envCompOffsets[i])
+			}
+			compsVec := b.EndVector(len(c.envCompOffsets))
+
+			SpacePirates.SPEnvObjectStart(b)
+			SpacePirates.SPEnvObjectAddId(b, obj.ID)
+			SpacePirates.SPEnvObjectAddBlueprintId(b, int32(obj.BlueprintID))
+			SpacePirates.SPEnvObjectAddObjectType(b, obj.ObjectTypeEnum)
+			SpacePirates.SPEnvObjectAddPos(b, SpacePirates.CreateVec2(b, float32(obj.Center.X), float32(obj.Center.Y)))
+			SpacePirates.SPEnvObjectAddVel(b, SpacePirates.CreateVec2(b, float32(obj.Vel.X), float32(obj.Vel.Y)))
+			SpacePirates.SPEnvObjectAddAngle(b, float32(obj.Angle))
+			SpacePirates.SPEnvObjectAddBoundingRadius(b, float32(obj.BoundingRadius))
+			SpacePirates.SPEnvObjectAddParentObjectId(b, obj.ParentObjectID)
+			SpacePirates.SPEnvObjectAddOrbitRadius(b, float32(obj.OrbitRadius))
+			SpacePirates.SPEnvObjectAddComponents(b, compsVec)
+			c.envObjOffsets = append(c.envObjOffsets, SpacePirates.SPEnvObjectEnd(b))
 		}
 
 		for _, cloud := range snap.World.CryoClouds {
@@ -224,13 +264,19 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 	}
 	asteroidsVec := b.EndVector(len(c.rockOffsets))
 
+	SpacePirates.SPServerStateStartEnvObjectsVector(b, len(c.envObjOffsets))
+	for i := len(c.envObjOffsets) - 1; i >= 0; i-- {
+		b.PrependUOffsetT(c.envObjOffsets[i])
+	}
+	envObjectsVec := b.EndVector(len(c.envObjOffsets))
+
 	SpacePirates.SPServerStateStartCryoCloudsVector(b, len(c.cryoOffsets))
 	for i := len(c.cryoOffsets) - 1; i >= 0; i-- {
 		b.PrependUOffsetT(c.cryoOffsets[i])
 	}
 	cryoVec := b.EndVector(len(c.cryoOffsets))
 
-	// 5. Seats (always 4 entries ordered 0..3 for NW, NE, SW, SE)
+	// 5. Seats
 	for i := 0; i < MaxSeats; i++ {
 		s := snap.Seats[i]
 		usernameOff := b.CreateString(s.Username)
@@ -292,6 +338,7 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 	SpacePirates.SPServerStateAddBossMeterThreshold(b, snap.BossMeterThreshold)
 	SpacePirates.SPServerStateAddBossActive(b, snap.BossActive)
 	SpacePirates.SPServerStateAddBossEscapeTicksRemaining(b, snap.BossEscapeTicksRemaining)
+	SpacePirates.SPServerStateAddEnvObjects(b, envObjectsVec)
 	root := SpacePirates.SPServerStateEnd(b)
 
 	b.Finish(root)
@@ -302,7 +349,6 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 }
 
 // DecodeClientAction safely parses a binary SPClientAction WebSocket frame.
-// Guards against truncated or malformed buffers so corrupt client frames cannot panic the room.
 func DecodeClientAction(buf []byte) (act DecodedClientAction, err error) {
 	if len(buf) < 8 {
 		return act, ErrInvalidActionPayload
@@ -323,7 +369,6 @@ func DecodeClientAction(buf []byte) (act DecodedClientAction, err error) {
 		SpacePirates.ClientActionTypeLeaveSeat,
 		SpacePirates.ClientActionTypeSetMultiplier,
 		SpacePirates.ClientActionTypeDeployUnit:
-		// valid
 	default:
 		return DecodedClientAction{}, fmt.Errorf("%w: %d", ErrUnknownClientAction, actionType)
 	}

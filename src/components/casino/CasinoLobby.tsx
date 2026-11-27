@@ -247,21 +247,21 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
               </button>
             </div>
 
-            {/* Asteroid Cluster Designer */}
+            {/* Environment Blueprint Studio */}
             <div className="p-5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/35 shadow-xl flex flex-col justify-between gap-4">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase">
-                    Live Level Tool · PostgreSQL JSONB
+                    Universal Blueprints · All 9 Archetypes
                   </span>
                 </div>
                 <h2 className="text-xl font-black text-white uppercase tracking-wide mb-1">
-                  Asteroid Cluster Designer
+                  Environment Blueprint Studio
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                  Sculpt custom rigid-body asteroid formations with tactical cover rocks and
-                  Common/Mid/Rare unlimited resource slots. Saving immediately refreshes the live
-                  Space Pirates server cache.
+                  Design Asteroid Clusters, Dense Belts, Nebulas, Singularity Rifts, Planetoids,
+                  Gas Giants, Major Worlds, Moons, and Comets — complete with Test Shot raycasting
+                  and Space Pirates spawn pool controls.
                 </p>
 
                 {config && (
@@ -292,7 +292,7 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
                 onClick={onOpenClusterDesigner}
                 className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm uppercase tracking-wider cursor-pointer transition"
               >
-                Open Asteroid Cluster Designer &rarr;
+                Open Environment Blueprint Studio &rarr;
               </button>
             </div>
           </section>

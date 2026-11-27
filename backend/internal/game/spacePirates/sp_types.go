@@ -80,9 +80,14 @@ type Unit struct {
 	BetMultiplier   uint8
 
 	// Cryo Flak payload specs
-	CryoRadius    float64
-	CryoDuration  int
-	CryoSlow      float64
+	CryoRadius   float64
+	CryoDuration int
+	CryoSlow     float64
+
+	// Universal Environment Physics Runtime State (recomputed each tick)
+	IsStealthed  bool
+	EnvDragScale float64
+	EnvAccel     Vec2
 
 	// House Harvester / Boss fields
 	IsHarvester       bool
@@ -114,6 +119,7 @@ type Projectile struct {
 	CryoRadius    float64
 	CryoDuration  int
 	CryoSlow      float64
+	RefractedBy   map[uint32]bool // Tracks Singularity Rifts that already refracted this shot
 }
 
 type PayoutEvent struct {
@@ -126,13 +132,14 @@ type PayoutEvent struct {
 	WasBoss     bool
 }
 
+// AsteroidNode is kept as a lightweight resource-node projection for harvester AI compatibility.
 type AsteroidNode struct {
 	ID           uint32
 	ClusterID    uint32
-	LocalDX      float64 // Scaled local offset from cluster center
+	LocalDX      float64
 	LocalDY      float64
-	Pos          Vec2    // World position (updated each tick)
-	Vel          Vec2    // Mirrors parent cluster drift velocity
+	Pos          Vec2
+	Vel          Vec2
 	Radius       float64
 	IsNode       bool
 	ResourceKey  string
@@ -150,6 +157,46 @@ type ActiveCluster struct {
 	BoundingRadius float64
 	WrapsRemaining int
 	Nodes          []*AsteroidNode
+}
+
+// EnvComponent is a runtime component inside an ActiveEnvObject.
+type EnvComponent struct {
+	ID           uint32
+	ObjectID     uint32
+	Kind         string
+	KindEnum     SpacePirates.EnvComponentKind
+	LocalDX      float64
+	LocalDY      float64
+	Pos          Vec2
+	Vel          Vec2
+	Radius       float64
+	InnerRadius  float64
+	IsNode       bool
+	ResourceKey  string
+	ResourceType SpacePirates.ResourceType
+	ColorHex     string
+}
+
+// ActiveEnvObject is a live celestial body / tactical hazard in the Space Pirates arena.
+type ActiveEnvObject struct {
+	ID             uint32
+	BlueprintID    int
+	ObjectType     string
+	ObjectTypeEnum SpacePirates.EnvObjectType
+	Center         Vec2
+	Vel            Vec2
+	Angle          float64
+	SpinRate       float64
+	Scale          float64
+	BoundingRadius float64
+	WrapsRemaining int
+	ParentObjectID uint32
+	OrbitRadius    float64
+	OrbitSpeed     float64
+	OrbitAngle     float64
+	Physics        models.EnvPhysicsProfile
+	Motion         models.EnvMotionProfile
+	Components     []*EnvComponent
 }
 
 type CryoCloud struct {
@@ -182,4 +229,60 @@ func GetUnitConfig(factionRole, unitClass string) (models.SPUnitConfig, bool) {
 	defer db.SPCache.Mu.RUnlock()
 	cfg, ok := db.SPCache.Units[factionRole+":"+unitClass]
 	return cfg, ok
+}
+
+func ParseEnvObjectType(s string) SpacePirates.EnvObjectType {
+	switch s {
+	case "major_world":
+		return SpacePirates.EnvObjectTypeMajorWorld
+	case "mineral_planetoid":
+		return SpacePirates.EnvObjectTypeMineralPlanetoid
+	case "gas_giant":
+		return SpacePirates.EnvObjectTypeGasGiant
+	case "nebula_field":
+		return SpacePirates.EnvObjectTypeNebulaField
+	case "singularity_rift":
+		return SpacePirates.EnvObjectTypeSingularityRift
+	case "moon":
+		return SpacePirates.EnvObjectTypeMoon
+	case "asteroid_belt":
+		return SpacePirates.EnvObjectTypeAsteroidBelt
+	case "asteroid_cluster":
+		return SpacePirates.EnvObjectTypeAsteroidCluster
+	case "comet":
+		return SpacePirates.EnvObjectTypeComet
+	default:
+		return SpacePirates.EnvObjectTypeUnknown
+	}
+}
+
+func ParseEnvComponentKind(s string) SpacePirates.EnvComponentKind {
+	switch s {
+	case "solid_rock":
+		return SpacePirates.EnvComponentKindSolidRock
+	case "resource_node":
+		return SpacePirates.EnvComponentKindResourceNode
+	case "solid_core":
+		return SpacePirates.EnvComponentKindSolidCore
+	case "cave_mouth":
+		return SpacePirates.EnvComponentKindCaveMouth
+	case "crater_node":
+		return SpacePirates.EnvComponentKindCraterNode
+	case "gas_core":
+		return SpacePirates.EnvComponentKindGasCore
+	case "gas_deep":
+		return SpacePirates.EnvComponentKindGasDeep
+	case "gas_outer":
+		return SpacePirates.EnvComponentKindGasOuter
+	case "nebula_blob":
+		return SpacePirates.EnvComponentKindNebulaBlob
+	case "rift_core":
+		return SpacePirates.EnvComponentKindRiftCore
+	case "rift_field":
+		return SpacePirates.EnvComponentKindRiftField
+	case "comet_core":
+		return SpacePirates.EnvComponentKindCometCore
+	default:
+		return SpacePirates.EnvComponentKindSolidRock
+	}
 }

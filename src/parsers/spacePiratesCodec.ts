@@ -1,12 +1,16 @@
 // src/parsers/spacePiratesCodec.ts
 import * as flatbuffersNS from 'flatbuffers';
 import { ClientActionType } from '../generated/space-pirates/client-action-type';
+import { EnvComponentKind } from '../generated/space-pirates/env-component-kind';
+import { EnvObjectType } from '../generated/space-pirates/env-object-type';
 import { Hull } from '../generated/space-pirates/hull';
 import { ResourceType } from '../generated/space-pirates/resource-type';
 import { Shields } from '../generated/space-pirates/shields';
 import { SPAsteroidNode } from '../generated/space-pirates/spasteroid-node';
 import { SPClientAction } from '../generated/space-pirates/spclient-action';
 import { SPCryoCloud } from '../generated/space-pirates/spcryo-cloud';
+import { SPEnvComponent } from '../generated/space-pirates/spenv-component';
+import { SPEnvObject } from '../generated/space-pirates/spenv-object';
 import { SPPayoutEvent } from '../generated/space-pirates/sppayout-event';
 import { SPProjectile } from '../generated/space-pirates/spprojectile';
 import { SPSeatState } from '../generated/space-pirates/spseat-state';
@@ -14,14 +18,12 @@ import { SPServerState } from '../generated/space-pirates/spserver-state';
 import { SPUnit } from '../generated/space-pirates/spunit';
 import { Vec2 } from '../generated/space-pirates/vec2';
 
-export { ClientActionType, ResourceType };
+export { ClientActionType, EnvComponentKind, EnvObjectType, ResourceType };
 
 // Safe interop fallback for Vite / CJS bundling of flatbuffers
 const FB = (flatbuffersNS as any).Flatbuffers || flatbuffersNS;
 const ByteBuffer = FB.ByteBuffer || (flatbuffersNS as any).ByteBuffer;
 const Builder = FB.Builder || flatbuffersNS.Builder;
-
-// --- STRONGLY TYPED SNAPSHOT INTERFACES ---
 
 export interface SPVec2 {
   x: number;
@@ -39,7 +41,7 @@ export interface SPUnitSnapshot {
   id: string;
   unitType: string;
   ownerId: string;
-  seatIndex: number; // -1 = House, 0..3 = Player corner seat
+  seatIndex: number;
   isHouse: boolean;
   pos: SPVec2;
   vel: SPVec2;
@@ -54,8 +56,9 @@ export interface SPUnitSnapshot {
   maxAmmo: number;
   betMultiplier: number;
   resourceType: ResourceType;
-  cargoRatio: number; // 0.0 -> 1.0
-  currentBountyCents: number; // Integer cents (1x live bounty)
+  cargoRatio: number;
+  currentBountyCents: number;
+  isStealthed: boolean;
 }
 
 export interface SPProjectileSnapshot {
@@ -63,7 +66,7 @@ export interface SPProjectileSnapshot {
   ownerId: string;
   seatIndex: number;
   isHouse: boolean;
-  projType: string; // "laser" | "railgun" | "torpedo" | "cryo"
+  projType: string;
   pos: SPVec2;
   vel: SPVec2;
   betMultiplier: number;
@@ -75,8 +78,33 @@ export interface SPAsteroidNodeSnapshot {
   pos: SPVec2;
   vel: SPVec2;
   radius: number;
-  isNode: boolean; // false = cover rock, true = unlimited resource node
+  isNode: boolean;
   resourceType: ResourceType;
+}
+
+export interface SPEnvComponentSnapshot {
+  id: number;
+  kind: EnvComponentKind;
+  pos: SPVec2;
+  vel: SPVec2;
+  radius: number;
+  innerRadius: number;
+  isNode: boolean;
+  resourceType: ResourceType;
+  colorHex: string;
+}
+
+export interface SPEnvObjectSnapshot {
+  id: number;
+  blueprintId: number;
+  objectType: EnvObjectType;
+  pos: SPVec2;
+  vel: SPVec2;
+  angle: number;
+  boundingRadius: number;
+  parentObjectId: number;
+  orbitRadius: number;
+  components: SPEnvComponentSnapshot[];
 }
 
 export interface SPCryoCloudSnapshot {
@@ -90,11 +118,11 @@ export interface SPCryoCloudSnapshot {
 }
 
 export interface SPSeatSnapshot {
-  seatIndex: number; // 0 = NW, 1 = NE, 2 = SW, 3 = SE
+  seatIndex: number;
   occupied: boolean;
   playerId: number;
   username: string;
-  balanceCents: number; // Integer cents
+  balanceCents: number;
   activeMultiplier: number;
   activeUnitCount: number;
 }
@@ -104,7 +132,7 @@ export interface SPPayoutEventSnapshot {
   seatIndex: number;
   unitType: string;
   pos: SPVec2;
-  payoutCents: number; // Final multiplied integer cents
+  payoutCents: number;
   multiplier: number;
   wasBoss: boolean;
 }
@@ -117,6 +145,7 @@ export interface SPServerStateSnapshot {
   units: SPUnitSnapshot[];
   projectiles: SPProjectileSnapshot[];
   asteroids: SPAsteroidNodeSnapshot[];
+  envObjects: SPEnvObjectSnapshot[];
   cryoClouds: SPCryoCloudSnapshot[];
   seats: SPSeatSnapshot[];
   payoutEvents: SPPayoutEventSnapshot[];
@@ -129,16 +158,18 @@ export interface SPServerStateSnapshot {
 export interface SPClientActionParams {
   action: ClientActionType;
   playerId?: number;
-  seatIndex?: number; // 0..3 or -1 for auto-assign
+  seatIndex?: number;
   multiplier?: number;
   unitType?: string;
 }
 
-// Reusable FlatBuffers accessor objects to avoid per-frame wrapper allocations at 60Hz
+// Reusable FlatBuffers accessor objects (zero per-frame wrapper allocations at 60Hz)
 const _root = new SPServerState();
 const _unit = new SPUnit();
 const _proj = new SPProjectile();
 const _rock = new SPAsteroidNode();
+const _envObj = new SPEnvObject();
+const _envComp = new SPEnvComponent();
 const _cloud = new SPCryoCloud();
 const _seat = new SPSeatState();
 const _payout = new SPPayoutEvent();
@@ -147,10 +178,6 @@ const _vel = new Vec2();
 const _shields = new Shields();
 const _hull = new Hull();
 
-/**
- * DOWNSTREAM: Decode a 60Hz binary SPServerState WebSocket frame.
- * Returns null if the payload is empty or malformed.
- */
 export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerStateSnapshot | null {
   try {
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -202,6 +229,7 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
         resourceType: u.resourceType(),
         cargoRatio: u.cargoRatio(),
         currentBountyCents: Number(u.currentBountyCents()),
+        isStealthed: u.isStealthed(),
       };
     }
 
@@ -225,7 +253,7 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
       };
     }
 
-    // 3. Asteroids (cover rocks & unlimited resource nodes)
+    // 3. Legacy Asteroids projection
     const rockLen = state.asteroidsLength();
     const asteroids: SPAsteroidNodeSnapshot[] = new Array(rockLen);
     for (let i = 0; i < rockLen; i++) {
@@ -244,7 +272,52 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
       };
     }
 
-    // 4. Cryo Clouds
+    // 4. Universal EnvObjects & nested EnvComponents
+    const envLen = state.envObjectsLength();
+    const envObjects: SPEnvObjectSnapshot[] = new Array(envLen);
+    for (let i = 0; i < envLen; i++) {
+      const eo = state.envObjects(i, _envObj)!;
+      const ePos = eo.pos(_pos);
+      const eVel = eo.vel(_vel);
+      const ox = ePos ? ePos.x() : 0;
+      const oy = ePos ? ePos.y() : 0;
+      const ovx = eVel ? eVel.x() : 0;
+      const ovy = eVel ? eVel.y() : 0;
+
+      const cLen = eo.componentsLength();
+      const components: SPEnvComponentSnapshot[] = new Array(cLen);
+      for (let j = 0; j < cLen; j++) {
+        const ec = eo.components(j, _envComp)!;
+        const cPos = ec.pos(_pos);
+        const cVel = ec.vel(_vel);
+        components[j] = {
+          id: ec.id(),
+          kind: ec.kind(),
+          pos: { x: cPos ? cPos.x() : 0, y: cPos ? cPos.y() : 0 },
+          vel: { x: cVel ? cVel.x() : 0, y: cVel ? cVel.y() : 0 },
+          radius: ec.radius(),
+          innerRadius: ec.innerRadius(),
+          isNode: ec.isNode(),
+          resourceType: ec.resourceType(),
+          colorHex: ec.colorHex() || '',
+        };
+      }
+
+      envObjects[i] = {
+        id: eo.id(),
+        blueprintId: eo.blueprintId(),
+        objectType: eo.objectType(),
+        pos: { x: ox, y: oy },
+        vel: { x: ovx, y: ovy },
+        angle: eo.angle(),
+        boundingRadius: eo.boundingRadius(),
+        parentObjectId: eo.parentObjectId(),
+        orbitRadius: eo.orbitRadius(),
+        components,
+      };
+    }
+
+    // 5. Cryo Clouds
     const cloudLen = state.cryoCloudsLength();
     const cryoClouds: SPCryoCloudSnapshot[] = new Array(cloudLen);
     for (let i = 0; i < cloudLen; i++) {
@@ -262,7 +335,7 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
       };
     }
 
-    // 5. Seats (0..3)
+    // 6. Seats
     const seatsLen = state.seatsLength();
     const seats: SPSeatSnapshot[] = new Array(seatsLen);
     for (let i = 0; i < seatsLen; i++) {
@@ -278,7 +351,7 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
       };
     }
 
-    // 6. Payout Events
+    // 7. Payout Events
     const payLen = state.payoutEventsLength();
     const payoutEvents: SPPayoutEventSnapshot[] = new Array(payLen);
     for (let i = 0; i < payLen; i++) {
@@ -304,6 +377,7 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
       units,
       projectiles,
       asteroids,
+      envObjects,
       cryoClouds,
       seats,
       payoutEvents,
@@ -318,9 +392,6 @@ export function decodeSPServerState(buffer: ArrayBuffer | Uint8Array): SPServerS
   }
 }
 
-/**
- * UPSTREAM: Encode a binary SPClientAction WebSocket frame.
- */
 export function encodeSPClientAction(params: SPClientActionParams): Uint8Array<ArrayBuffer> {
   const builder = new Builder(128);
   const unitTypeOffset = params.unitType ? builder.createString(params.unitType) : 0;

@@ -245,8 +245,28 @@ func (rcv *SPServerState) MutateBossEscapeTicksRemaining(n uint32) bool {
 	return rcv._tab.MutateUint32Slot(30, n)
 }
 
+func (rcv *SPServerState) EnvObjects(obj *SPEnvObject, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *SPServerState) EnvObjectsLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
 func SPServerStateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(14)
+	builder.StartObject(15)
 }
 func SPServerStateAddTick(builder *flatbuffers.Builder, tick uint64) {
 	builder.PrependUint64Slot(0, tick, 0)
@@ -307,6 +327,12 @@ func SPServerStateAddBossActive(builder *flatbuffers.Builder, bossActive bool) {
 }
 func SPServerStateAddBossEscapeTicksRemaining(builder *flatbuffers.Builder, bossEscapeTicksRemaining uint32) {
 	builder.PrependUint32Slot(13, bossEscapeTicksRemaining, 0)
+}
+func SPServerStateAddEnvObjects(builder *flatbuffers.Builder, envObjects flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(14, flatbuffers.UOffsetT(envObjects), 0)
+}
+func SPServerStateStartEnvObjectsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

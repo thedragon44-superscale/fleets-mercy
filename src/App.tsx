@@ -10,8 +10,9 @@ import { TdmUnitSelectionScreen } from './components/teamDeathMatch/unitSelectio
 import { TdmMapSelectionScreen } from './components/teamDeathMatch/mapSelection';
 import { TdmViewport } from './components/teamDeathMatch/tdmViewport';
 import { CasinoLobby } from './components/casino/CasinoLobby';
-import { ClusterDesignerView } from './components/casino/clusterEditor/ClusterDesignerView';
+import { EnvStudioView } from './components/casino/envStudio/EnvStudioView';
 import { SpacePiratesTableView } from './components/casino/spacePirates/SpacePiratesTableView';
+import { UniversalMapBuilder } from './components/mapBuilder/UniversalMapBuilder';
 import { fetchMaps, MapDefinition } from './services/mapService';
 import { fetchWallet, formatCents, PlayerSession } from './services/walletService';
 import { refreshUnitTemplates } from './hooks/useUnitTemplates';
@@ -31,7 +32,8 @@ export type AppView =
   | 'tdm-viewport'
   | 'casino-lobby'
   | 'space-pirates'
-  | 'cluster-designer';
+  | 'cluster-designer'
+  | 'universal-map-builder';
 
 export default function App() {
   const [player, setPlayer] = useState<PlayerSession | null>(null);
@@ -208,6 +210,16 @@ export default function App() {
               className="w-full bg-[#161922] hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all"
             >
               Map Creator Studio
+            </button>
+
+            <button
+              onClick={() => {
+                refreshMaps();
+                setView('universal-map-builder');
+              }}
+              className="w-full bg-[#161922] hover:bg-slate-800 text-sky-300 border border-sky-500/30 hover:border-sky-400 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer"
+            >
+              🌌 Universal Map Builder (Blueprints)
             </button>
 
             <button
@@ -478,9 +490,14 @@ export default function App() {
     );
   }
 
-  // Asteroid Cluster Designer Studio
+  // Environment Blueprint Studio (all 9 celestial archetypes)
   if (view === 'cluster-designer') {
-    return <ClusterDesignerView onBack={() => setView('casino-lobby')} />;
+    return <EnvStudioView onBack={() => setView('casino-lobby')} />;
+  }
+
+  // Universal Map Builder (All Game Modes)
+  if (view === 'universal-map-builder') {
+    return <UniversalMapBuilder onExit={() => setView('main-menu')} />;
   }
 
   return null;

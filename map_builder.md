@@ -110,28 +110,28 @@ fleets-mercy/
 
 ## 5. Step-by-Step, File-by-File Implementation Roadmap
 
-### Phase 1 — Unified PostgreSQL Schema & Go Data Layer
-- [ ] **Step 1.1:** `backend/migrations/002_universal_env_blueprints.sql` — Write idempotent migration creating `env_blueprints`, `mode_env_pools`, and `map_env_placements`; migrate existing `sp_cluster_variants` into `env_blueprints` + `mode_env_pools`; seed 1 starter blueprint per new archetype (Planetoid, Nebula, Singularity Rift, Dense Belt, Moon, Comet, plus scaled Gas Giant & Major World templates disabled by default in Space Pirates until toggled in Studio).
-- [ ] **Step 1.2:** `backend/internal/models/env_structs.go` — Define Go structs with JSON tags for `EnvBlueprint`, `EnvComponentSpec`, `OrbitingChildSpec`, `EnvPhysicsProfile`, `EnvMotionProfile`, `ModeEnvPoolEntry`, and `MapEnvPlacement`.
-- [ ] **Step 1.3:** `backend/internal/db/env_db.go` — Implement `db.EnvCache` (`LoadEnvCache`), automatic `ComputeEnvBoundingRadius` (including orbiting moon envelopes), and full CRUD for `env_blueprints`, `mode_env_pools`, and `map_env_placements`.
-- [ ] **Step 1.4:** `backend/internal/api/env_handlers.go` & `backend/cmd/server/main.go` — Expose `/api/env/blueprints`, `/api/env/pools`, and `/api/env/placements` (refreshing `db.EnvCache` on every write), call `db.LoadEnvCache()` on server boot, and verify with `go build ./cmd/server`.
+### Phase 1 — Unified PostgreSQL Schema & Go Data Layer (COMPLETE)
+- [x] **Step 1.1:** `backend/migrations/002_universal_env_blueprints.sql` — Write idempotent migration creating `env_blueprints`, `mode_env_pools`, and `map_env_placements`; migrate existing `sp_cluster_variants` into `env_blueprints` + `mode_env_pools`; seed 1 starter blueprint per new archetype (Planetoid, Nebula, Singularity Rift, Dense Belt, Moon, Comet, plus scaled Gas Giant & Major World templates disabled by default in Space Pirates until toggled in Studio).
+- [x] **Step 1.2:** `backend/internal/models/env_structs.go` — Define Go structs with JSON tags for `EnvBlueprint`, `EnvComponentSpec`, `OrbitingChildSpec`, `EnvPhysicsProfile`, `EnvMotionProfile`, `ModeEnvPoolEntry`, and `MapEnvPlacement`.
+- [x] **Step 1.3:** `backend/internal/db/env_db.go` — Implement `db.EnvCache` (`LoadEnvCache`), automatic `ComputeEnvBoundingRadius` (including orbiting moon envelopes), and full CRUD for `env_blueprints`, `mode_env_pools`, and `map_env_placements`.
+- [x] **Step 1.4:** `backend/internal/api/env_handlers.go` & `backend/cmd/server/main.go` — Expose `/api/env/blueprints`, `/api/env/pools`, and `/api/env/placements` (refreshing `db.EnvCache` on every write), call `db.LoadEnvCache()` on server boot, and verify with `go build ./cmd/server`.
 
-### Phase 2 — Environment Blueprint Studio (Frontend Object Builder)
-- [ ] **Step 2.1:** `src/services/envService.ts` — Implement typed TypeScript interfaces and fetch helpers for blueprints, Space Pirates spawn pools, and map placements.
-- [ ] **Step 2.2:** `src/components/casino/envStudio/EnvLibrarySidebar.tsx` — Build the left sidebar with archetype filter tabs (`All`, `Cluster`, `Belt`, `Nebula`, `Rift`, `Planetoid`, `World`, `Gas Giant`, `Moon`, `Comet`), "New Blueprint" archetype picker, duplicate, enable/disable, and delete controls.
-- [ ] **Step 2.3:** `src/components/casino/envStudio/EnvCanvasEditor.tsx` — Build the interactive local-space canvas:
+### Phase 2 — Environment Blueprint Studio (Frontend Object Builder) (COMPLETE)
+- [x] **Step 2.1:** `src/services/envService.ts` — Implement typed TypeScript interfaces and fetch helpers for blueprints, Space Pirates spawn pools, and map placements.
+- [x] **Step 2.2:** `src/components/casino/envStudio/EnvLibrarySidebar.tsx` — Build the left sidebar with archetype filter tabs (`All`, `Cluster`, `Belt`, `Nebula`, `Rift`, `Planetoid`, `World`, `Gas Giant`, `Moon`, `Comet`), "New Blueprint" archetype picker, duplicate, enable/disable, and delete controls.
+- [x] **Step 2.3:** `src/components/casino/envStudio/EnvCanvasEditor.tsx` — Build the interactive local-space canvas:
   * *Clusters / Belts:* Click-to-place rocks, drag, scroll-resize, Cover vs. Resource Slot toggle, plus a **1W/2W Corridor Gap Overlay**.
   * *Gas Giants / Rifts / Worlds:* Interactive concentric ring handles (Core / Deep / Outer or Repulsion Radius) and clickable socket placement (crater nodes / cave mouths).
   * *Nebulas:* Multi-blob cloud painter.
   * *Moons:* "Attach Orbiting Moon" ring editor selecting any saved `moon` blueprint.
   * *Testing Tools:* Toggleable `1W` / `Mining Barge` / `5W` scale reference ghosts, **Live Motion Preview** (drift, spin, moon orbits), and a **"Test Shot" raycaster** to verify solid cover blocking and Singularity refraction angles live.
-- [ ] **Step 2.4:** `src/components/casino/envStudio/EnvInspectorPanel.tsx` — Build the right inspector for naming, motion profile (`static` / `drift_wrap` / `orbital` / `transient_transit`), speed/spin/wrap envelopes, proportional `scale_min`/`scale_max`, physics sliders (gravity, repulsion, drag, `max_passable_weight`, immunity checkboxes), and Space Pirates `mode_env_pools` toggle/weight/scale override.
-- [ ] **Step 2.5:** `src/components/casino/envStudio/EnvStudioView.tsx` & `src/components/casino/CasinoLobby.tsx` — Assemble the 3-pane studio and replace the old Cluster Designer button in `CasinoLobby.tsx` with **Environment Studio**. Verify with `npx tsc --noEmit`.
+- [x] **Step 2.4:** `src/components/casino/envStudio/EnvInspectorPanel.tsx` — Build the right inspector for naming, motion profile (`static` / `drift_wrap` / `orbital` / `transient_transit`), speed/spin/wrap envelopes, proportional `scale_min`/`scale_max`, physics sliders (gravity, repulsion, drag, `max_passable_weight`, immunity checkboxes), and Space Pirates `mode_env_pools` toggle/weight/scale override.
+- [x] **Step 2.5:** `src/components/casino/envStudio/EnvStudioView.tsx` & `src/components/casino/CasinoLobby.tsx` — Assemble the 3-pane studio and replace the old Cluster Designer button in `CasinoLobby.tsx` with **Environment Studio**. Verify with `npx tsc --noEmit`.
 
-### Phase 3 — Pure FlatBuffers Upgrade & Space Pirates 60Hz Physics
-- [ ] **Step 3.1:** `schemas/space_pirates.fbs` — Add `EnvObjectType` and `EnvComponentKind` enums plus `SPEnvObject` and `SPEnvComponent` tables (keeping `SPAsteroidNode` or cleanly replacing it across codec/viewport); run `flatc` for both Go and TypeScript.
-- [ ] **Step 3.2:** `backend/internal/game/spacePirates/sp_types.go` & `sp_world.go` — Upgrade the Cluster Director into the **Universal Env Director**: read active pool entries from `db.EnvCache`, apply `scale_override` and slot-based resource rolling, update rigid-body drift/spin + orbiting moon world positions, handle whole-object edge wrapping & replacement, and manage periodic edge-to-edge **Comet** spawns.
-- [ ] **Step 3.3:** `backend/internal/game/spacePirates/sp_env_physics.go` — Implement broad-phase-culled 60Hz environmental physics:
+### Phase 3 — Pure FlatBuffers Upgrade & Space Pirates 60Hz Physics (COMPLETE)
+- [x] **Step 3.1:** `schemas/space_pirates.fbs` — Add `EnvObjectType` and `EnvComponentKind` enums plus `SPEnvObject` and `SPEnvComponent` tables (keeping `SPAsteroidNode` or cleanly replacing it across codec/viewport); run `flatc` for both Go and TypeScript.
+- [x] **Step 3.2:** `backend/internal/game/spacePirates/sp_types.go` & `sp_world.go` — Upgrade the Cluster Director into the **Universal Env Director**: read active pool entries from `db.EnvCache`, apply `scale_override` and slot-based resource rolling, update rigid-body drift/spin + orbiting moon world positions, handle whole-object edge wrapping & replacement, and manage periodic edge-to-edge **Comet** spawns.
+- [x] **Step 3.3:** `backend/internal/game/spacePirates/sp_env_physics.go` — Implement broad-phase-culled 60Hz environmental physics:
   * **Gravity Wells & Repulsion Fields:** Apply acceleration vectors to ships (respecting `immune_unit_classes` like `grav_extractor`).
   * **Gas Giant 3-Layer Zones:** Instant kill in Core; pull 1W + slow/DoT 2W+ in Deep Atmosphere; minor drag on 2W+ in Outer Atmosphere.
   * **Nebula Fields:** Inertial drag on 1W–3W (`plasma_skimmer` immune), zero DoT.
@@ -139,14 +139,14 @@ fleets-mercy/
   * **Dense Asteroid Belts:** Enforce `max_passable_weight` (1W/2W pass through, 3W+ pushed outside).
   * **Comet Impacts:** Weight-scaled collision damage (1W/2W instant melt, 3W/4W heavy dmg, 5W shield absorb).
   * **Stealth Helper (`IsUnitStealthed`):** Returns true if a unit is inside any `radar_opaque` zone (Nebula or Gas Giant Deep Atmosphere).
-- [ ] **Step 3.4:** `backend/internal/game/spacePirates/sp_ai.go`, `sp_codec.go`, & `sp_room.go`:
+- [x] **Step 3.4:** `backend/internal/game/spacePirates/sp_ai.go`, `sp_codec.go`, & `sp_room.go`:
   * **Targeting Lock-On Break:** Player and House AI drop target locks on stealthed units unless within **50% of acquisition/weapon range**.
   * **Hazard Awareness:** Automated ships steer laterally to evade approaching Comets, refuse to path through Gas Giant Deep/Core zones, and route around Dense Belts if `WeightClass > max_passable_weight`.
   * Wire `sp_env_physics.go` into `sp_room.go`'s 60Hz tick, encode `SPEnvObject`/`SPEnvComponent` in `sp_codec.go`, and verify `go build ./cmd/server`.
 
-### Phase 4 — Space Pirates Frontend Rendering Upgrade
-- [ ] **Step 4.1:** `src/parsers/spacePiratesCodec.ts` & `src/hooks/useSpacePiratesSocket.ts` — Decode the new `SPEnvObject` and `SPEnvComponent` vectors into the 60fps canvas ref.
-- [ ] **Step 4.2:** `src/components/casino/spacePirates/SpacePiratesViewport.tsx` — Render all environmental archetypes cleanly at 60fps: layered Gas Giant rings, translucent Nebula plasma corridors (with subtle visual dimming on units inside), pulsing Singularity Rifts with refraction ripples, solid Worlds/Planetoids/Moons with orbital paths, Dense Asteroid Belts, and high-speed Comets with dashed full-arena radar trajectory warning lines.
+### Phase 4 — Space Pirates Frontend Rendering Upgrade (COMPLETE)
+- [x] **Step 4.1:** `src/parsers/spacePiratesCodec.ts` & `src/hooks/useSpacePiratesSocket.ts` — Decode the new `SPEnvObject` and `SPEnvComponent` vectors into the 60fps canvas ref.
+- [x] **Step 4.2:** `src/components/casino/spacePirates/SpacePiratesViewport.tsx` — Render all environmental archetypes cleanly at 60fps: layered Gas Giant rings, translucent Nebula plasma corridors (with subtle visual dimming on units inside), pulsing Singularity Rifts with refraction ripples, solid Worlds/Planetoids/Moons with orbital paths, Dense Asteroid Belts, and high-speed Comets with dashed full-arena radar trajectory warning lines.
 
-### Phase 5 — Universal Map Builder Promotion (All Game Modes)
-- [ ] **Step 5.1:** `src/components/mapBuilder/UniversalMapBuilder.tsx` — Build the full-arena placement canvas that consumes `env_blueprints` and saves layouts to `map_env_placements`, allowing you to drag-and-drop any custom celestial body, link orbiting moons, set drift/static modes, and export maps for Sandbox, TDM, and Games #2–#10.
+### Phase 5 — Universal Map Builder Promotion (All Game Modes) (COMPLETE)
+- [x] **Step 5.1:** `src/components/mapBuilder/UniversalMapBuilder.tsx` — Build the full-arena placement canvas that consumes `env_blueprints` and saves layouts to `map_env_placements`, allowing you to drag-and-drop any custom celestial body, link orbiting moons, set drift/static modes, and export maps for Sandbox, TDM, and Games #2–#10.

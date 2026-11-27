@@ -40,6 +40,9 @@ func main() {
 	if err := db.LoadSPConfigCache(); err != nil {
 		log.Printf("⚠️ Failed to load Space Pirates DB config: %v", err)
 	}
+	if err := db.LoadEnvCache(); err != nil {
+		log.Printf("⚠️ Failed to load Universal EnvCache (run migration 002 if pending): %v", err)
+	}
 
 	// --- WEBSOCKET ROUTES ---
 
@@ -97,6 +100,12 @@ func main() {
 
 	http.HandleFunc("/api/casino/sp/config", api.GetSPConfigHandler)
 	http.HandleFunc("/api/casino/sp/clusters", api.SPClustersHandler)
+
+	// --- UNIVERSAL ENVIRONMENT BLUEPRINT & MAP PLACEMENT ROUTES ---
+
+	http.HandleFunc("/api/env/blueprints", api.EnvBlueprintsHandler)
+	http.HandleFunc("/api/env/pools", api.EnvPoolsHandler)
+	http.HandleFunc("/api/env/placements", api.EnvPlacementsHandler)
 
 	// --- EXISTING FLEET'S MERCY ROUTES ---
 

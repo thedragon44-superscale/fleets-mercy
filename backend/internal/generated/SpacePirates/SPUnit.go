@@ -261,8 +261,20 @@ func (rcv *SPUnit) MutateCurrentBountyCents(n int64) bool {
 	return rcv._tab.MutateInt64Slot(42, n)
 }
 
+func (rcv *SPUnit) IsStealthed() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(44))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *SPUnit) MutateIsStealthed(n bool) bool {
+	return rcv._tab.MutateBoolSlot(44, n)
+}
+
 func SPUnitStart(builder *flatbuffers.Builder) {
-	builder.StartObject(20)
+	builder.StartObject(21)
 }
 func SPUnitAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -323,6 +335,9 @@ func SPUnitAddCargoRatio(builder *flatbuffers.Builder, cargoRatio float32) {
 }
 func SPUnitAddCurrentBountyCents(builder *flatbuffers.Builder, currentBountyCents int64) {
 	builder.PrependInt64Slot(19, currentBountyCents, 0)
+}
+func SPUnitAddIsStealthed(builder *flatbuffers.Builder, isStealthed bool) {
+	builder.PrependBoolSlot(20, isStealthed, false)
 }
 func SPUnitEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

@@ -19,8 +19,24 @@ func UnitCurrentBountyCents(u *Unit) int64 {
 	return u.BaseBountyCents + int64(math.Round(float64(u.MaxCargoCents-u.BaseBountyCents)*ratio))
 }
 
-// StepAI advances movement, targeting, and firing intent for all House and Player units.
-func StepAI(units map[string]*Unit, world *WorldState, detachedClusters map[uint32]bool, bossEscapeTicks uint32) {
+func unitEnvSpeedScale(u *Unit, world *WorldState) float64 {
+	drag := u.EnvDragScale
+	if drag <= 0 {
+		drag = 1.0
+	}
+	cryo := 1.0
+	if u.IsHouse && world != nil {
+		cryo = world.CryoSpeedMultiplier(u.Pos)
+	}
+	scale := drag * cryo
+	if scale < 0.2 {
+		scale = 0.2
+	}
+	return scale
+}
+
+// StepAI advances movement, targeting, hazard evasion, and firing intent for all House and Player units.
+func StepAI(units map[string]*Unit, world *WorldState, detachedObjects map[uint32]bool, bossEscapeTicks uint32) {
 	// 1. Update House units
 	for _, u := range units {
 		if u.IsDestroyed || !u.IsHouse {
@@ -28,7 +44,7 @@ func StepAI(units map[string]*Unit, world *WorldState, detachedClusters map[uint
 		}
 		switch {
 		case u.IsHarvester:
-			stepHarvesterAI(u, world, detachedClusters)
+			stepHarvesterAI(u, world, detachedObjects)
 		case u.IsBoss:
 			stepBossAI(u, units, world, bossEscapeTicks)
 		default:
@@ -43,21 +59,33 @@ func StepAI(units map[string]*Unit, world *WorldState, detachedClusters map[uint
 }
 
 // ============================================================================
-// 1. HOUSE HARVESTER AI (APPROACH -> HARVEST -> ESCAPE + WRAP DETACH)
+// 1. HOUSE HARVESTER AI (APPROACH -> HARVEST -> ESCAPE + WRAP DETACH + EVASION)
 // ============================================================================
 
-func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]bool) {
+func stepHarvesterAI(u *Unit, world *WorldState, detachedObjects map[uint32]bool) {
 	u.IsFiring = false
-	slowScale := world.CryoSpeedMultiplier(u.Pos)
-	effSpeed := u.Speed * slowScale
+	speedScale := unitEnvSpeedScale(u, world)
+	effSpeed := u.Speed * speedScale
+
+	// Urgent hazard evasion (Comets, Gas Giant Deep/Core, Dense Belts for 3W+)
+	if evade, urgent := ComputeHazardAvoidanceVector(u, world); urgent && u.AIState != "ESCAPE" {
+		u.AIState = "EVADE"
+		desired := math.Atan2(evade.Y, evade.X)
+		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate*1.4)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.1 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.1 + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 25, world.ArenaWidth-25)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 25, world.ArenaHeight-25)
+		return
+	}
 
 	// Already escaping: sprint to nearest arena edge and despawn off-screen
 	if u.AIState == "ESCAPE" {
 		edgeTarget := nearestArenaEdge(u.Pos, world.ArenaWidth, world.ArenaHeight)
 		desired := math.Atan2(edgeTarget.Y-u.Pos.Y, edgeTarget.X-u.Pos.X)
 		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate)
-		u.Vel.X = math.Cos(u.Angle) * effSpeed * 1.15
-		u.Vel.Y = math.Sin(u.Angle) * effSpeed * 1.15
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.15 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.15 + u.EnvAccel.Y
 		u.Pos.X += u.Vel.X
 		u.Pos.Y += u.Vel.Y
 
@@ -67,10 +95,10 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 		return
 	}
 
-	// Check if current target cluster wrapped/expired or drifted out of bounds
+	// Check if current target object wrapped/expired or drifted out of bounds
 	var targetNode *AsteroidNode
 	if u.TargetNodeID != 0 {
-		if detachedClusters[u.TargetClusterID] {
+		if detachedObjects[u.TargetClusterID] {
 			u.TargetClusterID = 0
 			u.TargetNodeID = 0
 		} else if node, inBounds := world.FindNodeByID(u.TargetNodeID); inBounds {
@@ -81,7 +109,6 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 		}
 	}
 
-	// If detached and already full, switch straight to ESCAPE; otherwise acquire nearest matching node
 	if targetNode == nil {
 		if u.FillDurationTicks > 0 && u.HarvestTicks >= u.FillDurationTicks {
 			u.AIState = "ESCAPE"
@@ -102,17 +129,15 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 		}
 	}
 
-	// Fallback cruise toward arena center if no matching node is currently in bounds
 	if targetNode == nil {
 		u.AIState = "APPROACH"
 		cx, cy := world.ArenaWidth/2, world.ArenaHeight/2
 		desired := math.Atan2(cy-u.Pos.Y, cx-u.Pos.X)
 		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate)
-		u.Vel.X = math.Cos(u.Angle) * effSpeed
-		u.Vel.Y = math.Sin(u.Angle) * effSpeed
-		u.Pos.X += u.Vel.X
-		u.Pos.Y += u.Vel.Y
-		world.ResolveUnitAsteroidCollisions(u)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 25, world.ArenaWidth-25)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 25, world.ArenaHeight-25)
 		return
 	}
 
@@ -125,23 +150,21 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 		u.AIState = "APPROACH"
 		desired := math.Atan2(dy, dx)
 		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate)
-		u.Vel.X = math.Cos(u.Angle) * effSpeed
-		u.Vel.Y = math.Sin(u.Angle) * effSpeed
+		u.Vel.X = math.Cos(u.Angle)*effSpeed + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed + u.EnvAccel.Y
 	} else {
 		u.AIState = "HARVEST"
-		// Face the resource node while matching the asteroid cluster's drift velocity
 		desired := math.Atan2(dy, dx)
 		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate)
 
-		// Gently hold standoff distance around the rock + add cluster drift
 		standoff := targetNode.Radius + 52.0
 		pull := (dist - standoff) * 0.08
 		nx, ny := 0.0, 0.0
 		if dist > 0.01 {
 			nx, ny = dx/dist, dy/dist
 		}
-		u.Vel.X = targetNode.Vel.X + nx*pull*slowScale
-		u.Vel.Y = targetNode.Vel.Y + ny*pull*slowScale
+		u.Vel.X = targetNode.Vel.X + nx*pull*speedScale + u.EnvAccel.X
+		u.Vel.Y = targetNode.Vel.Y + ny*pull*speedScale + u.EnvAccel.Y
 
 		u.HarvestTicks++
 		if u.FillDurationTicks > 0 && u.HarvestTicks >= u.FillDurationTicks {
@@ -153,7 +176,6 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 
 	u.Pos.X += u.Vel.X
 	u.Pos.Y += u.Vel.Y
-	world.ResolveUnitAsteroidCollisions(u)
 }
 
 // ============================================================================
@@ -162,7 +184,18 @@ func stepHarvesterAI(u *Unit, world *WorldState, detachedClusters map[uint32]boo
 
 func stepEscortAI(u *Unit, units map[string]*Unit, world *WorldState) {
 	u.IsFiring = false
-	effSpeed := u.Speed * world.CryoSpeedMultiplier(u.Pos)
+	effSpeed := u.Speed * unitEnvSpeedScale(u, world)
+
+	if evade, urgent := ComputeHazardAvoidanceVector(u, world); urgent {
+		u.AIState = "EVADE"
+		desired := math.Atan2(evade.Y, evade.X)
+		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate*1.4)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.1 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.1 + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 25, world.ArenaWidth-25)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 25, world.ArenaHeight-25)
+		return
+	}
 
 	var vip *Unit
 	if u.BuddyID != "" {
@@ -173,15 +206,13 @@ func stepEscortAI(u *Unit, units map[string]*Unit, world *WorldState) {
 		}
 	}
 
-	// Find nearest player ship (to VIP if guarding, else to self)
 	anchor := u.Pos
 	if vip != nil {
 		anchor = vip.Pos
 	}
-	threat, threatDist := findNearestPlayerUnit(anchor, units)
+	threat, threatDist := findNearestVisiblePlayerUnit(u, anchor, units, world)
 
 	if vip != nil {
-		// "Cutting the pie" defensive sweep between VIP and nearest player threat
 		u.AIState = "ESCORT"
 		u.SweepPhase += 0.045
 
@@ -194,14 +225,13 @@ func stepEscortAI(u *Unit, units map[string]*Unit, world *WorldState) {
 		if threat != nil {
 			baseAngle = math.Atan2(threat.Pos.Y-vip.Pos.Y, threat.Pos.X-vip.Pos.X)
 		}
-		sweepAngle := baseAngle + math.Sin(u.SweepPhase)*0.65 // ~75 deg lateral arc
+		sweepAngle := baseAngle + math.Sin(u.SweepPhase)*0.65
 
 		slotX := vip.Pos.X + math.Cos(sweepAngle)*standoff
 		slotY := vip.Pos.Y + math.Sin(sweepAngle)*standoff
 		moveTowardsPoint(u, Vec2{X: slotX, Y: slotY}, effSpeed, 18.0)
 
-		// Aim and shoot at nearest player threat if in range & clear LOS
-		if threat != nil {
+		if threat != nil && CanAcquireTarget(u, threat, world) {
 			dSelf := math.Hypot(threat.Pos.X-u.Pos.X, threat.Pos.Y-u.Pos.Y)
 			if dSelf <= u.ProjectileRange {
 				aimAngle := math.Atan2(threat.Pos.Y-u.Pos.Y, threat.Pos.X-u.Pos.X)
@@ -212,33 +242,29 @@ func stepEscortAI(u *Unit, units map[string]*Unit, world *WorldState) {
 			}
 		}
 	} else {
-		// VIP destroyed: indiscriminately hunt player units
 		u.AIState = "SEEK"
 		if threat != nil {
 			engageTargetWithLOS(u, threat, threatDist, effSpeed, world)
 		} else {
-			// Patrol toward arena center while waiting for players
 			moveTowardsPoint(u, Vec2{X: world.ArenaWidth / 2, Y: world.ArenaHeight / 2}, effSpeed*0.7, 120.0)
 		}
 	}
 
-	u.Pos.X = math.Max(25, math.Min(world.ArenaWidth-25, u.Pos.X+u.Vel.X))
-	u.Pos.Y = math.Max(25, math.Min(world.ArenaHeight-25, u.Pos.Y+u.Vel.Y))
-	world.ResolveUnitAsteroidCollisions(u)
+	u.Pos.X = clampFloat(u.Pos.X+u.Vel.X+u.EnvAccel.X, 25, world.ArenaWidth-25)
+	u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y+u.EnvAccel.Y, 25, world.ArenaHeight-25)
 }
 
 func stepBossAI(u *Unit, units map[string]*Unit, world *WorldState, bossEscapeTicks uint32) {
 	u.IsFiring = false
-	effSpeed := u.Speed * world.CryoSpeedMultiplier(u.Pos)
+	effSpeed := u.Speed * unitEnvSpeedScale(u, world)
 
-	// Escape when on-screen timer expires
 	if bossEscapeTicks == 0 {
 		u.AIState = "ESCAPE"
 		edgeTarget := nearestArenaEdge(u.Pos, world.ArenaWidth, world.ArenaHeight)
 		desired := math.Atan2(edgeTarget.Y-u.Pos.Y, edgeTarget.X-u.Pos.X)
 		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate)
-		u.Vel.X = math.Cos(u.Angle) * effSpeed * 1.35
-		u.Vel.Y = math.Sin(u.Angle) * effSpeed * 1.35
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.35 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.35 + u.EnvAccel.Y
 		u.Pos.X += u.Vel.X
 		u.Pos.Y += u.Vel.Y
 
@@ -248,20 +274,28 @@ func stepBossAI(u *Unit, units map[string]*Unit, world *WorldState, bossEscapeTi
 		return
 	}
 
+	if evade, urgent := ComputeHazardAvoidanceVector(u, world); urgent {
+		u.AIState = "EVADE"
+		desired := math.Atan2(evade.Y, evade.X)
+		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate*1.4)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 60, world.ArenaWidth-60)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 60, world.ArenaHeight-60)
+		return
+	}
+
 	u.AIState = "BOSS_PATROL"
-	// Steady figure-eight / elliptical sweep through the central arena
 	u.SweepPhase += 0.008
 	patrolX := world.ArenaWidth*0.5 + math.Cos(u.SweepPhase)*(world.ArenaWidth*0.26)
 	patrolY := world.ArenaHeight*0.5 + math.Sin(u.SweepPhase*1.5)*(world.ArenaHeight*0.22)
 	moveTowardsPoint(u, Vec2{X: patrolX, Y: patrolY}, effSpeed, 40.0)
 
-	u.Pos.X = math.Max(60, math.Min(world.ArenaWidth-60, u.Pos.X+u.Vel.X))
-	u.Pos.Y = math.Max(60, math.Min(world.ArenaHeight-60, u.Pos.Y+u.Vel.Y))
-	world.ResolveUnitAsteroidCollisions(u)
+	u.Pos.X = clampFloat(u.Pos.X+u.Vel.X+u.EnvAccel.X, 60, world.ArenaWidth-60)
+	u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y+u.EnvAccel.Y, 60, world.ArenaHeight-60)
 
-	// Continuously fire on nearest player ship in range
-	nearestPlayer, dist := findNearestPlayerUnit(u.Pos, units)
-	if nearestPlayer != nil && dist <= u.ProjectileRange {
+	nearestPlayer, dist := findNearestVisiblePlayerUnit(u, u.Pos, units, world)
+	if nearestPlayer != nil && dist <= u.ProjectileRange && CanAcquireTarget(u, nearestPlayer, world) {
 		aimAngle := math.Atan2(nearestPlayer.Pos.Y-u.Pos.Y, nearestPlayer.Pos.X-u.Pos.X)
 		u.Angle = rotateTowards(u.Angle, aimAngle, u.TurnRate*1.5)
 		if angleDiffAbs(u.Angle, aimAngle) < 0.45 && world.HasLineOfSight(u.Pos, nearestPlayer.Pos) {
@@ -271,7 +305,7 @@ func stepBossAI(u *Unit, units map[string]*Unit, world *WorldState, bossEscapeTi
 }
 
 // ============================================================================
-// 3. PER-SEAT PLAYER FLEET AI (DYNAMIC SQUADS + ROLE BEHAVIORS + LOS FLANKING)
+// 3. PER-SEAT PLAYER FLEET AI (DYNAMIC SQUADS + STEALTH + EVASION + LOS)
 // ============================================================================
 
 func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
@@ -285,7 +319,6 @@ func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
 		return
 	}
 
-	// Deterministic ordering prevents squad flicker across ticks
 	sort.Slice(seatUnits, func(i, j int) bool {
 		if seatUnits[i].WeightClass != seatUnits[j].WeightClass {
 			return seatUnits[i].WeightClass > seatUnits[j].WeightClass
@@ -293,9 +326,6 @@ func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
 		return seatUnits[i].ID < seatUnits[j].ID
 	})
 
-	// Dynamic Squad Assignment:
-	// - If 2+ 5W flagships exist, each forms its own squad and remaining units divide evenly among them.
-	// - Otherwise, the single highest-weight unit leads all units for this seat.
 	flagships := make([]*Unit, 0, 4)
 	for _, u := range seatUnits {
 		if u.WeightClass >= 5 {
@@ -341,12 +371,11 @@ func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
 		}
 	}
 
-	// Pass A: Leaders pick distinct House targets and maneuver
 	claimedTargets := make(map[string]bool)
 	leaderTargets := make(map[int32]*Unit)
 
 	for _, leader := range leaders {
-		target := pickLeaderTarget(leader, units, claimedTargets)
+		target := pickLeaderTarget(leader, units, claimedTargets, world)
 		if target != nil {
 			claimedTargets[target.ID] = true
 			leaderTargets[leader.SquadID] = target
@@ -354,7 +383,6 @@ func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
 		stepPlayerLeader(leader, target, world)
 	}
 
-	// Pass B: Followers execute role-specific behavior leashed to their Squad Leader
 	for _, f := range followers {
 		leader := units[f.BuddyID]
 		leaderTarget := leaderTargets[f.SquadID]
@@ -362,7 +390,7 @@ func stepPlayerSeatAI(seatIdx int8, units map[string]*Unit, world *WorldState) {
 	}
 }
 
-func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]bool) *Unit {
+func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]bool, world *WorldState) *Unit {
 	var bestUnclaimed, bestFallback *Unit
 	bestUnclaimedScore := -1e18
 	bestFallbackScore := -1e18
@@ -371,16 +399,18 @@ func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]b
 		if cand.IsDestroyed || !cand.IsHouse {
 			continue
 		}
+		// Space Pirates Stealth Rule: units inside Nebula / Gas Giant Deep break long-range lock-on
+		if !CanAcquireTarget(leader, cand, world) {
+			continue
+		}
 		dist := math.Hypot(cand.Pos.X-leader.Pos.X, cand.Pos.Y-leader.Pos.Y)
 		bounty := float64(UnitCurrentBountyCents(cand))
 		score := 0.0
 
 		switch leader.UnitType {
 		case "flagship":
-			// 5W Flagship: Always hunts highest live bounty on the table
 			score = bounty*100.0 - dist*0.15
 		case "torpedo_bomber":
-			// 4W Bomber: High-value targets (Boss -> Grav Extractor -> Plasma Skimmer -> highest bounty)
 			tierBonus := 0.0
 			if cand.IsBoss {
 				tierBonus = 50000
@@ -393,7 +423,6 @@ func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]b
 			}
 			score = tierBonus + bounty*40.0 - dist*0.2
 		case "cryo_flak":
-			// 3W Cryo Flak: Prefers harvesters & clusters of House units to maximize AoE slow
 			nearbyCount := 0.0
 			for _, other := range units {
 				if !other.IsDestroyed && other.IsHouse && math.Hypot(other.Pos.X-cand.Pos.X, other.Pos.Y-cand.Pos.Y) < 160 {
@@ -406,14 +435,12 @@ func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]b
 			}
 			score = nearbyCount*350.0 + harvBonus + bounty*5.0 - dist*0.35
 		case "assault_gunship":
-			// 2W Assault: Seeks nearest House unit (slight priority for escorts to clear threats)
 			escortBonus := 0.0
 			if !cand.IsHarvester && !cand.IsBoss {
 				escortBonus = 180
 			}
 			score = escortBonus + bounty*2.0 - dist
 		default:
-			// 1W Viper: Nearest harvester, slight bias toward damaged hulls for finishing blows
 			harvBonus := 0.0
 			if cand.IsHarvester {
 				harvBonus = 250
@@ -440,27 +467,51 @@ func pickLeaderTarget(leader *Unit, units map[string]*Unit, claimed map[string]b
 
 func stepPlayerLeader(u *Unit, target *Unit, world *WorldState) {
 	u.IsFiring = false
+	effSpeed := u.Speed * unitEnvSpeedScale(u, world)
+
+	if evade, urgent := ComputeHazardAvoidanceVector(u, world); urgent {
+		u.AIState = "EVADE"
+		desired := math.Atan2(evade.Y, evade.X)
+		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate*1.4)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.1 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.1 + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 30, world.ArenaWidth-30)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 30, world.ArenaHeight-30)
+		return
+	}
+
 	if target == nil {
-		u.AIState = "IDLE"
-		u.Vel.X *= 0.9
-		u.Vel.Y *= 0.9
-		u.Pos.X = math.Max(30, math.Min(world.ArenaWidth-30, u.Pos.X+u.Vel.X))
-		u.Pos.Y = math.Max(30, math.Min(world.ArenaHeight-30, u.Pos.Y+u.Vel.Y))
-		world.ResolveUnitAsteroidCollisions(u)
+		// Patrol inward so ships close within 50% visual range if all remaining targets are stealthed
+		u.AIState = "PATROL"
+		moveTowardsPoint(u, Vec2{X: world.ArenaWidth / 2, Y: world.ArenaHeight / 2}, effSpeed*0.75, 160.0)
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X+u.EnvAccel.X, 30, world.ArenaWidth-30)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y+u.EnvAccel.Y, 30, world.ArenaHeight-30)
 		return
 	}
 
 	u.AIState = "ENGAGE"
 	dist := math.Hypot(target.Pos.X-u.Pos.X, target.Pos.Y-u.Pos.Y)
-	engageTargetWithLOS(u, target, dist, u.Speed, world)
+	engageTargetWithLOS(u, target, dist, effSpeed, world)
 
-	u.Pos.X = math.Max(30, math.Min(world.ArenaWidth-30, u.Pos.X+u.Vel.X))
-	u.Pos.Y = math.Max(30, math.Min(world.ArenaHeight-30, u.Pos.Y+u.Vel.Y))
-	world.ResolveUnitAsteroidCollisions(u)
+	u.Pos.X = clampFloat(u.Pos.X+u.Vel.X+u.EnvAccel.X, 30, world.ArenaWidth-30)
+	u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y+u.EnvAccel.Y, 30, world.ArenaHeight-30)
 }
 
 func stepPlayerFollower(u *Unit, leader *Unit, leaderTarget *Unit, units map[string]*Unit, world *WorldState) {
 	u.IsFiring = false
+	effSpeed := u.Speed * unitEnvSpeedScale(u, world)
+
+	if evade, urgent := ComputeHazardAvoidanceVector(u, world); urgent {
+		u.AIState = "EVADE"
+		desired := math.Atan2(evade.Y, evade.X)
+		u.Angle = rotateTowards(u.Angle, desired, u.TurnRate*1.4)
+		u.Vel.X = math.Cos(u.Angle)*effSpeed*1.1 + u.EnvAccel.X
+		u.Vel.Y = math.Sin(u.Angle)*effSpeed*1.1 + u.EnvAccel.Y
+		u.Pos.X = clampFloat(u.Pos.X+u.Vel.X, 30, world.ArenaWidth-30)
+		u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y, 30, world.ArenaHeight-30)
+		return
+	}
+
 	if leader == nil || leader.IsDestroyed {
 		stepPlayerLeader(u, leaderTarget, world)
 		return
@@ -468,7 +519,6 @@ func stepPlayerFollower(u *Unit, leader *Unit, leaderTarget *Unit, units map[str
 
 	switch u.UnitType {
 	case "viper_interceptor":
-		// 1W Follower: Escort orbit around squad leader; intercept nearby House escorts or focus leader target
 		u.AIState = "ESCORT"
 		u.SweepPhase += 0.06
 		orbitAngle := leader.Angle + math.Sin(u.SweepPhase)*1.2
@@ -476,60 +526,57 @@ func stepPlayerFollower(u *Unit, leader *Unit, leaderTarget *Unit, units map[str
 			X: leader.Pos.X + math.Cos(orbitAngle)*85.0,
 			Y: leader.Pos.Y + math.Sin(orbitAngle)*85.0,
 		}
-		moveTowardsPoint(u, slot, u.Speed, 20.0)
+		moveTowardsPoint(u, slot, effSpeed, 20.0)
 
-		target := findNearestHouseEscort(leader.Pos, 320.0, units)
-		if target == nil {
+		target := findNearestHouseEscort(u, leader.Pos, 320.0, units, world)
+		if target == nil && CanAcquireTarget(u, leaderTarget, world) {
 			target = leaderTarget
 		}
 		aimAndFireIfClear(u, target, world)
 
 	case "assault_gunship":
-		// 2W Follower: Maintain formation behind squad leader and provide covering fire
 		u.AIState = "FORMATION"
 		behind := Vec2{
 			X: leader.Pos.X - math.Cos(leader.Angle)*78.0,
 			Y: leader.Pos.Y - math.Sin(leader.Angle)*78.0,
 		}
-		moveTowardsPoint(u, behind, u.Speed, 20.0)
+		moveTowardsPoint(u, behind, effSpeed, 20.0)
 
 		target := leaderTarget
-		if escort := findNearestHouseEscort(leader.Pos, 360.0, units); escort != nil {
+		if escort := findNearestHouseEscort(u, leader.Pos, 360.0, units, world); escort != nil {
 			target = escort
 		}
-		aimAndFireIfClear(u, target, world)
+		if CanAcquireTarget(u, target, world) {
+			aimAndFireIfClear(u, target, world)
+		}
 
 	case "cryo_flak":
-		// 3W Follower: Advance to blanket the leader's target with Cryo clouds
 		u.AIState = "CRYO_SUPPORT"
-		if leaderTarget != nil {
+		if leaderTarget != nil && CanAcquireTarget(u, leaderTarget, world) {
 			dist := math.Hypot(leaderTarget.Pos.X-u.Pos.X, leaderTarget.Pos.Y-u.Pos.Y)
-			engageTargetWithLOS(u, leaderTarget, dist, u.Speed, world)
+			engageTargetWithLOS(u, leaderTarget, dist, effSpeed, world)
 		} else {
-			moveTowardsPoint(u, leader.Pos, u.Speed, 95.0)
+			moveTowardsPoint(u, leader.Pos, effSpeed, 95.0)
 		}
 
 	default:
-		// 4W Torpedo Bomber (and any other heavy follower): Focus fire on leader's target
 		u.AIState = "FOCUS_FIRE"
-		if leaderTarget != nil {
+		if leaderTarget != nil && CanAcquireTarget(u, leaderTarget, world) {
 			dist := math.Hypot(leaderTarget.Pos.X-u.Pos.X, leaderTarget.Pos.Y-u.Pos.Y)
-			engageTargetWithLOS(u, leaderTarget, dist, u.Speed, world)
+			engageTargetWithLOS(u, leaderTarget, dist, effSpeed, world)
 		} else {
-			moveTowardsPoint(u, leader.Pos, u.Speed, 110.0)
+			moveTowardsPoint(u, leader.Pos, effSpeed, 110.0)
 		}
 	}
 
-	u.Pos.X = math.Max(30, math.Min(world.ArenaWidth-30, u.Pos.X+u.Vel.X))
-	u.Pos.Y = math.Max(30, math.Min(world.ArenaHeight-30, u.Pos.Y+u.Vel.Y))
-	world.ResolveUnitAsteroidCollisions(u)
+	u.Pos.X = clampFloat(u.Pos.X+u.Vel.X+u.EnvAccel.X, 30, world.ArenaWidth-30)
+	u.Pos.Y = clampFloat(u.Pos.Y+u.Vel.Y+u.EnvAccel.Y, 30, world.ArenaHeight-30)
 }
 
 // ============================================================================
 // 4. SHARED STEERING, LOS FLANKING & TARGET HELPERS
 // ============================================================================
 
-// engageTargetWithLOS closes to OptimalRange and flanks around asteroid cover if LOS is blocked.
 func engageTargetWithLOS(u *Unit, target *Unit, dist float64, effSpeed float64, world *WorldState) {
 	optRange := u.OptimalRange
 	if optRange <= 0 {
@@ -539,12 +586,16 @@ func engageTargetWithLOS(u *Unit, target *Unit, dist float64, effSpeed float64, 
 	if fireRange <= 0 {
 		fireRange = optRange * 1.25
 	}
+	if IsUnitStealthed(target, world) {
+		// Must close inside 50% visual/weapon acquisition range to fire on a stealthed target
+		fireRange *= 0.5
+		optRange = math.Min(optRange, fireRange*0.85)
+	}
 
 	hasLOS := world.HasLineOfSight(u.Pos, target.Pos)
 	toTarget := math.Atan2(target.Pos.Y-u.Pos.Y, target.Pos.X-u.Pos.X)
 
 	if !hasLOS && dist <= fireRange*1.25 {
-		// Tactical Cover Flanking: hold fire and strafe tangentially around the blocking rock
 		u.AIState = "FLANK"
 		u.IsFiring = false
 		side := 1.0
@@ -576,8 +627,15 @@ func aimAndFireIfClear(u *Unit, target *Unit, world *WorldState) {
 	if target == nil || target.IsDestroyed || !u.CanFire {
 		return
 	}
+	if !CanAcquireTarget(u, target, world) {
+		return
+	}
 	dist := math.Hypot(target.Pos.X-u.Pos.X, target.Pos.Y-u.Pos.Y)
-	if dist > u.ProjectileRange {
+	maxRange := u.ProjectileRange
+	if IsUnitStealthed(target, world) {
+		maxRange *= 0.5
+	}
+	if dist > maxRange {
 		return
 	}
 	aimAngle := math.Atan2(target.Pos.Y-u.Pos.Y, target.Pos.X-u.Pos.X)
@@ -602,11 +660,14 @@ func moveTowardsPoint(u *Unit, dst Vec2, speed float64, arriveRadius float64) {
 	u.Vel.Y = math.Sin(u.Angle) * speed
 }
 
-func findNearestPlayerUnit(origin Vec2, units map[string]*Unit) (*Unit, float64) {
+func findNearestVisiblePlayerUnit(seeker *Unit, origin Vec2, units map[string]*Unit, world *WorldState) (*Unit, float64) {
 	var best *Unit
 	bestDist := math.MaxFloat64
 	for _, cand := range units {
 		if cand.IsDestroyed || cand.IsHouse {
+			continue
+		}
+		if !CanAcquireTarget(seeker, cand, world) {
 			continue
 		}
 		d := math.Hypot(cand.Pos.X-origin.X, cand.Pos.Y-origin.Y)
@@ -618,11 +679,14 @@ func findNearestPlayerUnit(origin Vec2, units map[string]*Unit) (*Unit, float64)
 	return best, bestDist
 }
 
-func findNearestHouseEscort(origin Vec2, maxRange float64, units map[string]*Unit) *Unit {
+func findNearestHouseEscort(seeker *Unit, origin Vec2, maxRange float64, units map[string]*Unit, world *WorldState) *Unit {
 	var best *Unit
 	bestDist := maxRange
 	for _, cand := range units {
 		if cand.IsDestroyed || !cand.IsHouse || cand.IsHarvester {
+			continue
+		}
+		if !CanAcquireTarget(seeker, cand, world) {
 			continue
 		}
 		d := math.Hypot(cand.Pos.X-origin.X, cand.Pos.Y-origin.Y)

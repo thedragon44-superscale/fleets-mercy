@@ -10,28 +10,33 @@ import (
 )
 
 type WorldState struct {
-	ArenaWidth    float64
-	ArenaHeight   float64
-	Clusters      []*ActiveCluster
-	CryoClouds    []*CryoCloud
-	nextClusterID uint32
-	nextNodeID    uint32
-	nextCloudID   uint32
+	ArenaWidth          float64
+	ArenaHeight         float64
+	EnvObjects          []*ActiveEnvObject
+	Clusters            []*ActiveCluster // Kept empty when EnvObjects runs; populated only for legacy callers
+	CryoClouds          []*CryoCloud
+	nextObjectID        uint32
+	nextComponentID     uint32
+	nextCloudID         uint32
+	cometCooldownTicks  int
 }
 
 func NewWorldState(arenaW, arenaH float64) *WorldState {
 	w := &WorldState{
-		ArenaWidth:  arenaW,
-		ArenaHeight: arenaH,
-		Clusters:    make([]*ActiveCluster, 0, 8),
-		CryoClouds:  make([]*CryoCloud, 0, 16),
+		ArenaWidth:         arenaW,
+		ArenaHeight:        arenaH,
+		EnvObjects:         make([]*ActiveEnvObject, 0, 12),
+		Clusters:           make([]*ActiveCluster, 0),
+		CryoClouds:         make([]*CryoCloud, 0, 16),
+		cometCooldownTicks: 12 * TickRateHz, // First comet pass after ~12s
 	}
-	w.SeedInitialClusters()
+	w.SeedInitialEnvironment()
 	return w
 }
 
-// SeedInitialClusters populates the arena with drifting clusters from PostgreSQL on room boot.
-func (w *WorldState) SeedInitialClusters() {
+// SeedInitialEnvironment populates the arena from db.EnvCache (mode_env_pools),
+// falling back seamlessly to db.SPCache.Clusters if migration 002 hasn't been applied yet.
+func (w *WorldState) SeedInitialEnvironment() {
 	db.SPCache.Mu.RLock()
 	targetCount := db.SPCache.Ruleset.TargetClusterCount
 	db.SPCache.Mu.RUnlock()
@@ -40,16 +45,17 @@ func (w *WorldState) SeedInitialClusters() {
 	}
 
 	for i := 0; i < targetCount; i++ {
-		if c := w.spawnClusterFromCache(true); c != nil {
-			w.Clusters = append(w.Clusters, c)
+		if !w.spawnDriftObjectFromPool(true) {
+			break
 		}
 	}
 }
 
-// Step advances all clusters (handling whole-cluster edge wraps & replacements) and decays Cryo clouds.
-// Returns a set of cluster IDs that wrapped or expired this tick so harvesters detach cleanly.
+// Step advances all environmental objects (drift, spin, orbital moons, whole-object wrapping,
+// transient Comet transits) and decays Cryo clouds.
+// Returns IDs of objects that wrapped or expired this tick so harvesters detach cleanly.
 func (w *WorldState) Step() map[uint32]bool {
-	detachedClusters := make(map[uint32]bool)
+	detachedObjects := make(map[uint32]bool)
 
 	db.SPCache.Mu.RLock()
 	targetCount := db.SPCache.Ruleset.TargetClusterCount
@@ -58,35 +64,80 @@ func (w *WorldState) Step() map[uint32]bool {
 		targetCount = 5
 	}
 
-	alive := w.Clusters[:0]
-	for _, c := range w.Clusters {
-		c.Center.X += c.Vel.X
-		c.Center.Y += c.Vel.Y
-		c.Angle += c.SpinRate
+	// Pass 1: Move root (non-orbital) objects & check whole-object wraps / transient exits
+	expiredParents := make(map[uint32]bool)
+	parentByID := make(map[uint32]*ActiveEnvObject, len(w.EnvObjects))
 
-		wrapped, expired := w.checkClusterWrap(c)
+	for _, obj := range w.EnvObjects {
+		if obj.ParentObjectID != 0 {
+			continue
+		}
+		obj.Center.X += obj.Vel.X
+		obj.Center.Y += obj.Vel.Y
+		obj.Angle += obj.SpinRate
+
+		wrapped, expired := w.checkObjectWrap(obj)
 		if wrapped || expired {
-			detachedClusters[c.ID] = true
+			detachedObjects[obj.ID] = true
 		}
 		if expired {
+			expiredParents[obj.ID] = true
+			continue
+		}
+		parentByID[obj.ID] = obj
+		w.updateObjectComponentPositions(obj)
+	}
+
+	// Pass 2: Advance orbiting children (moons) relative to their live parents
+	alive := w.EnvObjects[:0]
+	for _, obj := range w.EnvObjects {
+		if obj.ParentObjectID == 0 {
+			if expiredParents[obj.ID] {
+				continue
+			}
+			alive = append(alive, obj)
 			continue
 		}
 
-		w.updateClusterNodePositions(c)
-		alive = append(alive, c)
-	}
-	w.Clusters = alive
+		parent, ok := parentByID[obj.ParentObjectID]
+		if !ok || expiredParents[obj.ParentObjectID] {
+			detachedObjects[obj.ID] = true
+			continue
+		}
+		if detachedObjects[obj.ParentObjectID] {
+			detachedObjects[obj.ID] = true
+		}
 
-	// Replace expired clusters from the live DB variant pool
-	for len(w.Clusters) < targetCount {
-		c := w.spawnClusterFromCache(false)
-		if c == nil {
+		prevX, prevY := obj.Center.X, obj.Center.Y
+		obj.OrbitAngle += obj.OrbitSpeed
+		obj.Angle += obj.SpinRate
+		obj.Center.X = parent.Center.X + math.Cos(obj.OrbitAngle)*obj.OrbitRadius
+		obj.Center.Y = parent.Center.Y + math.Sin(obj.OrbitAngle)*obj.OrbitRadius
+		obj.Vel.X = obj.Center.X - prevX
+		obj.Vel.Y = obj.Center.Y - prevY
+		w.updateObjectComponentPositions(obj)
+		alive = append(alive, obj)
+	}
+	w.EnvObjects = alive
+
+	// Pass 3: Replace expired drift_wrap objects to keep arena populated
+	driftCount := 0
+	for _, obj := range w.EnvObjects {
+		if obj.ParentObjectID == 0 && obj.Motion.Mode != "transient_transit" {
+			driftCount++
+		}
+	}
+	for driftCount < targetCount {
+		if !w.spawnDriftObjectFromPool(false) {
 			break
 		}
-		w.Clusters = append(w.Clusters, c)
+		driftCount++
 	}
 
-	// Decay Cryo clouds
+	// Pass 4: Periodic transient Comet spawner
+	w.stepCometSpawner()
+
+	// Pass 5: Decay Cryo clouds
 	activeClouds := w.CryoClouds[:0]
 	for _, cloud := range w.CryoClouds {
 		if cloud.RemainingTicks > 1 {
@@ -96,69 +147,390 @@ func (w *WorldState) Step() map[uint32]bool {
 	}
 	w.CryoClouds = activeClouds
 
-	return detachedClusters
+	return detachedObjects
 }
 
-// checkClusterWrap wraps a cluster as a single rigid body only after its full bounding radius clears the frame.
-func (w *WorldState) checkClusterWrap(c *ActiveCluster) (wrapped bool, expired bool) {
-	br := c.BoundingRadius
-	outLeft := c.Center.X < -br && c.Vel.X < 0
-	outRight := c.Center.X > w.ArenaWidth+br && c.Vel.X > 0
-	outTop := c.Center.Y < -br && c.Vel.Y < 0
-	outBottom := c.Center.Y > w.ArenaHeight+br && c.Vel.Y > 0
+func (w *WorldState) checkObjectWrap(obj *ActiveEnvObject) (wrapped bool, expired bool) {
+	br := obj.BoundingRadius
+	outLeft := obj.Center.X < -br && obj.Vel.X < 0
+	outRight := obj.Center.X > w.ArenaWidth+br && obj.Vel.X > 0
+	outTop := obj.Center.Y < -br && obj.Vel.Y < 0
+	outBottom := obj.Center.Y > w.ArenaHeight+br && obj.Vel.Y > 0
 
 	if !outLeft && !outRight && !outTop && !outBottom {
 		return false, false
 	}
 
-	if c.WrapsRemaining <= 0 {
+	if obj.Motion.Mode == "transient_transit" || obj.WrapsRemaining <= 0 {
 		return false, true
 	}
 
-	c.WrapsRemaining--
+	obj.WrapsRemaining--
 	if outLeft {
-		c.Center.X = w.ArenaWidth + br
+		obj.Center.X = w.ArenaWidth + br
 	} else if outRight {
-		c.Center.X = -br
+		obj.Center.X = -br
 	}
 	if outTop {
-		c.Center.Y = w.ArenaHeight + br
+		obj.Center.Y = w.ArenaHeight + br
 	} else if outBottom {
-		c.Center.Y = -br
+		obj.Center.Y = -br
 	}
 	return true, false
 }
 
-func (w *WorldState) updateClusterNodePositions(c *ActiveCluster) {
-	cosA := math.Cos(c.Angle)
-	sinA := math.Sin(c.Angle)
-	for _, n := range c.Nodes {
-		rx := n.LocalDX*cosA - n.LocalDY*sinA
-		ry := n.LocalDX*sinA + n.LocalDY*cosA
-		n.Pos.X = c.Center.X + rx
-		n.Pos.Y = c.Center.Y + ry
-		n.Vel = c.Vel
+func (w *WorldState) updateObjectComponentPositions(obj *ActiveEnvObject) {
+	cosA := math.Cos(obj.Angle)
+	sinA := math.Sin(obj.Angle)
+	for _, c := range obj.Components {
+		rx := c.LocalDX*cosA - c.LocalDY*sinA
+		ry := c.LocalDX*sinA + c.LocalDY*cosA
+		c.Pos.X = obj.Center.X + rx
+		c.Pos.Y = obj.Center.Y + ry
+		c.Vel = obj.Vel
 	}
 }
 
-// spawnClusterFromCache rolls a weighted variant from sp_cluster_variants respecting MaxConcurrent.
-func (w *WorldState) spawnClusterFromCache(placeInside bool) *ActiveCluster {
+// spawnDriftObjectFromPool picks a weighted non-transient blueprint from db.EnvCache
+// (or falls back to db.SPCache.Clusters if EnvCache is empty).
+func (w *WorldState) spawnDriftObjectFromPool(placeInside bool) bool {
+	db.EnvCache.Mu.RLock()
+	pools := db.EnvCache.PoolsByMode["space_pirates"]
+	bpMap := db.EnvCache.Blueprints
+	db.EnvCache.Mu.RUnlock()
+
+	if len(pools) == 0 || len(bpMap) == 0 {
+		return w.spawnLegacyClusterFallback(placeInside)
+	}
+
+	activeByBP := make(map[int]int)
+	for _, obj := range w.EnvObjects {
+		if obj.ParentObjectID == 0 {
+			activeByBP[obj.BlueprintID]++
+		}
+	}
+
+	type candidate struct {
+		pool models.ModeEnvPoolEntry
+		bp   models.EnvBlueprint
+	}
+	eligible := make([]candidate, 0, len(pools))
+	totalWeight := 0
+	for _, p := range pools {
+		if !p.IsEnabled {
+			continue
+		}
+		bp, ok := bpMap[p.BlueprintID]
+		if !ok || !bp.IsEnabled || len(bp.Components) == 0 {
+			continue
+		}
+		if bp.MotionProfile.Mode == "transient_transit" || bp.ObjectType == "comet" {
+			continue
+		}
+		if p.MaxConcurrent > 0 && activeByBP[bp.BlueprintID] >= p.MaxConcurrent {
+			continue
+		}
+		eligible = append(eligible, candidate{pool: p, bp: bp})
+		totalWeight += p.SpawnWeight
+	}
+	if len(eligible) == 0 || totalWeight <= 0 {
+		return false
+	}
+
+	roll := rand.Intn(totalWeight)
+	chosen := eligible[0]
+	for _, cand := range eligible {
+		roll -= cand.pool.SpawnWeight
+		if roll < 0 {
+			chosen = cand
+			break
+		}
+	}
+
+	w.instantiateEnvObject(chosen.bp, chosen.pool.ScaleOverride, placeInside, bpMap)
+	return true
+}
+
+func (w *WorldState) stepCometSpawner() {
+	if w.cometCooldownTicks > 0 {
+		w.cometCooldownTicks--
+		return
+	}
+
+	db.EnvCache.Mu.RLock()
+	pools := db.EnvCache.PoolsByMode["space_pirates"]
+	bpMap := db.EnvCache.Blueprints
+	db.EnvCache.Mu.RUnlock()
+
+	if len(pools) == 0 {
+		w.cometCooldownTicks = 30 * TickRateHz
+		return
+	}
+
+	activeByBP := make(map[int]int)
+	for _, obj := range w.EnvObjects {
+		activeByBP[obj.BlueprintID]++
+	}
+
+	type cometCand struct {
+		pool models.ModeEnvPoolEntry
+		bp   models.EnvBlueprint
+	}
+	var cands []cometCand
+	totalW := 0
+	for _, p := range pools {
+		if !p.IsEnabled {
+			continue
+		}
+		bp, ok := bpMap[p.BlueprintID]
+		if !ok || !bp.IsEnabled || len(bp.Components) == 0 {
+			continue
+		}
+		if bp.MotionProfile.Mode != "transient_transit" && bp.ObjectType != "comet" {
+			continue
+		}
+		if p.MaxConcurrent > 0 && activeByBP[bp.BlueprintID] >= p.MaxConcurrent {
+			continue
+		}
+		cands = append(cands, cometCand{pool: p, bp: bp})
+		totalW += p.SpawnWeight
+	}
+
+	if len(cands) == 0 || totalW <= 0 {
+		w.cometCooldownTicks = 15 * TickRateHz
+		return
+	}
+
+	roll := rand.Intn(totalW)
+	chosen := cands[0]
+	for _, c := range cands {
+		roll -= c.pool.SpawnWeight
+		if roll < 0 {
+			chosen = c
+			break
+		}
+	}
+
+	w.instantiateEnvObject(chosen.bp, chosen.pool.ScaleOverride, false, bpMap)
+	cd := chosen.bp.MotionProfile.TransitCooldownSeconds
+	if cd <= 0 {
+		cd = 28
+	}
+	w.cometCooldownTicks = cd * TickRateHz
+}
+
+func (w *WorldState) instantiateEnvObject(
+	bp models.EnvBlueprint,
+	scaleOverride *float64,
+	placeInside bool,
+	bpMap map[int]models.EnvBlueprint,
+) *ActiveEnvObject {
 	db.SPCache.Mu.RLock()
-	variants := db.SPCache.Clusters
 	resources := db.SPCache.Resources
 	db.SPCache.Mu.RUnlock()
 
+	mot := bp.MotionProfile
+	scale := mot.ScaleMin
+	if scale <= 0 {
+		scale = 1.0
+	}
+	if mot.ScaleMax > scale {
+		scale += rand.Float64() * (mot.ScaleMax - scale)
+	}
+	if scaleOverride != nil && *scaleOverride > 0 {
+		scale *= *scaleOverride
+	}
+
+	speed := mot.SpeedMin
+	if mot.SpeedMax > mot.SpeedMin {
+		speed += rand.Float64() * (mot.SpeedMax - mot.SpeedMin)
+	}
+
+	wraps := mot.MinWraps
+	if mot.MaxWraps > mot.MinWraps {
+		wraps += rand.Intn(mot.MaxWraps - mot.MinWraps + 1)
+	}
+
+	br := bp.BoundingRadius * scale
+	if br < 40 {
+		br = 40
+	}
+
+	var center Vec2
+	var driftAngle float64
+	if placeInside {
+		padX := math.Min(360, w.ArenaWidth*0.2)
+		padY := math.Min(280, w.ArenaHeight*0.2)
+		center = Vec2{
+			X: padX + rand.Float64()*(w.ArenaWidth-padX*2),
+			Y: padY + rand.Float64()*(w.ArenaHeight-padY*2),
+		}
+		driftAngle = rand.Float64() * 2 * math.Pi
+	} else {
+		center, driftAngle = w.randomOffscreenEntry(br)
+	}
+
+	spin := mot.SpinRate
+	if rand.Float64() < 0.5 {
+		spin = -spin
+	}
+
+	// Scale physics radii proportionally with object scale
+	scaledPhys := bp.PhysicsProfile
+	scaledPhys.GravityRadius *= scale
+	scaledPhys.RepulsionRadius *= scale
+
+	w.nextObjectID++
+	obj := &ActiveEnvObject{
+		ID:             w.nextObjectID,
+		BlueprintID:    bp.BlueprintID,
+		ObjectType:     bp.ObjectType,
+		ObjectTypeEnum: ParseEnvObjectType(bp.ObjectType),
+		Center:         center,
+		Vel:            Vec2{X: math.Cos(driftAngle) * speed, Y: math.Sin(driftAngle) * speed},
+		Angle:          rand.Float64() * 2 * math.Pi,
+		SpinRate:       spin,
+		Scale:          scale,
+		BoundingRadius: br,
+		WrapsRemaining: wraps,
+		Physics:        scaledPhys,
+		Motion:         mot,
+		Components:     make([]*EnvComponent, 0, len(bp.Components)),
+	}
+
+	for _, spec := range bp.Components {
+		w.nextComponentID++
+		resKey := ""
+		resEnum := SpacePirates.ResourceTypeNone
+		colorHex := ""
+		if spec.ColorHex != nil {
+			colorHex = *spec.ColorHex
+		}
+
+		if spec.IsNode {
+			rolled, ok := rollResourceForEnvSlot(spec.SlotTier, spec.PinnedResource, resources)
+			if ok {
+				resKey = rolled.ResourceKey
+				resEnum = SpacePirates.ResourceType(rolled.EnumCode)
+				if colorHex == "" {
+					colorHex = rolled.ColorHex
+				}
+			}
+		}
+
+		obj.Components = append(obj.Components, &EnvComponent{
+			ID:           w.nextComponentID,
+			ObjectID:     obj.ID,
+			Kind:         spec.Kind,
+			KindEnum:     ParseEnvComponentKind(spec.Kind),
+			LocalDX:      spec.DX * scale,
+			LocalDY:      spec.DY * scale,
+			Radius:       spec.Radius * scale,
+			InnerRadius:  spec.InnerRadius * scale,
+			IsNode:       spec.IsNode,
+			ResourceKey:  resKey,
+			ResourceType: resEnum,
+			ColorHex:     colorHex,
+		})
+	}
+
+	w.updateObjectComponentPositions(obj)
+	w.EnvObjects = append(w.EnvObjects, obj)
+
+	// Spawn attached Orbiting Children (e.g., orbiting moons)
+	for _, childSpec := range bp.OrbitingChildren {
+		childBp, ok := bpMap[childSpec.ChildBlueprintID]
+		if !ok || len(childBp.Components) == 0 {
+			continue
+		}
+		childScale := childSpec.Scale
+		if childScale <= 0 {
+			childScale = 1.0
+		}
+		effChildScale := childScale * scale
+		orbitR := childSpec.OrbitRadius * scale
+		startAng := childSpec.StartAngle
+
+		w.nextObjectID++
+		childObj := &ActiveEnvObject{
+			ID:             w.nextObjectID,
+			BlueprintID:    childBp.BlueprintID,
+			ObjectType:     childBp.ObjectType,
+			ObjectTypeEnum: ParseEnvObjectType(childBp.ObjectType),
+			Center: Vec2{
+				X: obj.Center.X + math.Cos(startAng)*orbitR,
+				Y: obj.Center.Y + math.Sin(startAng)*orbitR,
+			},
+			Vel:            obj.Vel,
+			Angle:          rand.Float64() * 2 * math.Pi,
+			SpinRate:       childBp.MotionProfile.SpinRate,
+			Scale:          effChildScale,
+			BoundingRadius: childBp.BoundingRadius * effChildScale,
+			ParentObjectID: obj.ID,
+			OrbitRadius:    orbitR,
+			OrbitSpeed:     childSpec.OrbitSpeed,
+			OrbitAngle:     startAng,
+			Physics:        childBp.PhysicsProfile,
+			Motion:         childBp.MotionProfile,
+			Components:     make([]*EnvComponent, 0, len(childBp.Components)),
+		}
+		childObj.Physics.GravityRadius *= effChildScale
+		childObj.Physics.RepulsionRadius *= effChildScale
+
+		for _, spec := range childBp.Components {
+			w.nextComponentID++
+			resKey := ""
+			resEnum := SpacePirates.ResourceTypeNone
+			colorHex := ""
+			if spec.ColorHex != nil {
+				colorHex = *spec.ColorHex
+			}
+			if spec.IsNode {
+				if rolled, ok := rollResourceForEnvSlot(spec.SlotTier, spec.PinnedResource, resources); ok {
+					resKey = rolled.ResourceKey
+					resEnum = SpacePirates.ResourceType(rolled.EnumCode)
+					if colorHex == "" {
+						colorHex = rolled.ColorHex
+					}
+				}
+			}
+			childObj.Components = append(childObj.Components, &EnvComponent{
+				ID:           w.nextComponentID,
+				ObjectID:     childObj.ID,
+				Kind:         spec.Kind,
+				KindEnum:     ParseEnvComponentKind(spec.Kind),
+				LocalDX:      spec.DX * effChildScale,
+				LocalDY:      spec.DY * effChildScale,
+				Radius:       spec.Radius * effChildScale,
+				InnerRadius:  spec.InnerRadius * effChildScale,
+				IsNode:       spec.IsNode,
+				ResourceKey:  resKey,
+				ResourceType: resEnum,
+				ColorHex:     colorHex,
+			})
+		}
+		w.updateObjectComponentPositions(childObj)
+		w.EnvObjects = append(w.EnvObjects, childObj)
+	}
+
+	return obj
+}
+
+// spawnLegacyClusterFallback adapts legacy sp_cluster_variants into ActiveEnvObjects
+// if migration 002 hasn't been applied to PostgreSQL yet.
+func (w *WorldState) spawnLegacyClusterFallback(placeInside bool) bool {
+	db.SPCache.Mu.RLock()
+	variants := db.SPCache.Clusters
+	db.SPCache.Mu.RUnlock()
 	if len(variants) == 0 {
-		return nil
+		return false
 	}
 
-	// Count active instances per variant
 	activeByVariant := make(map[int]int)
-	for _, c := range w.Clusters {
-		activeByVariant[c.VariantID]++
+	for _, obj := range w.EnvObjects {
+		activeByVariant[obj.BlueprintID]++
 	}
 
-	// Filter eligible variants and sum spawn weights
 	eligible := make([]models.SPClusterVariant, 0, len(variants))
 	totalWeight := 0
 	for _, v := range variants {
@@ -172,7 +544,7 @@ func (w *WorldState) spawnClusterFromCache(placeInside bool) *ActiveCluster {
 		totalWeight += v.SpawnWeight
 	}
 	if len(eligible) == 0 || totalWeight <= 0 {
-		return nil
+		return false
 	}
 
 	roll := rand.Intn(totalWeight)
@@ -185,93 +557,58 @@ func (w *WorldState) spawnClusterFromCache(placeInside bool) *ActiveCluster {
 		}
 	}
 
-	scale := chosen.ScaleMin
-	if chosen.ScaleMax > chosen.ScaleMin {
-		scale += rand.Float64() * (chosen.ScaleMax - chosen.ScaleMin)
-	}
-	speed := chosen.SpeedMin
-	if chosen.SpeedMax > chosen.SpeedMin {
-		speed += rand.Float64() * (chosen.SpeedMax - chosen.SpeedMin)
-	}
-	wraps := chosen.MinWraps
-	if chosen.MaxWraps > chosen.MinWraps {
-		wraps += rand.Intn(chosen.MaxWraps - chosen.MinWraps + 1)
-	}
-
-	boundingRadius := chosen.BoundingRadius * scale
-	var center Vec2
-	var driftAngle float64
-
-	if placeInside {
-		center = Vec2{
-			X: 320 + rand.Float64()*(w.ArenaWidth-640),
-			Y: 260 + rand.Float64()*(w.ArenaHeight-520),
+	comps := make([]models.EnvComponentSpec, 0, len(chosen.NodesLayout))
+	for _, n := range chosen.NodesLayout {
+		kind := "solid_rock"
+		if n.IsNode {
+			kind = "resource_node"
 		}
-		driftAngle = rand.Float64() * 2 * math.Pi
-	} else {
-		center, driftAngle = w.randomOffscreenEntry(boundingRadius)
-	}
-
-	spin := chosen.SpinRate
-	if rand.Float64() < 0.5 {
-		spin = -spin
-	}
-
-	w.nextClusterID++
-	cluster := &ActiveCluster{
-		ID:             w.nextClusterID,
-		VariantID:      chosen.VariantID,
-		Center:         center,
-		Vel:            Vec2{X: math.Cos(driftAngle) * speed, Y: math.Sin(driftAngle) * speed},
-		Angle:          rand.Float64() * 2 * math.Pi,
-		SpinRate:       spin,
-		Scale:          scale,
-		BoundingRadius: boundingRadius,
-		WrapsRemaining: wraps,
-		Nodes:          make([]*AsteroidNode, 0, len(chosen.NodesLayout)),
-	}
-
-	// Build rocks and perform slot-based resource rolling
-	for _, spec := range chosen.NodesLayout {
-		w.nextNodeID++
-		resKey := ""
-		resEnum := SpacePirates.ResourceTypeNone
-
-		if spec.IsNode {
-			rolled, ok := rollResourceForSlot(spec, resources)
-			if ok {
-				resKey = rolled.ResourceKey
-				resEnum = SpacePirates.ResourceType(rolled.EnumCode)
-			}
-		}
-
-		cluster.Nodes = append(cluster.Nodes, &AsteroidNode{
-			ID:           w.nextNodeID,
-			ClusterID:    cluster.ID,
-			LocalDX:      spec.DX * scale,
-			LocalDY:      spec.DY * scale,
-			Radius:       spec.Radius * scale,
-			IsNode:       spec.IsNode,
-			ResourceKey:  resKey,
-			ResourceType: resEnum,
+		comps = append(comps, models.EnvComponentSpec{
+			Kind:           kind,
+			DX:             n.DX,
+			DY:             n.DY,
+			Radius:         n.Radius,
+			IsNode:         n.IsNode,
+			SlotTier:       n.SlotTier,
+			PinnedResource: n.PinnedResource,
 		})
 	}
-
-	w.updateClusterNodePositions(cluster)
-	return cluster
+	bp := models.EnvBlueprint{
+		BlueprintID:    chosen.VariantID,
+		Name:           chosen.Name,
+		ObjectType:     "asteroid_cluster",
+		Components:     comps,
+		BoundingRadius: chosen.BoundingRadius,
+		IsEnabled:      chosen.IsEnabled,
+		PhysicsProfile: models.EnvPhysicsProfile{
+			ProjectileBehavior: "block",
+			VisualRangeMult:    1.0,
+		},
+		MotionProfile: models.EnvMotionProfile{
+			Mode:     "drift_wrap",
+			ScaleMin: chosen.ScaleMin,
+			ScaleMax: chosen.ScaleMax,
+			SpeedMin: chosen.SpeedMin,
+			SpeedMax: chosen.SpeedMax,
+			SpinRate: chosen.SpinRate,
+			MinWraps: chosen.MinWraps,
+			MaxWraps: chosen.MaxWraps,
+		},
+	}
+	w.instantiateEnvObject(bp, nil, placeInside, nil)
+	return true
 }
 
-// rollResourceForSlot picks a resource from sp_resources using PinnedResource or weighted SlotTier rolling.
-func rollResourceForSlot(slot models.ClusterNodeSpec, resources map[string]models.SPResource) (models.SPResource, bool) {
-	if slot.PinnedResource != nil && *slot.PinnedResource != "" {
-		if r, ok := resources[*slot.PinnedResource]; ok {
+func rollResourceForEnvSlot(slotTier *string, pinned *string, resources map[string]models.SPResource) (models.SPResource, bool) {
+	if pinned != nil && *pinned != "" {
+		if r, ok := resources[*pinned]; ok {
 			return r, true
 		}
 	}
 
 	tierFilter := ""
-	if slot.SlotTier != nil && *slot.SlotTier != "" && *slot.SlotTier != "any" {
-		tierFilter = *slot.SlotTier
+	if slotTier != nil && *slotTier != "" && *slotTier != "any" {
+		tierFilter = *slotTier
 	}
 
 	candidates := make([]models.SPResource, 0, len(resources))
@@ -301,29 +638,37 @@ func (w *WorldState) randomOffscreenEntry(br float64) (Vec2, float64) {
 	edge := rand.Intn(4)
 	var pos Vec2
 	switch edge {
-	case 0: // Top
+	case 0:
 		pos = Vec2{X: 300 + rand.Float64()*(w.ArenaWidth-600), Y: -br}
-	case 1: // Bottom
+	case 1:
 		pos = Vec2{X: 300 + rand.Float64()*(w.ArenaWidth-600), Y: w.ArenaHeight + br}
-	case 2: // Left
+	case 2:
 		pos = Vec2{X: -br, Y: 250 + rand.Float64()*(w.ArenaHeight-500)}
-	default: // Right
+	default:
 		pos = Vec2{X: w.ArenaWidth + br, Y: 250 + rand.Float64()*(w.ArenaHeight-500)}
 	}
-	// Aim through the central play area
 	tx := w.ArenaWidth*0.25 + rand.Float64()*(w.ArenaWidth*0.5)
 	ty := w.ArenaHeight*0.25 + rand.Float64()*(w.ArenaHeight*0.5)
 	return pos, math.Atan2(ty-pos.Y, tx-pos.X)
 }
 
-// FindNodeByID looks up an active asteroid node if it is still inside the arena bounds.
+// FindNodeByID looks up an active resource component across all EnvObjects if still inside arena bounds.
 func (w *WorldState) FindNodeByID(nodeID uint32) (*AsteroidNode, bool) {
-	for _, c := range w.Clusters {
-		for _, n := range c.Nodes {
-			if n.ID == nodeID {
-				inBounds := n.Pos.X >= 40 && n.Pos.X <= w.ArenaWidth-40 &&
-					n.Pos.Y >= 40 && n.Pos.Y <= w.ArenaHeight-40
-				return n, inBounds
+	for _, obj := range w.EnvObjects {
+		for _, c := range obj.Components {
+			if c.ID == nodeID {
+				inBounds := c.Pos.X >= 40 && c.Pos.X <= w.ArenaWidth-40 &&
+					c.Pos.Y >= 40 && c.Pos.Y <= w.ArenaHeight-40
+				return &AsteroidNode{
+					ID:           c.ID,
+					ClusterID:    obj.ID,
+					Pos:          c.Pos,
+					Vel:          c.Vel,
+					Radius:       c.Radius,
+					IsNode:       c.IsNode,
+					ResourceKey:  c.ResourceKey,
+					ResourceType: c.ResourceType,
+				}, inBounds
 			}
 		}
 	}
@@ -339,48 +684,38 @@ func (w *WorldState) FindNearestResourceNode(pos Vec2, harvesterClass string) (*
 	var best *AsteroidNode
 	bestDist := math.MaxFloat64
 
-	for _, c := range w.Clusters {
-		for _, n := range c.Nodes {
-			if !n.IsNode || n.ResourceKey == "" {
+	for _, obj := range w.EnvObjects {
+		for _, c := range obj.Components {
+			if !c.IsNode || c.ResourceKey == "" {
 				continue
 			}
-			// Only target nodes currently inside the playable frame
-			if n.Pos.X < 60 || n.Pos.X > w.ArenaWidth-60 || n.Pos.Y < 60 || n.Pos.Y > w.ArenaHeight-60 {
+			if c.Pos.X < 60 || c.Pos.X > w.ArenaWidth-60 || c.Pos.Y < 60 || c.Pos.Y > w.ArenaHeight-60 {
 				continue
 			}
-			res, ok := resources[n.ResourceKey]
+			res, ok := resources[c.ResourceKey]
 			if !ok || res.HarvesterUnitClass != harvesterClass {
 				continue
 			}
-			d := math.Hypot(n.Pos.X-pos.X, n.Pos.Y-pos.Y)
+			d := math.Hypot(c.Pos.X-pos.X, c.Pos.Y-pos.Y)
 			if d < bestDist {
 				bestDist = d
-				best = n
+				best = &AsteroidNode{
+					ID:           c.ID,
+					ClusterID:    obj.ID,
+					Pos:          c.Pos,
+					Vel:          c.Vel,
+					Radius:       c.Radius,
+					IsNode:       c.IsNode,
+					ResourceKey:  c.ResourceKey,
+					ResourceType: c.ResourceType,
+				}
 			}
 		}
 	}
 	return best, best != nil
 }
 
-// --- TACTICAL COVER: PROJECTILE BLOCKING, LOS RAYCAST & SHIP COLLISIONS ---
-
-// CheckProjectileHit returns true if a projectile impacts any asteroid rock (cover or node).
-func (w *WorldState) CheckProjectileHit(pos Vec2) bool {
-	for _, c := range w.Clusters {
-		// Quick broad-phase check against cluster bounding radius
-		if math.Hypot(pos.X-c.Center.X, pos.Y-c.Center.Y) > c.BoundingRadius+10 {
-			continue
-		}
-		for _, n := range c.Nodes {
-			if math.Hypot(pos.X-n.Pos.X, pos.Y-n.Pos.Y) < n.Radius {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// HasLineOfSight checks whether the firing line from A to B is clear of asteroid cover.
+// HasLineOfSight checks whether the firing line from A to B is clear of solid blocking cover.
 func (w *WorldState) HasLineOfSight(a, b Vec2) bool {
 	dx := b.X - a.X
 	dy := b.Y - a.Y
@@ -389,12 +724,18 @@ func (w *WorldState) HasLineOfSight(a, b Vec2) bool {
 		return true
 	}
 
-	for _, c := range w.Clusters {
-		if !segmentIntersectsCircle(a, b, dx, dy, lenSq, c.Center, c.BoundingRadius) {
+	for _, obj := range w.EnvObjects {
+		if obj.Physics.ProjectileBehavior != "block" {
 			continue
 		}
-		for _, n := range c.Nodes {
-			if segmentIntersectsCircle(a, b, dx, dy, lenSq, n.Pos, n.Radius) {
+		if !segmentIntersectsCircle(a, b, dx, dy, lenSq, obj.Center, obj.BoundingRadius) {
+			continue
+		}
+		for _, c := range obj.Components {
+			if !isSolidBlockingComponent(c.Kind) {
+				continue
+			}
+			if segmentIntersectsCircle(a, b, dx, dy, lenSq, c.Pos, c.Radius) {
 				return false
 			}
 		}
@@ -414,34 +755,11 @@ func segmentIntersectsCircle(a, b Vec2, dx, dy, lenSq float64, center Vec2, radi
 	return math.Hypot(center.X-cx, center.Y-cy) < radius
 }
 
-// ResolveUnitAsteroidCollisions smoothly pushes ships out of solid asteroid rocks (no hull damage).
-func (w *WorldState) ResolveUnitAsteroidCollisions(u *Unit) {
-	const shipRadius = 26.0
-	for _, c := range w.Clusters {
-		if math.Hypot(u.Pos.X-c.Center.X, u.Pos.Y-c.Center.Y) > c.BoundingRadius+shipRadius {
-			continue
-		}
-		for _, n := range c.Nodes {
-			dx := u.Pos.X - n.Pos.X
-			dy := u.Pos.Y - n.Pos.Y
-			dist := math.Hypot(dx, dy)
-			minDist := n.Radius + shipRadius
-			if dist < minDist && dist > 0.01 {
-				nx := dx / dist
-				ny := dy / dist
-				overlap := minDist - dist
-				u.Pos.X += nx * overlap
-				u.Pos.Y += ny * overlap
-			}
-		}
-	}
-}
-
 // --- CRYO FLAK CLOUDS ---
 
 func (w *WorldState) SpawnCryoCloud(ownerID string, seatIdx int8, pos Vec2, radius float64, durationTicks int, slowFactor float64, totalDamage float64, mult uint8) {
 	if durationTicks <= 0 {
-		durationTicks = 360 // 6s fallback
+		durationTicks = 360
 	}
 	if radius <= 0 {
 		radius = 85.0
@@ -461,7 +779,6 @@ func (w *WorldState) SpawnCryoCloud(ownerID string, seatIdx int8, pos Vec2, radi
 	})
 }
 
-// CryoSpeedMultiplier returns the speed scale (e.g. 0.55) for a House unit inside any active Cryo cloud.
 func (w *WorldState) CryoSpeedMultiplier(pos Vec2) float64 {
 	scale := 1.0
 	for _, cloud := range w.CryoClouds {
@@ -483,13 +800,13 @@ func (w *WorldState) RandomEdgeSpawn() (Vec2, float64) {
 	edge := rand.Intn(4)
 	var pos Vec2
 	switch edge {
-	case 0: // Top
+	case 0:
 		pos = Vec2{X: 220 + rand.Float64()*(w.ArenaWidth-440), Y: 20}
-	case 1: // Bottom
+	case 1:
 		pos = Vec2{X: 220 + rand.Float64()*(w.ArenaWidth-440), Y: w.ArenaHeight - 20}
-	case 2: // Left
+	case 2:
 		pos = Vec2{X: 20, Y: 220 + rand.Float64()*(w.ArenaHeight-440)}
-	default: // Right
+	default:
 		pos = Vec2{X: w.ArenaWidth - 20, Y: 220 + rand.Float64()*(w.ArenaHeight-440)}
 	}
 	tx := w.ArenaWidth*0.25 + rand.Float64()*(w.ArenaWidth*0.5)
