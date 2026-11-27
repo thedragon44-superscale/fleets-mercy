@@ -6,6 +6,7 @@ import (
 	"math/rand"
 
 	"space-tactics-server/internal/db"
+	"space-tactics-server/internal/game/envphysics"
 	"space-tactics-server/internal/models"
 )
 
@@ -37,14 +38,15 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 
 	var pilotedID string
 	units := r.GetUnits()
-	structures := r.GetStructures()
+	envWorld := r.GetEnvWorld()
+	arenaW, arenaH := r.GetArenaSize()
 
 	factions := []string{"player", "enemy"}
 
 	for _, faction := range factions {
 		unitIndex := 0
 		for squadID := 1; squadID <= 4; squadID++ {
-			clusterX, clusterY := generateSquadClusterCoords(faction, squadID, structures)
+			clusterX, clusterY := generateSquadClusterCoords(faction, squadID, arenaW, arenaH, envWorld)
 			leaderIndexWithinSquad := rand.Intn(5)
 
 			for i := 0; i < 5; i++ {
@@ -71,9 +73,10 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 
 				isLeader := (i == leaderIndexWithinSquad)
 
-				spawnX := clusterX + (rand.Float64()-0.5)*300.0
-				spawnY := clusterY + (rand.Float64()-0.5)*300.0
-				spawnX, spawnY = sanitizeSpawnCoords(spawnX, spawnY, structures)
+				spread := math.Min(300.0, math.Min(arenaW, arenaH)*0.08)
+				spawnX := clusterX + (rand.Float64()-0.5)*spread
+				spawnY := clusterY + (rand.Float64()-0.5)*spread
+				spawnX, spawnY = sanitizeSpawnCoords(spawnX, spawnY, arenaW, arenaH, envWorld)
 
 				unit := &models.FleetUnit{
 					ID:                           id,
@@ -136,44 +139,52 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 	return pilotedID
 }
 
-// generateSquadClusterCoords computes decentralized spawn locations across the 12000x12000 map bounds,
-// keeping player squads separated from enemy squads and clear of environmental hazards.
-func generateSquadClusterCoords(faction string, squadID int, structures []models.MapStructure) (float64, float64) {
+// generateSquadClusterCoords computes decentralized spawn locations scaled to the active arena bounds,
+// keeping player squads separated from enemy squads and clear of universal envphysics hazards.
+func generateSquadClusterCoords(faction string, squadID int, arenaW, arenaH float64, envWorld *envphysics.World) (float64, float64) {
 	var baseX, baseY float64
 
 	if faction == "player" {
-		baseX = 2000.0 + float64((squadID-1)%2)*3000.0
-		baseY = 8000.0 + float64((squadID-1)/2)*2000.0
+		baseX = arenaW*(0.16+float64((squadID-1)%2)*0.25)
+		baseY = arenaH*(0.68+float64((squadID-1)/2)*0.16)
 	} else {
-		baseX = 7000.0 + float64((squadID-1)%2)*3000.0
-		baseY = 2000.0 + float64((squadID-1)/2)*2000.0
+		baseX = arenaW*(0.58+float64((squadID-1)%2)*0.25)
+		baseY = arenaH*(0.16+float64((squadID-1)/2)*0.16)
 	}
 
-	finalX := baseX + (rand.Float64()-0.5)*1000.0
-	finalY := baseY + (rand.Float64()-0.5)*1000.0
+	jitterX := arenaW * 0.06
+	jitterY := arenaH * 0.06
+	finalX := baseX + (rand.Float64()-0.5)*jitterX
+	finalY := baseY + (rand.Float64()-0.5)*jitterY
 
-	return sanitizeSpawnCoords(finalX, finalY, structures)
+	return sanitizeSpawnCoords(finalX, finalY, arenaW, arenaH, envWorld)
 }
 
-// sanitizeSpawnCoords pushes spawn coordinates outside hazardous/solid structures and clamps to map bounds.
-func sanitizeSpawnCoords(x, y float64, structures []models.MapStructure) (float64, float64) {
-	for _, s := range structures {
-		safeRadius := s.Radius + 150.0
-		dx := x - s.PosX
-		dy := y - s.PosY
-		dist := math.Hypot(dx, dy)
-
-		if dist < safeRadius {
-			angle := math.Atan2(dy, dx)
-			if dist < 0.1 {
-				angle = rand.Float64() * 2 * math.Pi
+// sanitizeSpawnCoords pushes spawn coordinates outside universal envphysics objects and clamps to arena bounds.
+func sanitizeSpawnCoords(x, y, arenaW, arenaH float64, envWorld *envphysics.World) (float64, float64) {
+	if envWorld != nil {
+		for _, obj := range envWorld.Objects {
+			if obj == nil {
+				continue
 			}
-			x = s.PosX + math.Cos(angle)*safeRadius
-			y = s.PosY + math.Sin(angle)*safeRadius
+			safeRadius := obj.BoundingRadius + 150.0
+			dx := x - obj.Center.X
+			dy := y - obj.Center.Y
+			dist := math.Hypot(dx, dy)
+
+			if dist < safeRadius {
+				angle := math.Atan2(dy, dx)
+				if dist < 0.1 {
+					angle = rand.Float64() * 2 * math.Pi
+				}
+				x = obj.Center.X + math.Cos(angle)*safeRadius
+				y = obj.Center.Y + math.Sin(angle)*safeRadius
+			}
 		}
 	}
 
-	x = math.Max(150.0, math.Min(11850.0, x))
-	y = math.Max(150.0, math.Min(11850.0, y))
+	pad := math.Min(150.0, math.Min(arenaW, arenaH)*0.1)
+	x = math.Max(pad, math.Min(arenaW-pad, x))
+	y = math.Max(pad, math.Min(arenaH-pad, y))
 	return x, y
 }

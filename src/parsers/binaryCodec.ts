@@ -1,6 +1,10 @@
 // src/parsers/binaryCodec.ts
 import * as flatbuffersNS from "flatbuffers";
 import { ServerState } from "../generated/space-tactics/server-state";
+import { FleetUnit } from "../generated/space-tactics/fleet-unit";
+import { Projectile } from "../generated/space-tactics/projectile";
+import { Shields } from "../generated/space-tactics/shields";
+import { Hull } from "../generated/space-tactics/hull";
 import { ClientInput } from "../generated/space-tactics/client-input";
 import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update";
 import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
@@ -94,7 +98,12 @@ export interface ServerStateSnapshot {
   winningFaction: string;
 }
 
-// Reusable FlatBuffers accessors for 60Hz env decoding
+// Reusable FlatBuffers accessors for zero-churn 60Hz decoding
+const _serverState = new ServerState();
+const _unit = new FleetUnit();
+const _proj = new Projectile();
+const _shields = new Shields();
+const _hull = new Hull();
 const _envObj = new EnvObject();
 const _envComp = new EnvComponent();
 const _envPos = new FBVector2D();
@@ -114,43 +123,44 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
   try {
     const uint8Array = new Uint8Array(arrayBuffer);
     const bb = new ByteBuffer(uint8Array);
-    const serverState = ServerState.getRootAsServerState(bb);
+    const serverState = ServerState.getRootAsServerState(bb, _serverState);
 
     const mapWidth = serverState.mapWidth();
     const mapHeight = serverState.mapHeight();
     const isGameOver = serverState.isGameOver();
     const winningFaction = serverState.winningFaction() || '';
 
-    // Parse Fleet Units
+    // Parse Fleet Units (reusing FlatBuffers wrapper instances)
     const unitsLength = serverState.unitsLength();
-    const units: SnapshotUnit[] = [];
+    const units: SnapshotUnit[] = new Array(unitsLength);
+    let unitOut = 0;
     for (let i = 0; i < unitsLength; i++) {
-      const u = serverState.units(i);
+      const u = serverState.units(i, _unit);
       if (!u) continue;
 
-      const pos = u.pos();
-      const vel = u.vel();
-      const shields = u.shields();
-      const hull = u.hull();
+      const pos = u.pos(_envPos);
+      const vel = u.vel(_envVel);
+      const shields = u.shields(_shields);
+      const hull = u.hull(_hull);
 
-      units.push({
+      units[unitOut++] = {
         id: u.id() || '',
         type: u.type() || 'default',
         ownerId: u.ownerId() || 'enemy',
-        pos: { x: pos?.x() || 0, y: pos?.y() || 0 },
-        vel: { x: vel?.x() || 0, y: vel?.y() || 0 },
+        pos: { x: pos ? pos.x() : 0, y: pos ? pos.y() : 0 },
+        vel: { x: vel ? vel.x() : 0, y: vel ? vel.y() : 0 },
         angle: u.angle(),
         shields: {
-          front: shields?.front() || 0,
-          rear: shields?.rear() || 0,
-          port: shields?.port() || 0,
-          starboard: shields?.starboard() || 0,
+          front: shields ? shields.front() : 0,
+          rear: shields ? shields.rear() : 0,
+          port: shields ? shields.port() : 0,
+          starboard: shields ? shields.starboard() : 0,
         },
         hull: {
-          front: hull?.front() || 0,
-          rear: hull?.rear() || 0,
-          port: hull?.port() || 0,
-          starboard: hull?.starboard() || 0,
+          front: hull ? hull.front() : 0,
+          rear: hull ? hull.rear() : 0,
+          port: hull ? hull.port() : 0,
+          starboard: hull ? hull.starboard() : 0,
         },
         isDestroyed: u.isDestroyed(),
         isSquadLeader: u.isSquadLeader(),
@@ -162,26 +172,29 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
         currentThermal: u.currentThermal(),
         currentAmmo: u.currentAmmo(),
         isStealthed: u.isStealthed(),
-      });
+      };
     }
+    if (unitOut !== unitsLength) units.length = unitOut;
 
-    // Parse Projectiles
+    // Parse Projectiles (reusing FlatBuffers wrapper instances)
     const projLength = serverState.projectilesLength();
-    const projectiles: SnapshotProjectile[] = [];
+    const projectiles: SnapshotProjectile[] = new Array(projLength);
+    let projOut = 0;
     for (let i = 0; i < projLength; i++) {
-      const p = serverState.projectiles(i);
+      const p = serverState.projectiles(i, _proj);
       if (!p) continue;
 
-      const pos = p.pos();
-      const vel = p.vel();
-      projectiles.push({
+      const pos = p.pos(_envPos);
+      const vel = p.vel(_envVel);
+      projectiles[projOut++] = {
         id: p.id() || '',
         ownerId: p.ownerId() || '',
         type: p.type() || 'player',
-        pos: { x: pos?.x() || 0, y: pos?.y() || 0 },
-        vel: { x: vel?.x() || 0, y: vel?.y() || 0 },
-      });
+        pos: { x: pos ? pos.x() : 0, y: pos ? pos.y() : 0 },
+        vel: { x: vel ? vel.x() : 0, y: vel ? vel.y() : 0 },
+      };
     }
+    if (projOut !== projLength) projectiles.length = projOut;
 
     // Parse Universal Environmental Objects
     const envLen = serverState.envObjectsLength();

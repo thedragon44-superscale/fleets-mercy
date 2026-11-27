@@ -43,6 +43,16 @@ func main() {
 		log.Printf("⚠️ Failed to load Universal EnvCache (run migration 002 if pending): %v", err)
 	}
 
+	// Reload any cached Sandbox room immediately when its map is updated in Universal Map Builder
+	api.OnMapUpdated = func(mapID int) {
+		roomMu.Lock()
+		room, exists := activeRooms[mapID]
+		roomMu.Unlock()
+		if exists && room != nil {
+			room.ReloadMapStructures()
+		}
+	}
+
 	// --- WEBSOCKET ROUTES ---
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

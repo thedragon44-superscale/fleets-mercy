@@ -11,6 +11,10 @@ import (
 	"space-tactics-server/internal/models"
 )
 
+// OnMapUpdated is an optional callback wired by main.go so live cached Sandbox rooms
+// immediately reload their envphysics.World when a map is saved in Universal Map Builder.
+var OnMapUpdated func(mapID int)
+
 // EnvBlueprintsHandler serves GET / POST / DELETE /api/env/blueprints.
 func EnvBlueprintsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCasinoCORS(w)
@@ -167,6 +171,9 @@ func EnvPlacementsHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if OnMapUpdated != nil {
+			OnMapUpdated(req.MapID)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":    true,
@@ -267,6 +274,9 @@ func UniversalMapsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if OnMapUpdated != nil {
+			OnMapUpdated(saved.ID)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{

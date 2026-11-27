@@ -92,22 +92,30 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 			}
 		}
 
-		var nearestStruct *models.MapStructure
+		var nearestX, nearestY, nearestR float64
+		hasNearest := false
 		minDist := math.MaxFloat64
 
-		for i := range r.structures {
-			s := &r.structures[i]
-			dist := math.Hypot(s.PosX-unit.Pos.X, s.PosY-unit.Pos.Y)
-			if dist < minDist {
-				minDist = dist
-				nearestStruct = s
+		if r.envWorld != nil {
+			for _, obj := range r.envWorld.Objects {
+				if obj == nil {
+					continue
+				}
+				dist := math.Hypot(obj.Center.X-unit.Pos.X, obj.Center.Y-unit.Pos.Y)
+				if dist < minDist {
+					minDist = dist
+					nearestX = obj.Center.X
+					nearestY = obj.Center.Y
+					nearestR = obj.BoundingRadius
+					hasNearest = true
+				}
 			}
 		}
 
-		if nearestStruct != nil {
-			targetOrbitDist := math.Max(1800.0, nearestStruct.Radius+200.0)
-			dx := nearestStruct.PosX - unit.Pos.X
-			dy := nearestStruct.PosY - unit.Pos.Y
+		if hasNearest {
+			targetOrbitDist := math.Max(900.0, nearestR+200.0)
+			dx := nearestX - unit.Pos.X
+			dy := nearestY - unit.Pos.Y
 			distToStruct := math.Hypot(dx, dy)
 			angleToStruct := math.Atan2(dy, dx)
 
@@ -124,8 +132,9 @@ func RunUnitAI(unit *models.FleetUnit, r *GameRoom, flagship *models.FleetUnit) 
 			unit.Vel.X = math.Cos(orbitAngle)*unit.Speed*1.1 + repelX
 			unit.Vel.Y = math.Sin(orbitAngle)*unit.Speed*1.1 + repelY
 		} else {
-			centerX := 6000.0
-			centerY := 6000.0
+			arenaW, arenaH := r.GetArenaSize()
+			centerX := arenaW * 0.5
+			centerY := arenaH * 0.5
 			centerDX := unit.Pos.X - centerX
 			centerDY := unit.Pos.Y - centerY
 			sweepAngle := math.Atan2(centerDY, centerDX)

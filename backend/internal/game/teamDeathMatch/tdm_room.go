@@ -21,13 +21,17 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 type TDMRoom struct {
 	*game.GameRoom
 	mu              sync.Mutex
-	clients         map[*websocket.Conn]bool
+	clients         map[*game.WSClient]bool
 	pilotedUnitType string
 	pilotedUnitID   string
 	customUnitPool  []string
 	isGameOver      bool
 	winningFaction  string
 	lastInput       game.SandboxClientInput
+
+	fbBuilder   *flatbuffers.Builder
+	unitOffsets []flatbuffers.UOffsetT
+	projOffsets []flatbuffers.UOffsetT
 }
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
@@ -35,11 +39,13 @@ func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom
 
 	room := &TDMRoom{
 		GameRoom:        baseRoom,
-		clients:         make(map[*websocket.Conn]bool),
+		clients:         make(map[*game.WSClient]bool),
 		pilotedUnitType: pilotedUnitType,
 		customUnitPool:  customPool,
+		fbBuilder:       flatbuffers.NewBuilder(16384),
+		unitOffsets:     make([]flatbuffers.UOffsetT, 0, 64),
+		projOffsets:     make([]flatbuffers.UOffsetT, 0, 128),
 	}
-	room.LoadMapStructures()
 	room.ResetMatch()
 	return room
 }
@@ -107,18 +113,21 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.ResetMatch()
 	}
 
-	r.clients[conn] = true
+	client := game.NewWSClient(conn)
+	go client.WritePump()
+
+	r.clients[client] = true
 	r.mu.Unlock()
 
 	defer func() {
 		log.Printf("❌ Player disconnected from TDM: %s", clientAddr)
 		r.mu.Lock()
-		delete(r.clients, conn)
+		delete(r.clients, client)
 		if len(r.clients) == 0 {
 			r.lastInput = game.SandboxClientInput{}
 		}
 		r.mu.Unlock()
-		conn.Close()
+		client.Close()
 	}()
 
 	for {
@@ -195,8 +204,6 @@ func (r *TDMRoom) Run() {
 
 				game.ApplyUnitPhysics(unit, arenaW, arenaH)
 				game.ApplyUniversalEnvPhysics(unit, r.GetEnvWorld())
-				game.ApplyEnvironmentalCollisions(unit, r.GetStructures())
-				game.ApplyMajorWorldGravity(unit, r.GetStructures())
 				game.RegenerateShields(unit)
 				game.HandleWeaponFiring(unit, r.GameRoom)
 			}
@@ -205,10 +212,16 @@ func (r *TDMRoom) Run() {
 			game.UpdateProjectiles(r.GameRoom)
 		}
 
-		// 3. Build & Broadcast Binary FlatBuffers State
-		builder := flatbuffers.NewBuilder(8192)
+		if len(r.clients) == 0 {
+			r.mu.Unlock()
+			continue
+		}
+
+		// 3. Build & Broadcast Binary FlatBuffers State (persistent scratch builder + non-blocking enqueue)
+		builder := r.fbBuilder
+		builder.Reset()
 		units := r.GetUnits()
-		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(units))
+		r.unitOffsets = r.unitOffsets[:0]
 
 		for _, u := range units {
 			if u.IsDestroyed {
@@ -248,17 +261,17 @@ func (r *TDMRoom) Run() {
 			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
 			SpaceTactics.FleetUnitAddIsStealthed(builder, u.StealthActive)
 
-			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
+			r.unitOffsets = append(r.unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 
-		SpaceTactics.ServerStateStartUnitsVector(builder, len(unitOffsets))
-		for i := len(unitOffsets) - 1; i >= 0; i-- {
-			builder.PrependUOffsetT(unitOffsets[i])
+		SpaceTactics.ServerStateStartUnitsVector(builder, len(r.unitOffsets))
+		for i := len(r.unitOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(r.unitOffsets[i])
 		}
-		unitsVector := builder.EndVector(len(unitOffsets))
+		unitsVector := builder.EndVector(len(r.unitOffsets))
 
 		projectiles := r.GetProjectiles()
-		projOffsets := make([]flatbuffers.UOffsetT, 0, len(projectiles))
+		r.projOffsets = r.projOffsets[:0]
 		for _, p := range projectiles {
 			pIdOffset := builder.CreateString(p.ID)
 			ownerOffset := builder.CreateString(p.OwnerID)
@@ -275,14 +288,14 @@ func (r *TDMRoom) Run() {
 			vel := SpaceTactics.CreateVector2D(builder, float32(p.Vel.X), float32(p.Vel.Y))
 			SpaceTactics.ProjectileAddVel(builder, vel)
 
-			projOffsets = append(projOffsets, SpaceTactics.ProjectileEnd(builder))
+			r.projOffsets = append(r.projOffsets, SpaceTactics.ProjectileEnd(builder))
 		}
 
-		SpaceTactics.ServerStateStartProjectilesVector(builder, len(projOffsets))
-		for i := len(projOffsets) - 1; i >= 0; i-- {
-			builder.PrependUOffsetT(projOffsets[i])
+		SpaceTactics.ServerStateStartProjectilesVector(builder, len(r.projOffsets))
+		for i := len(r.projOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(r.projOffsets[i])
 		}
-		projVector := builder.EndVector(len(projOffsets))
+		projVector := builder.EndVector(len(r.projOffsets))
 
 		winningFactionOffset := builder.CreateString(r.winningFaction)
 		envObjectsVector := game.EncodeEnvObjectsVector(builder, r.GetEnvWorld())
@@ -299,11 +312,18 @@ func (r *TDMRoom) Run() {
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)
-		binaryData := builder.FinishedBytes()
+		finished := builder.FinishedBytes()
+		payload := make([]byte, len(finished))
+		copy(payload, finished)
 
-		for conn := range r.clients {
-			conn.WriteMessage(websocket.BinaryMessage, binaryData)
+		clients := make([]*game.WSClient, 0, len(r.clients))
+		for c := range r.clients {
+			clients = append(clients, c)
 		}
 		r.mu.Unlock()
+
+		for _, c := range clients {
+			c.Enqueue(payload)
+		}
 	}
 }

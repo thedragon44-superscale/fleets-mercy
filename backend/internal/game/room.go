@@ -65,28 +65,34 @@ type GameRoom struct {
 	timeScale       float64
 	tickAccumulator float64
 	mapID           int
-	structures      []models.MapStructure
 	envWorld        *envphysics.World
 
-	clients     map[*websocket.Conn]bool
+	clients     map[*WSClient]bool
 	mu          sync.Mutex
 	units       map[string]*models.FleetUnit
 	projectiles []models.Projectile
 	lastInput   ClientStateInput
 	tick        uint64
 	idCounter   uint64
+
+	// Reusable FlatBuffers scratch state to eliminate per-tick heap allocations
+	fbBuilder   *flatbuffers.Builder
+	unitOffsets []flatbuffers.UOffsetT
+	projOffsets []flatbuffers.UOffsetT
 }
 
 func NewGameRoom(mapID int) *GameRoom {
 	room := &GameRoom{
-		clients:     make(map[*websocket.Conn]bool),
+		clients:     make(map[*WSClient]bool),
 		units:       make(map[string]*models.FleetUnit),
 		deployQueue: make([]string, 0),
 		timeScale:   1.0,
 		mapID:       mapID,
 		envWorld:    envphysics.NewAuthoredWorld(mapID),
+		fbBuilder:   flatbuffers.NewBuilder(16384),
+		unitOffsets: make([]flatbuffers.UOffsetT, 0, 64),
+		projOffsets: make([]flatbuffers.UOffsetT, 0, 128),
 	}
-	room.loadMapStructures()
 	room.resetWorld()
 	return room
 }
@@ -113,10 +119,6 @@ func (r *GameRoom) SetUnits(units map[string]*models.FleetUnit) {
 	r.units = units
 }
 
-func (r *GameRoom) GetStructures() []models.MapStructure {
-	return r.structures
-}
-
 func (r *GameRoom) GetMapID() int {
 	return r.mapID
 }
@@ -126,12 +128,13 @@ func (r *GameRoom) SetMapID(id int) {
 }
 
 func (r *GameRoom) ReloadMapStructures() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.envWorld == nil {
 		r.envWorld = envphysics.NewAuthoredWorld(r.mapID)
 	} else {
 		r.envWorld.LoadAuthoredMap(r.mapID)
 	}
-	r.loadMapStructures()
 }
 
 func (r *GameRoom) GetTick() uint64 {
@@ -153,36 +156,6 @@ func (r *GameRoom) SetProjectiles(projectiles []models.Projectile) {
 func (r *GameRoom) NextUnitID() uint64 {
 	r.idCounter++
 	return r.idCounter
-}
-
-func (r *GameRoom) loadMapStructures() {
-	r.structures = []models.MapStructure{}
-	if r.mapID == 0 {
-		r.mapID = 1
-	}
-
-	rows, err := db.Conn.Query(
-		`SELECT ms.structure_id, ms.map_id, es.structure_key, ms.pos_x, ms.pos_y, ms.radius, ms.custom_props 
-		 FROM map_structures ms 
-		 JOIN environmental_structures es ON ms.environmental_structure_id = es.id 
-		 WHERE ms.map_id = $1`,
-		r.mapID,
-	)
-	if err != nil {
-		log.Printf("⚠️ Warning: Failed to load structures for map %d: %v", r.mapID, err)
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var s models.MapStructure
-		var props []byte
-		if err := rows.Scan(&s.ID, &s.MapID, &s.StructureType, &s.PosX, &s.PosY, &s.Radius, &props); err == nil {
-			s.CustomProps = props
-			r.structures = append(r.structures, s)
-		}
-	}
-	log.Printf("🗺️ Loaded %d environmental structures for map ID %d", len(r.structures), r.mapID)
 }
 
 func (r *GameRoom) resetWorld() {
@@ -361,19 +334,24 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	clientAddr := conn.RemoteAddr().String()
 	log.Printf("🔌 Player connected to Sandbox room (Map %d): %s", r.mapID, clientAddr)
 
+	client := NewWSClient(conn)
+	go client.WritePump()
+
 	r.mu.Lock()
-	r.clients[conn] = true
+	r.clients[client] = true
 	r.mu.Unlock()
 
 	defer func() {
 		log.Printf("❌ Player disconnected: %s. Resetting state.", clientAddr)
 		r.mu.Lock()
-		delete(r.clients, conn)
-		r.isPaused = false
-		r.timeScale = 1.0
-		r.resetWorld()
+		delete(r.clients, client)
+		if len(r.clients) == 0 {
+			r.isPaused = false
+			r.timeScale = 1.0
+			r.resetWorld()
+		}
 		r.mu.Unlock()
-		conn.Close()
+		client.Close()
 	}()
 
 	for {
@@ -661,17 +639,18 @@ func (r *GameRoom) IsTargetVisibleToFaction(factionOwner string, target *models.
 }
 
 func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) (float64, float64) {
+	arenaW, arenaH := r.GetArenaSize()
 	var baseX, baseY float64
 	if ownerID == "player" {
-		baseX = 2000.0
-		baseY = 10000.0
+		baseX = arenaW * 0.2
+		baseY = arenaH * 0.8
 		if flagship, ok := r.units["player-flagship"]; ok && !flagship.IsDestroyed {
 			baseX = flagship.Pos.X
 			baseY = flagship.Pos.Y - 250.0
 		}
 	} else {
-		baseX = 10000.0
-		baseY = 2000.0
+		baseX = arenaW * 0.8
+		baseY = arenaH * 0.2
 		if flagship, ok := r.units["enemy-flagship"]; ok && !flagship.IsDestroyed {
 			baseX = flagship.Pos.X
 			baseY = flagship.Pos.Y + 250.0
@@ -680,7 +659,11 @@ func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) 
 	cols := 5
 	col := index % cols
 	row := index / cols
-	return baseX + float64(col)*50.0 + (rand.Float64()-0.5)*20, baseY + float64(row)*50.0 + (rand.Float64()-0.5)*20
+	x := baseX + float64(col)*50.0 + (rand.Float64()-0.5)*20
+	y := baseY + float64(row)*50.0 + (rand.Float64()-0.5)*20
+	x = math.Max(120.0, math.Min(arenaW-120.0, x))
+	y = math.Max(120.0, math.Min(arenaH-120.0, y))
+	return x, y
 }
 
 func (r *GameRoom) Run() {
@@ -782,11 +765,9 @@ func (r *GameRoom) Run() {
 					RunUnitAI(unit, r, flagship)
 				}
 
-				// Physics, Damping, Universal Environment Physics & Legacy Structures
+				// Physics, Damping & Universal Environment Physics
 				ApplyUnitPhysics(unit, arenaW, arenaH)
 				ApplyUniversalEnvPhysics(unit, r.envWorld)
-				ApplyEnvironmentalCollisions(unit, r.structures)
-				ApplyMajorWorldGravity(unit, r.structures)
 
 				// Weapon Firing & Cooldowns
 				HandleWeaponFiring(unit, r)
@@ -797,10 +778,17 @@ func (r *GameRoom) Run() {
 			UpdateProjectiles(r)
 		}
 
-		// Downstream: Build and broadcast binary FlatBuffers frame (runs even while paused so UI edits stay live)
-		builder := flatbuffers.NewBuilder(8192)
+		// Skip serialization when no clients are connected
+		if len(r.clients) == 0 {
+			r.mu.Unlock()
+			continue
+		}
 
-		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
+		// Downstream: Build binary FlatBuffers frame using persistent scratch builder
+		builder := r.fbBuilder
+		builder.Reset()
+
+		r.unitOffsets = r.unitOffsets[:0]
 		for _, u := range r.units {
 			if u.IsDestroyed {
 				continue
@@ -838,16 +826,16 @@ func (r *GameRoom) Run() {
 			SpaceTactics.FleetUnitAddCurrentThermal(builder, float32(u.CurrentThermal))
 			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
 			SpaceTactics.FleetUnitAddIsStealthed(builder, u.StealthActive)
-			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
+			r.unitOffsets = append(r.unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 
-		SpaceTactics.ServerStateStartUnitsVector(builder, len(unitOffsets))
-		for i := len(unitOffsets) - 1; i >= 0; i-- {
-			builder.PrependUOffsetT(unitOffsets[i])
+		SpaceTactics.ServerStateStartUnitsVector(builder, len(r.unitOffsets))
+		for i := len(r.unitOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(r.unitOffsets[i])
 		}
-		unitsVector := builder.EndVector(len(unitOffsets))
+		unitsVector := builder.EndVector(len(r.unitOffsets))
 
-		projOffsets := make([]flatbuffers.UOffsetT, 0, len(r.projectiles))
+		r.projOffsets = r.projOffsets[:0]
 		for _, p := range r.projectiles {
 			pIdOffset := builder.CreateString(p.ID)
 			ownerOffset := builder.CreateString(p.OwnerID)
@@ -864,14 +852,14 @@ func (r *GameRoom) Run() {
 			vel := SpaceTactics.CreateVector2D(builder, float32(p.Vel.X), float32(p.Vel.Y))
 			SpaceTactics.ProjectileAddVel(builder, vel)
 
-			projOffsets = append(projOffsets, SpaceTactics.ProjectileEnd(builder))
+			r.projOffsets = append(r.projOffsets, SpaceTactics.ProjectileEnd(builder))
 		}
 
-		SpaceTactics.ServerStateStartProjectilesVector(builder, len(projOffsets))
-		for i := len(projOffsets) - 1; i >= 0; i-- {
-			builder.PrependUOffsetT(projOffsets[i])
+		SpaceTactics.ServerStateStartProjectilesVector(builder, len(r.projOffsets))
+		for i := len(r.projOffsets) - 1; i >= 0; i-- {
+			builder.PrependUOffsetT(r.projOffsets[i])
 		}
-		projVector := builder.EndVector(len(projOffsets))
+		projVector := builder.EndVector(len(r.projOffsets))
 
 		envObjectsVector := EncodeEnvObjectsVector(builder, r.envWorld)
 
@@ -885,11 +873,19 @@ func (r *GameRoom) Run() {
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)
-		binaryData := builder.FinishedBytes()
+		finished := builder.FinishedBytes()
+		payload := make([]byte, len(finished))
+		copy(payload, finished)
 
-		for conn := range r.clients {
-			conn.WriteMessage(websocket.BinaryMessage, binaryData)
+		// Snapshot client list, release lock, then enqueue non-blockingly
+		clients := make([]*WSClient, 0, len(r.clients))
+		for c := range r.clients {
+			clients = append(clients, c)
 		}
 		r.mu.Unlock()
+
+		for _, c := range clients {
+			c.Enqueue(payload)
+		}
 	}
 }

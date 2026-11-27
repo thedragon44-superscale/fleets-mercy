@@ -85,9 +85,11 @@ export const useFlightControls = ({
       const cam = cameraPosRef.current;
       if (!canvas) return { x: cam.x, y: cam.y };
       const z = zoomRef?.current ?? 1.0;
+      const cssW = canvas.clientWidth || canvas.width;
+      const cssH = canvas.clientHeight || canvas.height;
       return {
-        x: (cx - canvas.width / 2) / z + cam.x,
-        y: (cy - canvas.height / 2) / z + cam.y,
+        x: (cx - cssW / 2) / z + cam.x,
+        y: (cy - cssH / 2) / z + cam.y,
       };
     },
     [canvasRef, cameraPosRef, zoomRef]

@@ -81,6 +81,45 @@ export function useSpacePiratesSocket(
   useEffect(() => {
     let closedByCleanup = false;
     let reconnectTimer: number | null = null;
+    let pendingBuffer: ArrayBuffer | null = null;
+    let decodeRafId: number | null = null;
+
+    const flushPendingBuffer = () => {
+      decodeRafId = null;
+      const buf = pendingBuffer;
+      if (!buf || closedByCleanup) return;
+      pendingBuffer = null;
+
+      const decoded = decodeSPServerState(buf);
+      if (!decoded) return;
+
+      // Always update 60Hz canvas ref immediately (zero React overhead)
+      latestStateRef.current = decoded;
+
+      const now = performance.now();
+      const prev = lastHudSnapshotRef.current;
+      const urgentChange =
+        prev.bossActive !== decoded.bossActive ||
+        prev.bossMeterCurrent !== decoded.bossMeterCurrent ||
+        seatsChangedSignificantly(prev.seats, decoded.seats);
+
+      if (urgentChange || now - lastHudSyncMsRef.current >= 120) {
+        const nextHud: SPHudState = {
+          tick: decoded.tick,
+          tableId: decoded.tableId || tableId,
+          arenaWidth: decoded.arenaWidth,
+          arenaHeight: decoded.arenaHeight,
+          seats: decoded.seats,
+          bossMeterCurrent: decoded.bossMeterCurrent,
+          bossMeterThreshold: decoded.bossMeterThreshold,
+          bossActive: decoded.bossActive,
+          bossEscapeTicksRemaining: decoded.bossEscapeTicksRemaining,
+        };
+        lastHudSyncMsRef.current = now;
+        lastHudSnapshotRef.current = nextHud;
+        setHud(nextHud);
+      }
+    };
 
     const connect = () => {
       if (closedByCleanup) return;
@@ -101,34 +140,10 @@ export function useSpacePiratesSocket(
 
       ws.onmessage = (event: MessageEvent) => {
         if (!(event.data instanceof ArrayBuffer)) return;
-        const decoded = decodeSPServerState(event.data);
-        if (!decoded) return;
-
-        // Always update 60Hz canvas ref immediately (zero React overhead)
-        latestStateRef.current = decoded;
-
-        const now = performance.now();
-        const prev = lastHudSnapshotRef.current;
-        const urgentChange =
-          prev.bossActive !== decoded.bossActive ||
-          prev.bossMeterCurrent !== decoded.bossMeterCurrent ||
-          seatsChangedSignificantly(prev.seats, decoded.seats);
-
-        if (urgentChange || now - lastHudSyncMsRef.current >= 120) {
-          const nextHud: SPHudState = {
-            tick: decoded.tick,
-            tableId: decoded.tableId || tableId,
-            arenaWidth: decoded.arenaWidth,
-            arenaHeight: decoded.arenaHeight,
-            seats: decoded.seats,
-            bossMeterCurrent: decoded.bossMeterCurrent,
-            bossMeterThreshold: decoded.bossMeterThreshold,
-            bossActive: decoded.bossActive,
-            bossEscapeTicksRemaining: decoded.bossEscapeTicksRemaining,
-          };
-          lastHudSyncMsRef.current = now;
-          lastHudSnapshotRef.current = nextHud;
-          setHud(nextHud);
+        // Latest-frame coalescing: drop stale queued packets before decoding
+        pendingBuffer = event.data;
+        if (decodeRafId === null) {
+          decodeRafId = window.requestAnimationFrame(flushPendingBuffer);
         }
       };
 
@@ -153,6 +168,11 @@ export function useSpacePiratesSocket(
 
     return () => {
       closedByCleanup = true;
+      pendingBuffer = null;
+      if (decodeRafId !== null) {
+        window.cancelAnimationFrame(decodeRafId);
+        decodeRafId = null;
+      }
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }

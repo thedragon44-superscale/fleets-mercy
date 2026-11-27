@@ -59,28 +59,28 @@ if (typeof window !== 'undefined') {
 }
 
 export const UNIT_SCALES: { [type: string]: { w: number; h: number } } = {
-  flagship: { w: 90, h: 90 },
-  battalion_command_ship: { w: 90, h: 90 },
-  command_escort: { w: 52, h: 52 },
-  viper_interceptor: { w: 36, h: 36 },
-  recon_probe: { w: 32, h: 32 },
-  phantom_transport: { w: 38, h: 38 },
-  ion_interceptor: { w: 36, h: 36 },
-  mining_barge: { w: 48, h: 48 },
-  supply_tender: { w: 48, h: 48 },
-  plasma_skimmer: { w: 44, h: 44 },
-  grav_extractor: { w: 46, h: 46 },
-  assault_gunship: { w: 48, h: 48 },
-  aegis_repair: { w: 48, h: 48 },
-  vortex_minelayer: { w: 46, h: 46 },
-  lancer_corvette: { w: 56, h: 56 },
-  cryo_flak: { w: 54, h: 54 },
-  specter_jammer: { w: 52, h: 52 },
-  aegis_wall: { w: 68, h: 68 },
-  torpedo_bomber: { w: 64, h: 64 },
-  warp_frigate: { w: 66, h: 66 },
-  gun_emplacement: { w: 60, h: 60 },
-  default: { w: 40, h: 40 }
+  flagship: { w: 96, h: 96 },
+  battalion_command_ship: { w: 96, h: 96 },
+  command_escort: { w: 58, h: 58 },
+  viper_interceptor: { w: 46, h: 46 },
+  recon_probe: { w: 42, h: 42 },
+  phantom_transport: { w: 46, h: 46 },
+  ion_interceptor: { w: 46, h: 46 },
+  mining_barge: { w: 54, h: 54 },
+  supply_tender: { w: 54, h: 54 },
+  plasma_skimmer: { w: 52, h: 52 },
+  grav_extractor: { w: 54, h: 54 },
+  assault_gunship: { w: 58, h: 58 },
+  aegis_repair: { w: 58, h: 58 },
+  vortex_minelayer: { w: 58, h: 58 },
+  lancer_corvette: { w: 66, h: 66 },
+  cryo_flak: { w: 64, h: 64 },
+  specter_jammer: { w: 64, h: 64 },
+  aegis_wall: { w: 74, h: 74 },
+  torpedo_bomber: { w: 72, h: 72 },
+  warp_frigate: { w: 74, h: 74 },
+  gun_emplacement: { w: 68, h: 68 },
+  default: { w: 52, h: 52 }
 };
 
 const UNIT_ROTATION_OFFSETS: { [unitId: string]: number } = {
@@ -157,7 +157,7 @@ export function drawFlagship(
 
   const img = spriteCache['flagship'];
   if (img && loadedSprites.has('flagship')) {
-    ctx.drawImage(img, -45, -45, 90, 90);
+    ctx.drawImage(img, -48, -48, 96, 96);
   } else {
     ctx.strokeStyle = '#00f3ff';
     ctx.lineWidth = 2;
@@ -166,7 +166,7 @@ export function drawFlagship(
     ctx.stroke();
   }
 
-  // Exhaust animation positioned at rear engines
+  // Exhaust animation positioned at rear engines (10%-padded 96x96 hull ends at ~38px)
   if (isAccelerating) {
     ctx.fillStyle = '#38bdf8';
     ctx.shadowColor = '#00f3ff';
@@ -174,9 +174,9 @@ export function drawFlagship(
 
     const flameLen = 22 + Math.random() * 16;
     ctx.beginPath();
-    ctx.moveTo(42, -18); ctx.lineTo(42 + flameLen, -14); ctx.lineTo(42, -10); ctx.closePath(); ctx.fill();
+    ctx.moveTo(38, -16); ctx.lineTo(38 + flameLen, -12); ctx.lineTo(38, -8); ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(42, 10); ctx.lineTo(42 + flameLen, 14); ctx.lineTo(42, 18); ctx.closePath(); ctx.fill();
+    ctx.moveTo(38, 8); ctx.lineTo(38 + flameLen, 12); ctx.lineTo(38, 16); ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
   }
 
@@ -185,8 +185,8 @@ export function drawFlagship(
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(-42, -12); ctx.lineTo(-62, -12);
-    ctx.moveTo(-42, 12); ctx.lineTo(-62, 12);
+    ctx.moveTo(-38, -11); ctx.lineTo(-58, -11);
+    ctx.moveTo(-38, 11); ctx.lineTo(-58, 11);
     ctx.stroke();
   }
 

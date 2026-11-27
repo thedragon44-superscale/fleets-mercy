@@ -1,22 +1,84 @@
 // src/hooks/useGameSockets.ts
-import { useMemo, useSyncExternalStore } from 'react';
-import { getGameSocketService } from '../services/gameSocketService';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ServerStateSnapshot } from '../parsers/binaryCodec';
+import { ClientInputParams, GameSocketService, SandboxCountItem } from '../services/gameSocketService';
+
+const UI_SYNC_INTERVAL_MS = 200; // ~5Hz React UI updates (zero 60Hz React re-renders)
 
 export const useGameSocket = (serverUrl: string) => {
-  const service = useMemo(() => getGameSocketService(serverUrl), [serverUrl]);
+  const serviceRef = useRef<GameSocketService | null>(null);
+  const latestStateRef = useRef<ServerStateSnapshot | null>(null);
+  const lastUiSyncRef = useRef<number>(0);
+  const lastUnitCountRef = useRef<number>(-1);
 
-  const state = useSyncExternalStore(
-    service.subscribe,
-    service.getSnapshot,
-    service.getSnapshot
+  const [uiState, setUiState] = useState<ServerStateSnapshot | null>(null);
+  const [tickMs, setTickMs] = useState<number>(16.0);
+
+  useEffect(() => {
+    latestStateRef.current = null;
+    lastUiSyncRef.current = 0;
+    lastUnitCountRef.current = -1;
+    setUiState(null);
+
+    const svc = new GameSocketService(serverUrl, (snap) => {
+      latestStateRef.current = snap;
+
+      const now = performance.now();
+      const unitCount = snap.units.length;
+      const urgent = lastUnitCountRef.current !== unitCount || lastUiSyncRef.current === 0;
+      if (urgent || now - lastUiSyncRef.current >= UI_SYNC_INTERVAL_MS) {
+        lastUiSyncRef.current = now;
+        lastUnitCountRef.current = unitCount;
+        setUiState(snap);
+        setTickMs(svc.getTickMs());
+      }
+    });
+    serviceRef.current = svc;
+
+    return () => {
+      svc.close();
+      if (serviceRef.current === svc) {
+        serviceRef.current = null;
+      }
+    };
+  }, [serverUrl]);
+
+  const consumeLatestSnapshot = useCallback((): ServerStateSnapshot | null => {
+    return serviceRef.current?.consumeLatestSnapshot() ?? null;
+  }, []);
+
+  const sendInput = useCallback((params: ClientInputParams) => {
+    serviceRef.current?.sendInput(params);
+  }, []);
+
+  const updateUnitCount = useCallback((counts: SandboxCountItem[]) => {
+    serviceRef.current?.updateUnitCount(counts);
+  }, []);
+
+  const sendTemplateOverride = useCallback((unitType: string, overrides: any) => {
+    serviceRef.current?.sendTemplateOverride(unitType, overrides);
+  }, []);
+
+  const sendUnitGrouping = useCallback(
+    (groupingParams: {
+      unitId: string;
+      battalionId: number;
+      squadId: number;
+      isSquadLeader: boolean;
+    }) => {
+      serviceRef.current?.sendUnitGrouping(groupingParams);
+    },
+    []
   );
 
   return {
-    state,
-    tickMs: service.getTickMs(),
-    sendInput: service.sendInput,
-    updateUnitCount: service.updateUnitCount,
-    sendTemplateOverride: service.sendTemplateOverride,
-    sendUnitGrouping: service.sendUnitGrouping,
+    state: uiState,
+    latestStateRef,
+    consumeLatestSnapshot,
+    tickMs,
+    sendInput,
+    updateUnitCount,
+    sendTemplateOverride,
+    sendUnitGrouping,
   };
 };

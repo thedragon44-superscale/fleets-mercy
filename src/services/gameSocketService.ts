@@ -34,77 +34,118 @@ export interface ClientInputParams {
   };
 }
 
+/**
+ * High-performance binary WebSocket client that decouples 60Hz network ingestion
+ * from React UI renders and coalesces backlogged frames to always decode only the latest state.
+ */
 export class GameSocketService {
   private ws: WebSocket | null = null;
-  private serverState: ServerStateSnapshot | null = null;
-  private listeners: Set<() => void> = new Set();
   private url: string;
+  private closed = false;
+  private reconnectTimer: number | null = null;
+
+  // Latest-frame coalescing buffer (ws.onmessage never blocks decoding a stale backlog)
+  private pendingBuffer: ArrayBuffer | null = null;
+  private latestSnapshot: ServerStateSnapshot | null = null;
 
   // Rolling average server tick interval (ms)
-  private lastMessageTime: number = 0;
-  private avgTickMs: number = 16.0;
+  private lastMessageTime = 0;
+  private avgTickMs = 16.0;
 
-  constructor(url: string) {
+  // Optional callback fired on frame arrival (used to notify low-frequency HUD only)
+  private onFrameDecoded: ((snap: ServerStateSnapshot) => void) | null = null;
+
+  constructor(url: string, onFrameDecoded?: (snap: ServerStateSnapshot) => void) {
     this.url = url;
+    this.onFrameDecoded = onFrameDecoded ?? null;
     this.connect();
   }
 
   private connect() {
-    this.ws = new WebSocket(this.url);
-    this.ws.binaryType = 'arraybuffer';
+    if (this.closed) return;
+    const ws = new WebSocket(this.url);
+    ws.binaryType = 'arraybuffer';
+    this.ws = ws;
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
+      if (this.closed) {
+        ws.close();
+        return;
+      }
       console.log(`[NETWORK] Connected to Go Server (Binary Mode) at ${this.url}`);
       this.lastMessageTime = 0;
     };
 
-    this.ws.onmessage = (event: MessageEvent) => {
-      let parsedData: ServerStateSnapshot | null = null;
-      if (event.data instanceof ArrayBuffer) {
-        parsedData = unpackServerBinaryMessage(event.data);
-      }
-      if (parsedData !== null) {
-        const now = performance.now();
-        if (this.lastMessageTime > 0) {
-          const delta = now - this.lastMessageTime;
-          if (delta > 0 && delta < 1000) {
-            this.avgTickMs = this.avgTickMs * 0.9 + delta * 0.1;
-          }
+    ws.onmessage = (event: MessageEvent) => {
+      if (!(event.data instanceof ArrayBuffer)) return;
+
+      const now = performance.now();
+      if (this.lastMessageTime > 0) {
+        const delta = now - this.lastMessageTime;
+        if (delta > 0 && delta < 1000) {
+          this.avgTickMs = this.avgTickMs * 0.9 + delta * 0.1;
         }
-        this.lastMessageTime = now;
+      }
+      this.lastMessageTime = now;
 
-        this.serverState = parsedData;
-        this.notifyListeners();
+      // Coalesce: overwrite any undecoded stale frame in O(1)
+      this.pendingBuffer = event.data;
+    };
+
+    ws.onclose = () => {
+      if (this.ws === ws) this.ws = null;
+      if (!this.closed) {
+        console.warn('[NETWORK] Connection lost. Reconnecting in 3s...');
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
       }
     };
 
-    this.ws.onclose = () => {
-      console.warn('[NETWORK] Connection lost. Reconnecting in 3s...');
-      setTimeout(() => this.connect(), 3000);
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('[NETWORK] WebSocket error encountered:', error);
+    ws.onerror = (error) => {
+      if (!this.closed) {
+        console.error('[NETWORK] WebSocket error encountered:', error);
+      }
     };
   }
 
-  private notifyListeners() {
-    this.listeners.forEach((listener) => listener());
-  }
+  /**
+   * Called once per Pixi render frame. Decodes ONLY the newest arrived binary buffer
+   * (dropping any stale backlog frames) and returns the updated snapshot if a new frame arrived.
+   */
+  public consumeLatestSnapshot = (): ServerStateSnapshot | null => {
+    const buf = this.pendingBuffer;
+    if (!buf) return null;
+    this.pendingBuffer = null;
 
-  public subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    const decoded = unpackServerBinaryMessage(buf);
+    if (!decoded) return null;
+    this.latestSnapshot = decoded;
+    this.onFrameDecoded?.(decoded);
+    return decoded;
   };
 
-  public getSnapshot = (): ServerStateSnapshot | null => {
-    return this.serverState;
+  public getLatestSnapshot = (): ServerStateSnapshot | null => {
+    return this.latestSnapshot;
   };
 
   public getTickMs = (): number => {
     return this.avgTickMs;
+  };
+
+  public close = (): void => {
+    this.closed = true;
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // ignore close errors during teardown
+      }
+      this.ws = null;
+    }
+    this.pendingBuffer = null;
   };
 
   // --- PURE BINARY UPSTREAM SENDERS ---
@@ -148,14 +189,4 @@ export class GameSocketService {
       this.ws.send(binaryPayload);
     }
   };
-}
-
-// Global cache to maintain persistent socket connections across component mounts
-const serviceCache = new Map<string, GameSocketService>();
-
-export function getGameSocketService(url: string): GameSocketService {
-  if (!serviceCache.has(url)) {
-    serviceCache.set(url, new GameSocketService(url));
-  }
-  return serviceCache.get(url)!;
 }
