@@ -29,6 +29,8 @@ export interface UnitConfigConfigPayload {
   reverseThrustPower?: number;
   driftCoefficient?: number;
   accelerationCurve?: number;
+  brakingThrustPower?: number;
+  inertialDamping?: number;
 
   dps?: number;
   maxCooldown?: number;

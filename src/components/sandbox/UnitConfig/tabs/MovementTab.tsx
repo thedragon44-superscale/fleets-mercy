@@ -26,6 +26,8 @@ const MOVEMENT_SLIDERS: Array<{
   { field: 'reverseThrustPower', label: 'Reverse Thrust Power', min: 0, max: 10, step: 0.2 },
   { field: 'driftCoefficient', label: 'Drift Coefficient', min: 0, max: 2, step: 0.05 },
   { field: 'accelerationCurve', label: 'Acceleration Curve', min: 0.1, max: 10, step: 0.1 },
+  { field: 'brakingThrustPower', label: 'Braking Thrust Power', min: 0, max: 10, step: 0.1 },
+  { field: 'inertialDamping', label: 'Inertial Damping', min: 0, max: 10, step: 0.1 },
 ];
 
 export const MovementTab: React.FC<MovementTabProps> = ({

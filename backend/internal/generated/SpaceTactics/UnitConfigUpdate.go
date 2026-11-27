@@ -825,8 +825,32 @@ func (rcv *UnitConfigUpdate) MutateEmergencyWarpEvacuationTarget(n bool) bool {
 	return rcv._tab.MutateBoolSlot(134, n)
 }
 
+func (rcv *UnitConfigUpdate) BrakingThrustPower() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(136))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateBrakingThrustPower(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(136, n)
+}
+
+func (rcv *UnitConfigUpdate) InertialDamping() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(138))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *UnitConfigUpdate) MutateInertialDamping(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(138, n)
+}
+
 func UnitConfigUpdateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(66)
+	builder.StartObject(68)
 }
 func UnitConfigUpdateAddWeightClass(builder *flatbuffers.Builder, weightClass int32) {
 	builder.PrependInt32Slot(0, weightClass, 0)
@@ -1025,6 +1049,12 @@ func UnitConfigUpdateAddWarpCanisterCapacity(builder *flatbuffers.Builder, warpC
 }
 func UnitConfigUpdateAddEmergencyWarpEvacuationTarget(builder *flatbuffers.Builder, emergencyWarpEvacuationTarget bool) {
 	builder.PrependBoolSlot(65, emergencyWarpEvacuationTarget, false)
+}
+func UnitConfigUpdateAddBrakingThrustPower(builder *flatbuffers.Builder, brakingThrustPower float64) {
+	builder.PrependFloat64Slot(66, brakingThrustPower, 0.0)
+}
+func UnitConfigUpdateAddInertialDamping(builder *flatbuffers.Builder, inertialDamping float64) {
+	builder.PrependFloat64Slot(67, inertialDamping, 0.0)
 }
 func UnitConfigUpdateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

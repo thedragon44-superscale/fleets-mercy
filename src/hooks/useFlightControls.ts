@@ -238,6 +238,22 @@ export const useFlightControls = ({
 
   // Global keyboard, mouse & window-blur listeners
   useEffect(() => {
+    const flushKeyTransition = () => {
+      const activeControl = canControlRef.current;
+      const sent = onSendInputRef.current({
+        keys: activeControl ? { ...keysRef.current } : {},
+        angle: lastAngleRef.current,
+        isFiring: activeControl && isFiringRef.current && !!lastSentUnitIdRef.current,
+        currentId: lastSentUnitIdRef.current,
+      });
+      if (sent === false) {
+        inputDirtyRef.current = true;
+      } else {
+        inputDirtyRef.current = false;
+        lastSendTimeRef.current = performance.now();
+      }
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingInInput(e.target)) return;
 
@@ -254,7 +270,7 @@ export const useFlightControls = ({
         e.preventDefault();
         if (!isFiringRef.current) {
           isFiringRef.current = true;
-          inputDirtyRef.current = true;
+          flushKeyTransition();
         }
         return;
       }
@@ -262,23 +278,7 @@ export const useFlightControls = ({
       const flightKey = resolveFlightKey(e);
       if (flightKey && !keysRef.current[flightKey]) {
         keysRef.current[flightKey] = true;
-        inputDirtyRef.current = true;
-      }
-    };
-
-    const flushKeyRelease = () => {
-      const activeControl = canControlRef.current;
-      const sent = onSendInputRef.current({
-        keys: activeControl ? { ...keysRef.current } : {},
-        angle: lastAngleRef.current,
-        isFiring: activeControl && isFiringRef.current && !!lastSentUnitIdRef.current,
-        currentId: lastSentUnitIdRef.current,
-      });
-      if (sent === false) {
-        inputDirtyRef.current = true;
-      } else {
-        inputDirtyRef.current = false;
-        lastSendTimeRef.current = performance.now();
+        flushKeyTransition();
       }
     };
 
@@ -287,7 +287,7 @@ export const useFlightControls = ({
       if (e.code === 'Space' || e.key === ' ') {
         if (isFiringRef.current) {
           isFiringRef.current = false;
-          flushKeyRelease();
+          flushKeyTransition();
         }
         return;
       }
@@ -295,7 +295,7 @@ export const useFlightControls = ({
       const flightKey = resolveFlightKey(e);
       if (flightKey && keysRef.current[flightKey]) {
         keysRef.current[flightKey] = false;
-        flushKeyRelease();
+        flushKeyTransition();
       }
     };
 

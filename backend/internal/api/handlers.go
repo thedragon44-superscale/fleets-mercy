@@ -145,6 +145,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 			shield_base, hull_base, quadrant_shielding_enabled, quadrant_shield_pools_enabled, quadrant_hull_pools_enabled, 
 			shield_regen_rate, shield_recharge_delay_ticks, directional_shield_arc, armor_mitigation, armor_hardness_rating, ablative_plating_durability,
 			speed, strafing_speed, turn_rate, angular_velocity, lateral_thrust_power, reverse_thrust_power, drift_coefficient, acceleration_curve,
+			braking_thrust_power, inertial_damping,
 			dps, max_cooldown, projectile_range, projectile_speed, optimal_range, max_range, engagement_range_cap, ammo_capacity, initial_ordnance_capacity, 
 			turret_traverse_speed, weapon_dispersion_bloom, projectile_tracking_capability, shield_penetration_factor, sustained_fire_limit_seconds, 
 			barrel_cooling_duration_seconds, burst_salvo_cooldown, beam_raycast_duration, max_thermal_capacity, thermal_dissipation_rate, power_grid_allocation_weight,
@@ -172,6 +173,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 		var shieldRechargeDelayTicks int
 		var directionalShieldArc float64
 		var speed, strafingSpeed, turnRate, angularVelocity, lateralThrustPower, reverseThrustPower, driftCoefficient, accelerationCurve float64
+		var brakingThrustPower, inertialDamping float64
 		var dps, projectileRange, projectileSpeed, optimalRange, maxRange, engagementRangeCap float64
 		var maxCooldown, ammoCap, initialOrdnanceCapacity int
 		var turretTraverseSpeed, weaponDispersionBloom, projectileTrackingCapability, shieldPenetrationFactor float64
@@ -192,6 +194,7 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled,
 			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
 			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
+			&brakingThrustPower, &inertialDamping,
 			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity,
 			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds,
 			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
@@ -234,6 +237,8 @@ func GetTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 			"reverseThrustPower":            reverseThrustPower,
 			"driftCoefficient":              driftCoefficient,
 			"accelerationCurve":             accelerationCurve,
+			"brakingThrustPower":            brakingThrustPower,
+			"inertialDamping":               inertialDamping,
 			"dps":                           dps,
 			"maxCooldown":                   maxCooldown,
 			"projectileRange":               projectileRange,
@@ -336,8 +341,9 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 			decloak_on_action_flag = $52, stealth_recovery_delay_seconds = $53,
 			resource_harvesting_type = $54, requires_recon_telemetry = $55, requires_anchor_drone = $56, requires_recon_anchor = $57, port_docking_bay_status = $58, 
 			starboard_deployment_bay_status = $59, salvageable_upon_destruction = $60, cryo_gas_radius = $61, cryo_effect_duration = $62, graviton_vortex_duration = $63, 
-			warp_canister_capacity = $64, emergency_warp_evacuation_target = $65, sensor_range = $66
-		WHERE unit_class = $67
+			warp_canister_capacity = $64, emergency_warp_evacuation_target = $65, sensor_range = $66,
+			braking_thrust_power = $67, inertial_damping = $68
+		WHERE unit_class = $69
 	`
 
 	_, err := db.Conn.Exec(query,
@@ -353,6 +359,7 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		getInt("resourceHarvestingType"), getBool("requiresReconTelemetry"), getBool("requiresAnchorDrone"), getBool("requiresReconAnchor"), getBool("portDockingBayStatus"),
 		getBool("starboardDeploymentBayStatus"), getBool("salvageableUponDestruction"), getFloat("cryoGasRadius"), getFloat("cryoEffectDuration"), getFloat("gravitonVortexDuration"),
 		getInt("warpCanisterCapacity"), getBool("emergencyWarpEvacuationTarget"), getFloat("sensorRange"),
+		getFloat("brakingThrustPower"), getFloat("inertialDamping"),
 		unitType,
 	)
 
@@ -389,6 +396,8 @@ func SaveTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl.ReverseThrustPower = getFloat("reverseThrustPower")
 		tmpl.DriftCoefficient = getFloat("driftCoefficient")
 		tmpl.AccelerationCurve = getFloat("accelerationCurve")
+		tmpl.BrakingThrustPower = getFloat("brakingThrustPower")
+		tmpl.InertialDamping = getFloat("inertialDamping")
 		tmpl.DPS = getFloat("dps")
 		tmpl.MaxCooldown = getInt("maxCooldown")
 		tmpl.ProjectileRange = getFloat("projectileRange")

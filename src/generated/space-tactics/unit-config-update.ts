@@ -350,8 +350,18 @@ emergencyWarpEvacuationTarget():boolean {
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
+brakingThrustPower():number {
+  const offset = this.bb!.__offset(this.bb_pos, 136);
+  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+}
+
+inertialDamping():number {
+  const offset = this.bb!.__offset(this.bb_pos, 138);
+  return offset ? this.bb!.readFloat64(this.bb_pos + offset) : 0.0;
+}
+
 static startUnitConfigUpdate(builder:flatbuffers.Builder) {
-  builder.startObject(66);
+  builder.startObject(68);
 }
 
 static addWeightClass(builder:flatbuffers.Builder, weightClass:number) {
@@ -618,12 +628,20 @@ static addEmergencyWarpEvacuationTarget(builder:flatbuffers.Builder, emergencyWa
   builder.addFieldInt8(65, +emergencyWarpEvacuationTarget, +false);
 }
 
+static addBrakingThrustPower(builder:flatbuffers.Builder, brakingThrustPower:number) {
+  builder.addFieldFloat64(66, brakingThrustPower, 0.0);
+}
+
+static addInertialDamping(builder:flatbuffers.Builder, inertialDamping:number) {
+  builder.addFieldFloat64(67, inertialDamping, 0.0);
+}
+
 static endUnitConfigUpdate(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, visionRange:number, aggroRange:number, aggroThreatWeight:number, retreatMoraleThreshold:number, squadCohesionLeashRange:number, shieldBase:number, hullBase:number, quadrantShieldingEnabled:boolean, quadrantShieldPoolsEnabled:boolean, quadrantHullPoolsEnabled:boolean, shieldRegenRate:number, shieldRechargeDelayTicks:number, directionalShieldArc:number, armorMitigation:number, armorHardnessRating:number, ablativePlatingDurability:number, speed:number, strafingSpeed:number, turnRate:number, angularVelocity:number, lateralThrustPower:number, reverseThrustPower:number, driftCoefficient:number, accelerationCurve:number, dps:number, maxCooldown:number, projectileRange:number, projectileSpeed:number, optimalRange:number, maxRange:number, engagementRangeCap:number, ammoCapacity:number, initialOrdnanceCapacity:number, turretTraverseSpeed:number, weaponDispersionBloom:number, projectileTrackingCapability:number, shieldPenetrationFactor:number, sustainedFireLimitSeconds:number, barrelCoolingDurationSeconds:number, burstSalvoCooldown:number, beamRaycastDuration:number, maxThermalCapacity:number, thermalDissipationRate:number, powerGridAllocationWeight:number, sensorRange:number, radarCrossSection:number, sensorResolutionTier:number, jammingSusceptibility:number, targetLockTime:number, radarImmunityActive:boolean, shieldGatedStealthThreshold:number, decloakOnActionFlag:boolean, stealthRecoveryDelaySeconds:number, resourceHarvestingType:number, requiresReconTelemetry:boolean, requiresAnchorDrone:boolean, requiresReconAnchor:boolean, portDockingBayStatus:boolean, starboardDeploymentBayStatus:boolean, salvageableUponDestruction:boolean, cryoGasRadius:number, cryoEffectDuration:number, gravitonVortexDuration:number, warpCanisterCapacity:number, emergencyWarpEvacuationTarget:boolean):flatbuffers.Offset {
+static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, visionRange:number, aggroRange:number, aggroThreatWeight:number, retreatMoraleThreshold:number, squadCohesionLeashRange:number, shieldBase:number, hullBase:number, quadrantShieldingEnabled:boolean, quadrantShieldPoolsEnabled:boolean, quadrantHullPoolsEnabled:boolean, shieldRegenRate:number, shieldRechargeDelayTicks:number, directionalShieldArc:number, armorMitigation:number, armorHardnessRating:number, ablativePlatingDurability:number, speed:number, strafingSpeed:number, turnRate:number, angularVelocity:number, lateralThrustPower:number, reverseThrustPower:number, driftCoefficient:number, accelerationCurve:number, dps:number, maxCooldown:number, projectileRange:number, projectileSpeed:number, optimalRange:number, maxRange:number, engagementRangeCap:number, ammoCapacity:number, initialOrdnanceCapacity:number, turretTraverseSpeed:number, weaponDispersionBloom:number, projectileTrackingCapability:number, shieldPenetrationFactor:number, sustainedFireLimitSeconds:number, barrelCoolingDurationSeconds:number, burstSalvoCooldown:number, beamRaycastDuration:number, maxThermalCapacity:number, thermalDissipationRate:number, powerGridAllocationWeight:number, sensorRange:number, radarCrossSection:number, sensorResolutionTier:number, jammingSusceptibility:number, targetLockTime:number, radarImmunityActive:boolean, shieldGatedStealthThreshold:number, decloakOnActionFlag:boolean, stealthRecoveryDelaySeconds:number, resourceHarvestingType:number, requiresReconTelemetry:boolean, requiresAnchorDrone:boolean, requiresReconAnchor:boolean, portDockingBayStatus:boolean, starboardDeploymentBayStatus:boolean, salvageableUponDestruction:boolean, cryoGasRadius:number, cryoEffectDuration:number, gravitonVortexDuration:number, warpCanisterCapacity:number, emergencyWarpEvacuationTarget:boolean, brakingThrustPower:number, inertialDamping:number):flatbuffers.Offset {
   UnitConfigUpdate.startUnitConfigUpdate(builder);
   UnitConfigUpdate.addWeightClass(builder, weightClass);
   UnitConfigUpdate.addVisionRange(builder, visionRange);
@@ -691,6 +709,8 @@ static createUnitConfigUpdate(builder:flatbuffers.Builder, weightClass:number, v
   UnitConfigUpdate.addGravitonVortexDuration(builder, gravitonVortexDuration);
   UnitConfigUpdate.addWarpCanisterCapacity(builder, warpCanisterCapacity);
   UnitConfigUpdate.addEmergencyWarpEvacuationTarget(builder, emergencyWarpEvacuationTarget);
+  UnitConfigUpdate.addBrakingThrustPower(builder, brakingThrustPower);
+  UnitConfigUpdate.addInertialDamping(builder, inertialDamping);
   return UnitConfigUpdate.endUnitConfigUpdate(builder);
 }
 }

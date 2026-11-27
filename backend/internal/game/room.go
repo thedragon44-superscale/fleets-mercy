@@ -314,6 +314,8 @@ func (r *GameRoom) spawnUnit(unitType string, owner string, x float64, y float64
 		LateralThrustPower:           template.LateralThrustPower,
 		ReverseThrustPower:           template.ReverseThrustPower,
 		DriftCoefficient:             template.DriftCoefficient,
+		BrakingThrustPower:           template.BrakingThrustPower,
+		InertialDamping:              template.InertialDamping,
 		WeightClass:                  template.WeightClass,
 		VisionRange:                  template.VisionRange,
 		SensorRange:                  template.SensorRange,
@@ -547,6 +549,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 				clampedTurn := math.Max(0, math.Min(float64(cfg.TurnRate()), 60.0))
 				clampedAngVel := math.Max(0, math.Min(float64(cfg.AngularVelocity()), 60.0))
 				clampedAccel := math.Max(0, math.Min(float64(cfg.AccelerationCurve()), 10.0))
+				clampedBraking := math.Max(0, math.Min(float64(cfg.BrakingThrustPower()), 10.0))
+				clampedInertial := math.Max(0, math.Min(float64(cfg.InertialDamping()), 10.0))
 
 				if tmpl, exists := db.GetTemplate(unitType); exists {
 					// 1. Core & General
@@ -568,6 +572,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					tmpl.LateralThrustPower = float64(cfg.LateralThrustPower())
 					tmpl.ReverseThrustPower = float64(cfg.ReverseThrustPower())
 					tmpl.DriftCoefficient = float64(cfg.DriftCoefficient())
+					tmpl.BrakingThrustPower = clampedBraking
+					tmpl.InertialDamping = clampedInertial
 
 					// 3. Combat Output & Ballistics
 					tmpl.DPS = float64(cfg.Dps())
@@ -632,6 +638,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 					u.LateralThrustPower = float64(cfg.LateralThrustPower())
 					u.ReverseThrustPower = float64(cfg.ReverseThrustPower())
 					u.DriftCoefficient = float64(cfg.DriftCoefficient())
+					u.BrakingThrustPower = clampedBraking
+					u.InertialDamping = clampedInertial
 
 					u.DPS = float64(cfg.Dps())
 					if mc := int(cfg.MaxCooldown()); mc > 0 {
@@ -848,6 +856,7 @@ func (r *GameRoom) Run() {
 				if unit.ID == controlledID {
 					HandlePlayerMovement(unit, frameInput, arenaW, arenaH)
 					unit.IsFiring = frameInput.IsFiring
+					ApplyPilotedUnitPhysics(unit, arenaW, arenaH)
 				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
 					// Player flagship should NEVER move or run AI when unpiloted; it holds position and coasts spin to zero.
 					unit.IsFiring = false
@@ -857,13 +866,14 @@ func (r *GameRoom) Run() {
 					if math.Abs(unit.CurrentAngularVel) < 0.01 {
 						unit.CurrentAngularVel = 0
 					}
+					ApplyUnitPhysics(unit, arenaW, arenaH)
 				} else {
 					// All other units (enemy units, spawned support drones, etc.) run their AI behavior
 					RunUnitAI(unit, r, flagship)
+					ApplyUnitPhysics(unit, arenaW, arenaH)
 				}
 
-				// Physics, Damping & Universal Environment Physics
-				ApplyUnitPhysics(unit, arenaW, arenaH)
+				// Universal Environment Physics
 				ApplyUniversalEnvPhysics(unit, r.envWorld)
 
 				// Weapon Firing & Cooldowns

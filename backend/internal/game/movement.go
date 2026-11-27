@@ -68,8 +68,68 @@ func RotateTowards(unit *models.FleetUnit, targetAngle float64) {
 	unit.Angle = normalizeAngle(unit.Angle + unit.CurrentAngularVel*dt)
 }
 
+// moveToward smoothly steps current toward target by at most maxDelta without overshooting.
+func moveToward(current, target, maxDelta float64) float64 {
+	if maxDelta <= 0 {
+		return current
+	}
+	diff := target - current
+	if math.Abs(diff) <= maxDelta {
+		return target
+	}
+	if diff > 0 {
+		return current + maxDelta
+	}
+	return current - maxDelta
+}
+
+// stepThrusterAxis steps a single ship-local velocity axis (forward/reverse or lateral)
+// smoothly toward its target velocity using PostgreSQL unit template thruster stats.
+func stepThrusterAxis(cur, target, accelRate, brakeRate, stopRate float64, anyInputActive bool) float64 {
+	if target == 0 {
+		if cur == 0 {
+			return 0
+		}
+		// Active axis stabilization when switching axes (e.g. W->D) or turning under thrust,
+		// vs. hands-off inertial dampeners when all movement keys are released.
+		rate := stopRate
+		if anyInputActive && brakeRate > rate {
+			rate = brakeRate
+		}
+		return moveToward(cur, 0, rate)
+	}
+
+	// Reversing direction across zero (e.g. W->S or A->D): fire active retro/counter-thrust
+	if cur*target < 0 {
+		rate := accelRate
+		if brakeRate > rate {
+			rate = brakeRate
+		}
+		next := moveToward(cur, 0, rate)
+		if next == 0 {
+			// Smoothly use any remaining thrust budget to begin accelerating in the new direction
+			remaining := rate - math.Abs(cur)
+			if remaining > 0 {
+				next = moveToward(0, target, math.Min(remaining, accelRate))
+			}
+		}
+		return next
+	}
+
+	// Same-direction velocity adjustment: accelerate up to target, or smoothly trim excess speed
+	if math.Abs(cur) > math.Abs(target) {
+		rate := accelRate
+		if brakeRate > rate {
+			rate = brakeRate
+		}
+		return moveToward(cur, target, rate)
+	}
+	return moveToward(cur, target, accelRate)
+}
+
 // HandlePlayerMovement processes ship-relative WASD thrust, rotational inertia,
-// and directional elliptical velocity limits driven by PostgreSQL unit templates.
+// active counter-thrust direction switching, and inertial damping driven strictly
+// by PostgreSQL unit_templates parameters.
 func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, roomWidth, roomHeight float64) {
 	unit.IsFiring = input.IsFiring
 	RotateTowards(unit, float64(input.Angle))
@@ -81,40 +141,29 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 		return
 	}
 
-	accelCurve := unit.AccelerationCurve
-	if accelCurve <= 0 {
-		accelCurve = 1.0
-	}
+	accelCurve := math.Max(0, unit.AccelerationCurve)
+	revPower := math.Max(0, unit.ReverseThrustPower)
+	latPower := math.Max(0, unit.LateralThrustPower)
+	brakingPower := math.Max(0, unit.BrakingThrustPower)
+	inertialDamp := math.Max(0, unit.InertialDamping)
+	drift := math.Max(0, math.Min(1.0, unit.DriftCoefficient))
 
 	maxFwdSpeed := unit.Speed * 6.0
-
-	strafeBase := unit.StrafingSpeed
-	if strafeBase <= 0 {
-		strafeBase = unit.Speed * 0.75
-	}
-	maxStrafeSpeed := strafeBase * 6.0
-
-	revPower := unit.ReverseThrustPower
-	if revPower <= 0 {
-		revPower = 0.6
-	}
+	maxStrafeSpeed := math.Max(0, unit.StrafingSpeed) * 6.0
 	maxRevSpeed := maxFwdSpeed * math.Min(revPower, 1.0)
-	if maxRevSpeed < 0.5 {
-		maxRevSpeed = 0.5
-	}
 
-	latPower := unit.LateralThrustPower
-	if latPower <= 0 {
-		latPower = 0.85
-	}
+	// Per-tick thruster acceleration budgets derived strictly from unit_templates stats
+	baseAccel := unit.Speed * 0.45 * accelCurve
+	revAccel := baseAccel * revPower
+	strafeAccel := baseAccel * latPower
 
-	// Per-tick thruster accelerations:
-	// - Speed * AccelerationCurve sets forward thrust
-	// - ReverseThrustPower scales reverse thrust
-	// - LateralThrustPower scales strafe responsiveness (StrafingSpeed governs max lateral speed)
-	fwdAccel := unit.Speed * 0.75 * accelCurve
-	revAccel := fwdAccel * revPower
-	strafeAccel := fwdAccel * latPower
+	// Active counter-thrust / axis-switch stabilization rate
+	driftGrip := 1.0 - (drift * 0.35)
+	fwdBrakeRate := baseAccel * brakingPower * driftGrip
+	latBrakeRate := math.Max(strafeAccel, baseAccel*0.75) * brakingPower * driftGrip
+
+	// Hands-off inertial dampener stop rate when no movement keys are held
+	stopRate := unit.Speed * 0.45 * inertialDamp * (1.0 - drift*0.55)
 
 	// Ship-relative axes where opposing keys (W+S or A+D) cancel cleanly to 0
 	fwdAxis := 0.0
@@ -133,9 +182,7 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 		latAxis += 1.0
 	}
 
-	if fwdAxis == 0 && latAxis == 0 {
-		return
-	}
+	anyInput := fwdAxis != 0 || latAxis != 0
 
 	if fwdAxis != 0 && latAxis != 0 {
 		const invSqrt2 = 0.7071067811865476
@@ -143,49 +190,74 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 		latAxis *= invSqrt2
 	}
 
-	prevSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+	var targetFwd float64
+	if fwdAxis > 0 {
+		targetFwd = fwdAxis * maxFwdSpeed
+	} else if fwdAxis < 0 {
+		targetFwd = fwdAxis * maxRevSpeed
+	}
+	targetLat := latAxis * maxStrafeSpeed
+
+	// Decompose current world velocity into ship-local (forward, starboard-lateral) components
 	cosA := math.Cos(unit.Angle)
 	sinA := math.Sin(unit.Angle)
+	curFwd := unit.Vel.X*cosA + unit.Vel.Y*sinA
+	curLat := -unit.Vel.X*sinA + unit.Vel.Y*cosA
 
-	if fwdAxis > 0 {
-		unit.Vel.X += cosA * (fwdAccel * fwdAxis)
-		unit.Vel.Y += sinA * (fwdAccel * fwdAxis)
-	} else if fwdAxis < 0 {
-		unit.Vel.X += cosA * (revAccel * fwdAxis)
-		unit.Vel.Y += sinA * (revAccel * fwdAxis)
+	activeFwdAccel := baseAccel
+	if fwdAxis < 0 {
+		activeFwdAccel = revAccel
 	}
 
-	if latAxis != 0 {
-		// Perpendicular to heading: (-sinA, cosA) is starboard (+Pi/2)
-		unit.Vel.X += -sinA * (strafeAccel * latAxis)
-		unit.Vel.Y += cosA * (strafeAccel * latAxis)
+	nextFwd := stepThrusterAxis(curFwd, targetFwd, activeFwdAccel, fwdBrakeRate, stopRate, anyInput)
+	nextLat := stepThrusterAxis(curLat, targetLat, strafeAccel, latBrakeRate, stopRate, anyInput)
+
+	// Reconstruct world-space velocity from updated ship-local axes
+	unit.Vel.X = nextFwd*cosA - nextLat*sinA
+	unit.Vel.Y = nextFwd*sinA + nextLat*cosA
+
+	// Clean zero snap on sub-pixel residual when keys are released
+	if !anyInput && math.Hypot(unit.Vel.X, unit.Vel.Y) < 0.02 {
+		unit.Vel.X = 0
+		unit.Vel.Y = 0
+	}
+}
+
+// ApplyPilotedUnitPhysics integrates position and enforces arena bounds for player-piloted
+// units without applying duplicate passive AI damping (piloted inertial damping is handled
+// inside HandlePlayerMovement from PostgreSQL unit_templates stats).
+func ApplyPilotedUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
+	unit.Pos.X += unit.Vel.X
+	unit.Pos.Y += unit.Vel.Y
+	clampUnitToArena(unit, roomWidth, roomHeight)
+}
+
+func clampUnitToArena(unit *models.FleetUnit, roomWidth, roomHeight float64) {
+	minBound := 50.0
+	maxW := roomWidth
+	if maxW <= 0 {
+		maxW = 12000.0
+	}
+	maxH := roomHeight
+	if maxH <= 0 {
+		maxH = 12000.0
 	}
 
-	// Enforce directional elliptical speed envelope (forward / reverse / strafe caps)
-	// without abruptly chopping pre-existing drift momentum during sharp turns.
-	vFwd := unit.Vel.X*cosA + unit.Vel.Y*sinA
-	vLat := -unit.Vel.X*sinA + unit.Vel.Y*cosA
-
-	capFwd := maxFwdSpeed
-	if vFwd < 0 {
-		capFwd = maxRevSpeed
+	if unit.Pos.X < minBound {
+		unit.Pos.X = minBound
+		unit.Vel.X = 0
 	}
-	capLat := maxStrafeSpeed
-	if capLat < 0.5 {
-		capLat = 0.5
+	if unit.Pos.X > (maxW - minBound) {
+		unit.Pos.X = maxW - minBound
+		unit.Vel.X = 0
 	}
-
-	ellip := math.Hypot(vFwd/capFwd, vLat/capLat)
-	if ellip > 1.0 {
-		newSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-		envelopeSpeed := newSpeed / ellip
-		maxHullSpeed := math.Max(maxFwdSpeed, maxStrafeSpeed)
-		allowedSpeed := math.Max(envelopeSpeed, math.Min(prevSpeed, maxHullSpeed))
-		if newSpeed > allowedSpeed && newSpeed > 0 {
-			scale := allowedSpeed / newSpeed
-			unit.Vel.X *= scale
-			unit.Vel.Y *= scale
-		}
+	if unit.Pos.Y < minBound {
+		unit.Pos.Y = minBound
+		unit.Vel.Y = 0
+	}
+	if unit.Pos.Y > (maxH - minBound) {
+		unit.Pos.Y = maxH - minBound
+		unit.Vel.Y = 0
 	}
 }
 
@@ -247,30 +319,5 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 		unit.Vel.Y = 0
 	}
 
-	minBound := 50.0
-	maxW := roomWidth
-	if maxW <= 0 {
-		maxW = 12000.0
-	}
-	maxH := roomHeight
-	if maxH <= 0 {
-		maxH = 12000.0
-	}
-
-	if unit.Pos.X < minBound {
-		unit.Pos.X = minBound
-		unit.Vel.X = 0
-	}
-	if unit.Pos.X > (maxW - minBound) {
-		unit.Pos.X = maxW - minBound
-		unit.Vel.X = 0
-	}
-	if unit.Pos.Y < minBound {
-		unit.Pos.Y = minBound
-		unit.Vel.Y = 0
-	}
-	if unit.Pos.Y > (maxH - minBound) {
-		unit.Pos.Y = maxH - minBound
-		unit.Vel.Y = 0
-	}
+	clampUnitToArena(unit, roomWidth, roomHeight)
 }

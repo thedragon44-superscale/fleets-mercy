@@ -22,6 +22,8 @@ func makeTestViper() *models.FleetUnit {
 		ReverseThrustPower: 0.75,
 		DriftCoefficient:   0.30,
 		AccelerationCurve:  1.20,
+		BrakingThrustPower: 2.80,
+		InertialDamping:    1.50,
 	}
 }
 
@@ -240,5 +242,61 @@ func TestApplyUnitPhysicsPreservesDriftAndReachesCompleteStop(t *testing.T) {
 	}
 	if u.Vel.X != 0 || u.Vel.Y != 0 {
 		t.Fatalf("expected complete stop (0,0), got vel=(%.5f, %.5f)", u.Vel.X, u.Vel.Y)
+	}
+}
+
+func TestHandlePlayerMovementQuickDirectionSwitchesAndCleanStop(t *testing.T) {
+	// 1. Accelerate forward to full speed with W
+	u := makeTestViper()
+	u.Angle = 0
+	for i := 0; i < 20; i++ {
+		HandlePlayerMovement(u, SandboxClientInput{W: true, Angle: 0}, 12000, 12000)
+		ApplyPilotedUnitPhysics(u, 12000, 12000)
+	}
+	if u.Vel.X < 11.5 {
+		t.Fatalf("expected Viper to reach ~12.0 forward cruise, got vel.X=%.3f", u.Vel.X)
+	}
+
+	// 2. Quick W -> S reversal: must smoothly cross zero into reverse within 6 ticks (~100ms)
+	for i := 0; i < 6; i++ {
+		HandlePlayerMovement(u, SandboxClientInput{S: true, Angle: 0}, 12000, 12000)
+		ApplyPilotedUnitPhysics(u, 12000, 12000)
+	}
+	if u.Vel.X >= -0.5 {
+		t.Fatalf("expected W->S reversal to enter negative reverse velocity within 6 ticks, got vel.X=%.3f", u.Vel.X)
+	}
+
+	// 3. Quick Forward -> Lateral (W -> D): forward slip must actively damp while lateral thrust ramps cleanly
+	u2 := makeTestViper()
+	u2.Angle = 0
+	u2.Vel = models.Vector2D{X: 12.0, Y: 0}
+	for i := 0; i < 6; i++ {
+		HandlePlayerMovement(u2, SandboxClientInput{D: true, Angle: 0}, 12000, 12000)
+		ApplyPilotedUnitPhysics(u2, 12000, 12000)
+	}
+	if u2.Vel.X > 0.5 || u2.Vel.Y < 5.0 {
+		t.Fatalf("expected W->D to cancel forward slip and accelerate laterally within 6 ticks, got vel=(%.3f, %.3f)", u2.Vel.X, u2.Vel.Y)
+	}
+
+	// 4. Releasing all keys must smoothly decelerate to exact (0, 0) within 15 ticks (~0.25s) on Viper
+	u3 := makeTestViper()
+	u3.Angle = 0
+	u3.Vel = models.Vector2D{X: 12.0, Y: 0}
+	for i := 0; i < 15; i++ {
+		HandlePlayerMovement(u3, SandboxClientInput{Angle: 0}, 12000, 12000)
+		ApplyPilotedUnitPhysics(u3, 12000, 12000)
+	}
+	if u3.Vel.X != 0 || u3.Vel.Y != 0 {
+		t.Fatalf("expected smooth complete stop (0,0) within 15 ticks on key release, got vel=(%.4f, %.4f)", u3.Vel.X, u3.Vel.Y)
+	}
+
+	// 5. Pure data-driven check: InertialDamping=0 preserves velocity (zero hardcoded stop fallback)
+	u4 := makeTestViper()
+	u4.InertialDamping = 0
+	u4.Angle = 0
+	u4.Vel = models.Vector2D{X: 6.0, Y: 0}
+	HandlePlayerMovement(u4, SandboxClientInput{Angle: 0}, 12000, 12000)
+	if math.Abs(u4.Vel.X-6.0) > 1e-6 {
+		t.Fatalf("expected InertialDamping=0 to coast without hardcoded damping, got vel.X=%.4f", u4.Vel.X)
 	}
 }

@@ -102,6 +102,8 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 					LateralThrustPower:           template.LateralThrustPower,
 					ReverseThrustPower:           template.ReverseThrustPower,
 					DriftCoefficient:             template.DriftCoefficient,
+					BrakingThrustPower:           template.BrakingThrustPower,
+					InertialDamping:              template.InertialDamping,
 					WeightClass:                  template.WeightClass,
 					VisionRange:                  template.VisionRange,
 					SensorRange:                  template.SensorRange,

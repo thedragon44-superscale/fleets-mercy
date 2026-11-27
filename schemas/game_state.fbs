@@ -201,6 +201,10 @@ table UnitConfigUpdate {
   graviton_vortex_duration: double;
   warp_canister_capacity: int;
   emergency_warp_evacuation_target: bool;
+
+  // 7. Data-Driven Thruster Control Extensions (Appended for wire compatibility)
+  braking_thrust_power: double;
+  inertial_damping: double;
 }
 
 table BehaviorConfigUpdate {

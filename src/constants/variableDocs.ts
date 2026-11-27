@@ -167,6 +167,18 @@ export const VARIABLE_DOCS: Record<string, VariableDoc> = {
     effect: "Ramping function from dead stop to max speed.",
     manifestation: "Dictates whether a ship has instant burst acceleration or slow, heavy momentum buildup."
   },
+  brakingThrustPower: {
+    title: "Braking Thrust Power",
+    category: "Movement & Physics",
+    effect: "Active counter-thrust multiplier for direction reversals and axis stabilization.",
+    manifestation: "Controls how quickly the ship snaps from forward to reverse (W->S) or cancels forward momentum when switching into a lateral strafe (W->A/D)."
+  },
+  inertialDamping: {
+    title: "Inertial Damping",
+    category: "Movement & Physics",
+    effect: "Active inertial dampener stop strength when all movement keys are released.",
+    manifestation: "Determines how smoothly and quickly the ship settles to a complete halt after releasing thrust keys (set to 0 for pure Newtonian coasting)."
+  },
 
   // --- 4. Combat Output, Ordnance & Ballistics ---
   dps: {

@@ -18,6 +18,8 @@ const TAB_FIELDS: Record<ConfigTabType, Array<keyof UnitConfigConfigPayload>> = 
     'reverseThrustPower',
     'driftCoefficient',
     'accelerationCurve',
+    'brakingThrustPower',
+    'inertialDamping',
   ],
   vitals: [
     'shieldBase',

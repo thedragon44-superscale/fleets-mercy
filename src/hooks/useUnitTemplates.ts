@@ -65,6 +65,8 @@ function normalizeTemplate(t: any): UnitConfigConfigPayload {
     reverseThrustPower: pick('reverseThrustPower', 'reverse_thrust_power', 1),
     driftCoefficient: pick('driftCoefficient', 'drift_coefficient', 0.1),
     accelerationCurve: pick('accelerationCurve', 'acceleration_curve', 1),
+    brakingThrustPower: pick('brakingThrustPower', 'braking_thrust_power', 2.0),
+    inertialDamping: pick('inertialDamping', 'inertial_damping', 1.0),
 
     dps: pick('dps', 'dps', 10),
     maxCooldown: pick('maxCooldown', 'max_cooldown', 30),

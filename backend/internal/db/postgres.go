@@ -49,6 +49,7 @@ func InitDB() {
 			shield_base, hull_base, quadrant_shielding_enabled, quadrant_shield_pools_enabled, quadrant_hull_pools_enabled, 
 			shield_regen_rate, shield_recharge_delay_ticks, directional_shield_arc, armor_mitigation, armor_hardness_rating, ablative_plating_durability,
 			speed, strafing_speed, turn_rate, angular_velocity, lateral_thrust_power, reverse_thrust_power, drift_coefficient, acceleration_curve,
+			braking_thrust_power, inertial_damping,
 			dps, max_cooldown, projectile_range, projectile_speed, optimal_range, max_range, engagement_range_cap, ammo_capacity, initial_ordnance_capacity, 
 			turret_traverse_speed, weapon_dispersion_bloom, projectile_tracking_capability, shield_penetration_factor, sustained_fire_limit_seconds, 
 			barrel_cooling_duration_seconds, burst_salvo_cooldown, beam_raycast_duration, max_thermal_capacity, thermal_dissipation_rate, power_grid_allocation_weight,
@@ -79,6 +80,7 @@ func InitDB() {
 		var shieldRechargeDelayTicks int
 		var directionalShieldArc float64
 		var speed, strafingSpeed, turnRate, angularVelocity, lateralThrustPower, reverseThrustPower, driftCoefficient, accelerationCurve float64
+		var brakingThrustPower, inertialDamping float64
 		var dps, projectileRange, projectileSpeed, optimalRange, maxRange, engagementRangeCap float64
 		var maxCooldown, ammoCap, initialOrdnanceCapacity int
 		var turretTraverseSpeed, weaponDispersionBloom, projectileTrackingCapability, shieldPenetrationFactor float64
@@ -100,6 +102,7 @@ func InitDB() {
 			&shieldBase, &hullBase, &quadrantShieldingEnabled, &quadrantShieldPoolsEnabled, &quadrantHullPoolsEnabled,
 			&shieldRegenRate, &shieldRechargeDelayTicks, &directionalShieldArc, &armorMitigation, &armorHardnessRating, &ablativePlatingDurability,
 			&speed, &strafingSpeed, &turnRate, &angularVelocity, &lateralThrustPower, &reverseThrustPower, &driftCoefficient, &accelerationCurve,
+			&brakingThrustPower, &inertialDamping,
 			&dps, &maxCooldown, &projectileRange, &projectileSpeed, &optimalRange, &maxRange, &engagementRangeCap, &ammoCap, &initialOrdnanceCapacity,
 			&turretTraverseSpeed, &weaponDispersionBloom, &projectileTrackingCapability, &shieldPenetrationFactor, &sustainedFireLimitSeconds,
 			&barrelCoolingDurationSeconds, &burstSalvoCooldown, &beamRaycastDuration, &thermalCap, &thermalDiss, &powerGridAllocationWeight,
@@ -136,6 +139,8 @@ func InitDB() {
 			ReverseThrustPower:           reverseThrustPower,
 			DriftCoefficient:             driftCoefficient,
 			AccelerationCurve:            accelerationCurve,
+			BrakingThrustPower:           brakingThrustPower,
+			InertialDamping:              inertialDamping,
 			DPS:                          dps,
 			MaxCooldown:                  maxCooldown,
 			ProjectileRange:              projectileRange,
@@ -173,8 +178,9 @@ func SaveTemplateOverride(unitType string, t models.FleetUnit) {
 		weight_class = $23, vision_range = $24, sensor_range = $25, aggro_range = $26,
 		retreat_morale_threshold = $27, squad_cohesion_leash_range = $28, radar_immunity_active = $29,
 		resource_harvesting_type = $30, warp_canister_capacity = $31, port_docking_bay_status = $32,
-		starboard_deployment_bay_status = $33, salvageable_upon_destruction = $34, requires_recon_telemetry = $35
-		WHERE unit_class = $36`
+		starboard_deployment_bay_status = $33, salvageable_upon_destruction = $34, requires_recon_telemetry = $35,
+		braking_thrust_power = $36, inertial_damping = $37
+		WHERE unit_class = $38`
 
 	_, err := Conn.Exec(query,
 		t.Speed, t.StrafingSpeed, t.TurnRate, t.AngularVelocity,
@@ -186,6 +192,7 @@ func SaveTemplateOverride(unitType string, t models.FleetUnit) {
 		t.RetreatMoraleThreshold, t.SquadCohesionLeashRange, t.RadarImmunityActive,
 		t.ResourceHarvestingType, t.WarpCanisterCapacity, t.PortDockingBayStatus,
 		t.StarboardDeploymentBayStatus, t.SalvageableUponDestruction, t.RequiresReconTelemetry,
+		t.BrakingThrustPower, t.InertialDamping,
 		unitType,
 	)
 	if err != nil {

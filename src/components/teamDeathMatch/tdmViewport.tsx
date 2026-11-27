@@ -395,10 +395,11 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         }
 
         const sinceSnapTicks = Math.min(4.8, Math.max(0, (currentTime - lastSnapTime) * 0.06));
+        const pilotExtrapTicks = Math.min(1.8, sinceSnapTicks);
 
         if (playerUnit) {
-          const predX = playerUnit.pos.x + (playerUnit.vel?.x || 0) * sinceSnapTicks;
-          const predY = playerUnit.pos.y + (playerUnit.vel?.y || 0) * sinceSnapTicks;
+          const predX = playerUnit.pos.x + (playerUnit.vel?.x || 0) * pilotExtrapTicks;
+          const predY = playerUnit.pos.y + (playerUnit.vel?.y || 0) * pilotExtrapTicks;
 
           if (
             !isInitializedRef.current ||

@@ -312,6 +312,8 @@ export function serializeClientInput(actionParams: {
       reverseThrustPower?: number;
       driftCoefficient?: number;
       accelerationCurve?: number;
+      brakingThrustPower?: number;
+      inertialDamping?: number;
       dps?: number;
       maxCooldown?: number;
       projectileRange?: number;
@@ -410,6 +412,8 @@ export function serializeClientInput(actionParams: {
     if (cfg.reverseThrustPower !== undefined) UnitConfigUpdate.addReverseThrustPower(builder, cfg.reverseThrustPower);
     if (cfg.driftCoefficient !== undefined) UnitConfigUpdate.addDriftCoefficient(builder, cfg.driftCoefficient);
     if (cfg.accelerationCurve !== undefined) UnitConfigUpdate.addAccelerationCurve(builder, cfg.accelerationCurve);
+    if (cfg.brakingThrustPower !== undefined) UnitConfigUpdate.addBrakingThrustPower(builder, cfg.brakingThrustPower);
+    if (cfg.inertialDamping !== undefined) UnitConfigUpdate.addInertialDamping(builder, cfg.inertialDamping);
 
     // Combat & Ballistics
     if (cfg.dps !== undefined) UnitConfigUpdate.addDps(builder, cfg.dps);

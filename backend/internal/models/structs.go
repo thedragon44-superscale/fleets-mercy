@@ -74,6 +74,8 @@ type UnitTemplate struct {
 	ReverseThrustPower             float64         `db:"reverse_thrust_power" json:"reverse_thrust_power"`
 	DriftCoefficient               float64         `db:"drift_coefficient" json:"drift_coefficient"`
 	AccelerationCurve              float64         `db:"acceleration_curve" json:"acceleration_curve"`
+	BrakingThrustPower             float64         `db:"braking_thrust_power" json:"braking_thrust_power"`
+	InertialDamping                float64         `db:"inertial_damping" json:"inertial_damping"`
 	QuadrantShieldingEnabled       bool            `db:"quadrant_shielding_enabled" json:"quadrant_shielding_enabled"`
 	ShieldRechargeDelayTicks       int             `db:"shield_recharge_delay_ticks" json:"shield_recharge_delay_ticks"`
 	ArmorHardnessRating            float64         `db:"armor_hardness_rating" json:"armor_hardness_rating"`
@@ -181,6 +183,8 @@ type FleetUnit struct {
 	LateralThrustPower             float64 `json:"lateralThrustPower"`
 	ReverseThrustPower             float64 `json:"reverseThrustPower"`
 	DriftCoefficient               float64 `json:"driftCoefficient"`
+	BrakingThrustPower             float64 `json:"brakingThrustPower"`
+	InertialDamping                float64 `json:"inertialDamping"`
 	ShieldBase                     float64 `json:"shieldBase"`
 	HullBase                       float64 `json:"hullBase"`
 	QuadrantShieldingEnabled       bool    `json:"quadrantShieldingEnabled"`

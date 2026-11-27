@@ -358,11 +358,12 @@ func (r *TDMRoom) Run() {
 						IsFiring: frameInput.IsFiring,
 					}, arenaW, arenaH)
 					unit.IsFiring = frameInput.IsFiring
+					game.ApplyPilotedUnitPhysics(unit, arenaW, arenaH)
 				} else {
 					game.RunUnitAI(unit, r.GameRoom, nil)
+					game.ApplyUnitPhysics(unit, arenaW, arenaH)
 				}
 
-				game.ApplyUnitPhysics(unit, arenaW, arenaH)
 				game.ApplyUniversalEnvPhysics(unit, r.GetEnvWorld())
 				game.RegenerateShields(unit)
 				game.HandleWeaponFiring(unit, r.GameRoom)
