@@ -69,12 +69,20 @@ type GameRoom struct {
 
 	clients     map[*WSClient]bool
 	mu          sync.Mutex
+	inputMu     sync.Mutex
 	units       map[string]*models.FleetUnit
 	projectiles []models.Projectile
 	lastInput   ClientStateInput
 	lastInputAt time.Time
 	tick        uint64
 	idCounter   uint64
+
+	// Per-tick visibility cache (O(N^2) once per tick instead of O(N^3) per AI query)
+	visCacheTick  uint64
+	visCacheValid bool
+	visUnits      []*models.FleetUnit
+	visStealth    map[string]bool
+	visByFaction  map[string]map[string]int
 
 	// Reusable FlatBuffers scratch state to eliminate per-tick heap allocations
 	fbBuilder   *flatbuffers.Builder
@@ -171,8 +179,11 @@ func (r *GameRoom) resetWorld() {
 	r.units = make(map[string]*models.FleetUnit)
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
+	r.inputMu.Lock()
 	r.lastInput = ClientStateInput{}
 	r.lastInputAt = time.Time{}
+	r.inputMu.Unlock()
+	r.visCacheValid = false
 	r.tickAccumulator = 0
 }
 
@@ -377,15 +388,17 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 		clientInput := SpaceTactics.GetRootAsClientInput(msg, 0)
 
-		r.mu.Lock()
-
 		// Inspect sub-tables first so utility-only packets (spec sliders, spawners,
-		// unit grouping, time controls) never wipe held flight keys or aim angle.
+		// unit grouping, time controls) never wipe held flight keys or aim angle,
+		// and pure flight packets take the lock-free fast path without blocking on r.mu.
 		var timeCtrl SpaceTactics.SandboxTimeControl
 		hasTimeCtrl := clientInput.TimeControl(&timeCtrl) != nil
 
 		var groupingTable SpaceTactics.UnitGroupingPayload
 		hasGrouping := clientInput.UnitGrouping(&groupingTable) != nil
+
+		hasDeploy := len(clientInput.Deploy()) > 0
+		hasReset := clientInput.Reset()
 
 		isUtilityOnlyPacket := hasTimeCtrl ||
 			hasGrouping ||
@@ -394,7 +407,8 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			clientInput.SandboxCountsLength() > 0 ||
 			len(clientInput.TemplateOverrideType()) > 0
 
-		if !isUtilityOnlyPacket {
+		if !isUtilityOnlyPacket && !hasReset && !hasDeploy {
+			r.inputMu.Lock()
 			r.lastInput.W = clientInput.W()
 			r.lastInput.S = clientInput.S()
 			r.lastInput.A = clientInput.A()
@@ -402,22 +416,37 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			r.lastInput.Angle = clientInput.Angle()
 			r.lastInput.IsFiring = clientInput.IsFiring()
 			r.lastInputAt = time.Now()
-		}
-		if clientInput.Reset() {
-			r.lastInput.Reset = true
+			if uid := clientInput.ControlledUnitId(); len(uid) > 0 {
+				r.lastInput.ControlledUnitID = string(uid)
+			}
+			r.inputMu.Unlock()
+			continue
 		}
 
-		if uid := clientInput.ControlledUnitId(); len(uid) > 0 {
-			nextID := string(uid)
-			if r.lastInput.ControlledUnitID != nextID {
-				if nextUnit, ok := r.units[nextID]; ok && nextUnit != nil {
-					nextUnit.CurrentAngularVel = 0
-				}
+		if !isUtilityOnlyPacket || hasReset {
+			r.inputMu.Lock()
+			if !isUtilityOnlyPacket {
+				r.lastInput.W = clientInput.W()
+				r.lastInput.S = clientInput.S()
+				r.lastInput.A = clientInput.A()
+				r.lastInput.D = clientInput.D()
+				r.lastInput.Angle = clientInput.Angle()
+				r.lastInput.IsFiring = clientInput.IsFiring()
+				r.lastInputAt = time.Now()
 			}
-			r.lastInput.ControlledUnitID = nextID
+			if hasReset {
+				r.lastInput.Reset = true
+			}
+			if uid := clientInput.ControlledUnitId(); len(uid) > 0 {
+				r.lastInput.ControlledUnitID = string(uid)
+			}
+			r.inputMu.Unlock()
 		}
-		if dep := clientInput.Deploy(); len(dep) > 0 {
-			r.deployQueue = append(r.deployQueue, string(dep))
+
+		r.mu.Lock()
+
+		if hasDeploy {
+			r.deployQueue = append(r.deployQueue, string(clientInput.Deploy()))
 		}
 
 		// Sandbox Time Controls (Pause & Simulation Speed)
@@ -663,15 +692,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *GameRoom) IsTargetVisibleToFaction(factionOwner string, target *models.FleetUnit) bool {
-	for _, unit := range r.units {
-		if unit.OwnerID == factionOwner && !unit.IsDestroyed {
-			visibilityState := r.GetUnitVisibilityState(factionOwner, target)
-			if visibilityState > VisibilityShrouded {
-				return true
-			}
-		}
-	}
-	return false
+	return r.GetUnitVisibilityState(factionOwner, target) > VisibilityShrouded
 }
 
 func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) (float64, float64) {
@@ -703,32 +724,52 @@ func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) 
 }
 
 func (r *GameRoom) Run() {
-	ticker := time.NewTicker(16 * time.Millisecond)
+	ticker := time.NewTicker(time.Second / 60)
 	defer ticker.Stop()
 	var deployDebounce int
+	var prevControlledID string
 
 	for range ticker.C {
+		// Snapshot latest flight input under the lightweight inputMu before acquiring r.mu
+		r.inputMu.Lock()
+		frameInput := r.lastInput
+		inputAt := r.lastInputAt
+		doReset := r.lastInput.Reset
+		if doReset {
+			r.lastInput.Reset = false
+		}
+		r.inputMu.Unlock()
+
 		r.mu.Lock()
 
-		if r.lastInput.Reset {
+		if doReset {
 			r.resetWorld()
-			r.lastInput.Reset = false
+			prevControlledID = ""
 			r.mu.Unlock()
 			continue
 		}
 
 		// Watchdog: clear latched keys if client heartbeats stop for >500ms while unpaused.
 		if !r.isPaused &&
-			(r.lastInput.W || r.lastInput.S || r.lastInput.A || r.lastInput.D || r.lastInput.IsFiring) &&
-			!r.lastInputAt.IsZero() && time.Since(r.lastInputAt) > 500*time.Millisecond {
-			r.lastInput.W = false
-			r.lastInput.S = false
-			r.lastInput.A = false
-			r.lastInput.D = false
-			r.lastInput.IsFiring = false
+			(frameInput.W || frameInput.S || frameInput.A || frameInput.D || frameInput.IsFiring) &&
+			!inputAt.IsZero() && time.Since(inputAt) > 500*time.Millisecond {
+			frameInput.W = false
+			frameInput.S = false
+			frameInput.A = false
+			frameInput.D = false
+			frameInput.IsFiring = false
+			r.inputMu.Lock()
+			if r.lastInputAt.Equal(inputAt) {
+				r.lastInput.W = false
+				r.lastInput.S = false
+				r.lastInput.A = false
+				r.lastInput.D = false
+				r.lastInput.IsFiring = false
+			}
+			r.inputMu.Unlock()
 		}
 
-		// Determine simulation steps for this 16ms frame (supports sandbox pause & 0.25x-2.0x scaling)
+		// Determine simulation steps for this 16.67ms frame (supports sandbox pause & 0.25x-2.0x scaling)
 		steps := 0
 		if !r.isPaused {
 			r.tickAccumulator += r.timeScale
@@ -770,10 +811,19 @@ func (r *GameRoom) Run() {
 				}
 			}
 
-			controlledID := r.lastInput.ControlledUnitID
+			controlledID := frameInput.ControlledUnitID
 			if controlledID == "" {
 				controlledID = "player-flagship"
 			}
+			if controlledID != prevControlledID {
+				if nextUnit, ok := r.units[controlledID]; ok && nextUnit != nil {
+					nextUnit.CurrentAngularVel = 0
+				}
+				prevControlledID = controlledID
+			}
+
+			// Precompute O(N^2) per-faction radar visibility once per tick
+			r.RefreshVisibilityCache()
 
 			for id, unit := range r.units {
 				if unit.IsDestroyed {
@@ -796,8 +846,8 @@ func (r *GameRoom) Run() {
 
 				// Player Movement or Autonomous AI State Machine (with room dimensions passed)
 				if unit.ID == controlledID {
-					HandlePlayerMovement(unit, r.lastInput, arenaW, arenaH)
-					unit.IsFiring = r.lastInput.IsFiring
+					HandlePlayerMovement(unit, frameInput, arenaW, arenaH)
+					unit.IsFiring = frameInput.IsFiring
 				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
 					// Player flagship should NEVER move or run AI when unpiloted; it holds position and coasts spin to zero.
 					unit.IsFiring = false

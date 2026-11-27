@@ -142,14 +142,28 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     zoomRef,
     canControl: !hud.isGameOver,
     resolvePilotedUnit: (units) => {
+      // Always prefer the server's authoritative PILOTED unit if present in the snapshot
+      const authoritativePilot = units.find(
+        (u) => u.ownerId === 'player' && u.aiState === 'PILOTED' && !u.isDestroyed
+      );
+      if (authoritativePilot) {
+        if (pilotedIdRef.current !== authoritativePilot.id) {
+          const hadPrevious = pilotedIdRef.current !== null;
+          pilotedIdRef.current = authoritativePilot.id;
+          if (!hadPrevious) {
+            isInitializedRef.current = false;
+          }
+        }
+        return authoritativePilot;
+      }
+
       let unit = pilotedIdRef.current
         ? units.find((u) => u.id === pilotedIdRef.current && !u.isDestroyed)
         : undefined;
 
       if (!unit) {
         const hadPreviousPilot = pilotedIdRef.current !== null;
-        // Always prefer the authoritative server-designated tdm-pilot-* unit if it is alive
-        // so match resets can never latch onto an AI-controlled ally.
+        // Fallback for older servers or pre-transfer frame: prefer tdm-pilot-* prefix
         const designatedPilot = units.find(
           (u) => u.ownerId === 'player' && u.id.startsWith('tdm-pilot-') && !u.isDestroyed
         );
@@ -307,6 +321,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     let lastRadarDrawMs = 0;
     let lastErrLogMs = 0;
     let lastTime = performance.now();
+    let lastSnapTime = lastTime;
     let lastHudSyncTime = lastTime;
     let lastSyncedNotice = '';
     let fpsAvg = 60;
@@ -333,6 +348,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           const parsedState = unpackServerBinaryMessage(pendingBuf);
           if (parsedState) {
             snapshotRef.current = parsedState;
+            lastSnapTime = currentTime;
             if (!parsedState.units || parsedState.units.length === 0) {
               serverHistoryRef.current = [];
               isInitializedRef.current = false;
@@ -372,26 +388,36 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
         if (pendingPilotSyncRef.current) {
           pendingPilotSyncRef.current = false;
+          clearInputs();
           if (playerUnit) {
             sendImmediate(liveUnits);
           }
         }
 
-        if (playerUnit) {
-          if (!isInitializedRef.current) {
-            renderPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
-            renderAngleRef.current = playerUnit.angle;
-            cameraPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
-            isInitializedRef.current = true;
-          }
-          const lerpRate = 1.0 - Math.pow(0.0001, dt);
-          renderPosRef.current.x += (playerUnit.pos.x - renderPosRef.current.x) * lerpRate;
-          renderPosRef.current.y += (playerUnit.pos.y - renderPosRef.current.y) * lerpRate;
-          renderAngleRef.current = lerpAngleShort(renderAngleRef.current, playerUnit.angle, lerpRate);
+        const sinceSnapTicks = Math.min(4.8, Math.max(0, (currentTime - lastSnapTime) * 0.06));
 
-          const camLerp = 1.0 - Math.exp(-12.0 * dt);
-          cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
-          cameraPosRef.current.y += (renderPosRef.current.y - cameraPosRef.current.y) * camLerp;
+        if (playerUnit) {
+          const predX = playerUnit.pos.x + (playerUnit.vel?.x || 0) * sinceSnapTicks;
+          const predY = playerUnit.pos.y + (playerUnit.vel?.y || 0) * sinceSnapTicks;
+
+          if (
+            !isInitializedRef.current ||
+            Math.hypot(predX - renderPosRef.current.x, predY - renderPosRef.current.y) > 220
+          ) {
+            renderPosRef.current = { x: predX, y: predY };
+            renderAngleRef.current = playerUnit.angle;
+            cameraPosRef.current = { x: predX, y: predY };
+            isInitializedRef.current = true;
+          } else {
+            const lerpRate = 1.0 - Math.exp(-28.0 * dt);
+            renderPosRef.current.x += (predX - renderPosRef.current.x) * lerpRate;
+            renderPosRef.current.y += (predY - renderPosRef.current.y) * lerpRate;
+            renderAngleRef.current = lerpAngleShort(renderAngleRef.current, playerUnit.angle, lerpRate);
+
+            const camLerp = 1.0 - Math.exp(-16.0 * dt);
+            cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
+            cameraPosRef.current.y += (renderPosRef.current.y - cameraPosRef.current.y) * camLerp;
+          }
         }
 
         const cameraX = cameraPosRef.current.x;
@@ -462,14 +488,14 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           });
         }
 
-        // 3. Projectiles
+        // 3. Projectiles (gentle bounded extrapolation between server snapshots)
         const rawProjectiles = snapshot.projectiles || [];
         const renderProjectiles: RenderProjectile[] = [];
         for (let i = 0; i < rawProjectiles.length; i++) {
           const p = rawProjectiles[i];
           renderProjectiles.push({
-            x: p.pos.x,
-            y: p.pos.y,
+            x: p.pos.x + (p.vel?.x || 0) * sinceSnapTicks,
+            y: p.pos.y + (p.vel?.y || 0) * sinceSnapTicks,
             kind: 'dot',
             color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
             radius: 3,
@@ -628,7 +654,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
       resizeObserver.disconnect();
       renderer.destroy();
     };
-  }, [pilotedUnit, templatesRef, tickFlightInput, sendImmediate]);
+  }, [pilotedUnit, templatesRef, tickFlightInput, sendImmediate, clearInputs]);
 
   const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;

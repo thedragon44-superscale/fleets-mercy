@@ -4,7 +4,7 @@ import { SnapshotUnit } from '../parsers/binaryCodec';
 import { screenToWorld } from '../renderer/viewportCamera';
 
 const DEADZONE_RADIUS = 35.0;
-const INPUT_SEND_INTERVAL_MS = 12; // Safely below 16.67ms 60Hz rAF cadence to avoid 30Hz frame drops
+const INPUT_SEND_INTERVAL_MS = 16; // Match 60Hz server tick cadence (discrete key transitions flush immediately)
 
 const CODE_TO_FLIGHT_KEY: Record<string, 'w' | 'a' | 's' | 'd'> = {
   KeyW: 'w',
@@ -139,8 +139,18 @@ export const useFlightControls = ({
   const clearInputs = useCallback(() => {
     keysRef.current = {};
     isFiringRef.current = false;
+    const prevUnitId = lastSentUnitIdRef.current;
     lastSentUnitIdRef.current = '';
-    inputDirtyRef.current = true;
+
+    // Flush zeroed controls immediately so blur/visibilitychange/contextmenu stop thrust
+    // even if requestAnimationFrame is paused by the browser or OS.
+    const sent = onSendInputRef.current({
+      keys: {},
+      angle: lastAngleRef.current,
+      isFiring: false,
+      currentId: prevUnitId,
+    });
+    inputDirtyRef.current = sent === false;
   }, []);
 
   /** One-shot sender for mode actions (reset, deploy, sandboxSpawn, etc.) */
@@ -235,6 +245,9 @@ export const useFlightControls = ({
         return;
       }
 
+      // Ignore OS/browser modifier shortcuts (e.g. Ctrl+W, Alt+W, Super+W) whose keyup is often swallowed
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       if (!canControlRef.current) return;
 
       if (e.code === 'Space') {
@@ -253,12 +266,28 @@ export const useFlightControls = ({
       }
     };
 
+    const flushKeyRelease = () => {
+      const activeControl = canControlRef.current;
+      const sent = onSendInputRef.current({
+        keys: activeControl ? { ...keysRef.current } : {},
+        angle: lastAngleRef.current,
+        isFiring: activeControl && isFiringRef.current && !!lastSentUnitIdRef.current,
+        currentId: lastSentUnitIdRef.current,
+      });
+      if (sent === false) {
+        inputDirtyRef.current = true;
+      } else {
+        inputDirtyRef.current = false;
+        lastSendTimeRef.current = performance.now();
+      }
+    };
+
     const onKeyUp = (e: KeyboardEvent) => {
       // Never swallow keyup for already-held flight keys even if focus moved into an input
       if (e.code === 'Space' || e.key === ' ') {
         if (isFiringRef.current) {
           isFiringRef.current = false;
-          inputDirtyRef.current = true;
+          flushKeyRelease();
         }
         return;
       }
@@ -266,7 +295,7 @@ export const useFlightControls = ({
       const flightKey = resolveFlightKey(e);
       if (flightKey && keysRef.current[flightKey]) {
         keysRef.current[flightKey] = false;
-        inputDirtyRef.current = true;
+        flushKeyRelease();
       }
     };
 

@@ -150,8 +150,10 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
   } = useGameSocket(`${WS_BASE_URL}/ws?mapId=${mapId}`);
 
   useEffect(() => {
-    controlledUnitIdRef.current = controlledUnitId;
-    isInitialized.current = false;
+    if (controlledUnitIdRef.current !== controlledUnitId) {
+      controlledUnitIdRef.current = controlledUnitId;
+      isInitialized.current = false;
+    }
   }, [controlledUnitId]);
 
   useEffect(() => {
@@ -293,7 +295,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
   useEffect(() => {
     const id = setInterval(() => {
-      setFpsDisplay(Math.round(fpsAvgRef.current));
+      const nextFps = Math.round(fpsAvgRef.current);
+      setFpsDisplay((prev) => (prev === nextFps ? prev : nextFps));
     }, 250);
     return () => clearInterval(id);
   }, []);
@@ -488,6 +491,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
     let lastRadarDrawMs = 0;
     let lastTime = performance.now();
+    let lastSnapTime = lastTime;
     let lastErrLogMs = 0;
 
     const renderLoop = () => {
@@ -508,6 +512,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         const freshSnap = consumeLatestSnapshot();
         if (freshSnap) {
           serverState.current = freshSnap;
+          lastSnapTime = currentTime;
           if (isBootstrappingRef.current) {
             isBootstrappingRef.current = false;
             setIsBootstrapping(false);
@@ -584,47 +589,46 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         const controlledUnit = tickFlightInput(currentTime, liveUnits);
         const activeId = controlledUnit?.id || '';
 
+        const sinceSnapTicks = isPausedRef.current
+          ? 0
+          : Math.min(4.8, Math.max(0, (currentTime - lastSnapTime) * 0.06 * simulationSpeedRef.current));
+
         if (controlledUnit) {
-          if (!isInitialized.current) {
-            renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
+          const predX = controlledUnit.pos.x + (controlledUnit.vel?.x || 0) * sinceSnapTicks;
+          const predY = controlledUnit.pos.y + (controlledUnit.vel?.y || 0) * sinceSnapTicks;
+
+          if (
+            !isInitialized.current ||
+            Math.hypot(predX - renderPos.current.x, predY - renderPos.current.y) > 220
+          ) {
+            renderPos.current = { x: predX, y: predY };
             renderAngle.current = controlledUnit.angle;
+            if (isCameraLockedRef.current) {
+              cameraPos.current = { x: predX, y: predY };
+            }
             isInitialized.current = true;
+          } else {
+            const lerpRate = 1.0 - Math.exp(-28.0 * dt);
+            renderPos.current.x += (predX - renderPos.current.x) * lerpRate;
+            renderPos.current.y += (predY - renderPos.current.y) * lerpRate;
+            renderAngle.current = lerpAngleShort(renderAngle.current, controlledUnit.angle, lerpRate);
           }
 
-          const lerpRate = 1.0 - Math.pow(0.0001, dt);
-          renderPos.current.x += (controlledUnit.pos.x - renderPos.current.x) * lerpRate;
-          renderPos.current.y += (controlledUnit.pos.y - renderPos.current.y) * lerpRate;
-          renderAngle.current = lerpAngleShort(renderAngle.current, controlledUnit.angle, lerpRate);
-
           if (isCameraLockedRef.current) {
-            const worldMouse = canvasToWorld(
-              mouseCanvasPosRef.current.x,
-              mouseCanvasPosRef.current.y
-            );
-            const dx = worldMouse.x - renderPos.current.x;
-            const dy = worldMouse.y - renderPos.current.y;
-            const dist = Math.hypot(dx, dy);
-
+            // Pure screen-space cursor lead (no cameraPos -> worldMouse feedback loop, no W-toggle rubberband)
             let targetCamX = renderPos.current.x;
             let targetCamY = renderPos.current.y;
 
-            if (keysRef.current['w'] && dist > 1) {
-              const lookAheadRatio = 0.45;
-              targetCamX +=
-                (dx / dist) *
-                Math.min(dist * lookAheadRatio, (viewW * 0.35) / zoomRef.current);
-              targetCamY +=
-                (dy / dist) *
-                Math.min(dist * lookAheadRatio, (viewH * 0.35) / zoomRef.current);
-            } else if (canvasModeRef.current === 'pilot') {
-              targetCamX +=
-                ((mouseCanvasPosRef.current.x - viewW / 2) * 0.15) / zoomRef.current;
-              targetCamY +=
-                ((mouseCanvasPosRef.current.y - viewH / 2) * 0.15) / zoomRef.current;
+            if (canvasModeRef.current === 'pilot') {
+              const maxLeadX = (viewW * 0.14) / zoomRef.current;
+              const maxLeadY = (viewH * 0.14) / zoomRef.current;
+              const rawLeadX = ((mouseCanvasPosRef.current.x - viewW / 2) * 0.12) / zoomRef.current;
+              const rawLeadY = ((mouseCanvasPosRef.current.y - viewH / 2) * 0.12) / zoomRef.current;
+              targetCamX += Math.max(-maxLeadX, Math.min(maxLeadX, rawLeadX));
+              targetCamY += Math.max(-maxLeadY, Math.min(maxLeadY, rawLeadY));
             }
 
-            const camBaseFactor = keysRef.current['w'] ? 18.0 : 8.0;
-            const camLerpFactor = 1.0 - Math.exp(-camBaseFactor * dt);
+            const camLerpFactor = 1.0 - Math.exp(-16.0 * dt);
             cameraPos.current.x += (targetCamX - cameraPos.current.x) * camLerpFactor;
             cameraPos.current.y += (targetCamY - cameraPos.current.y) * camLerpFactor;
           }
@@ -638,7 +642,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
         // 2. Interpolated Units -> ViewportFrameState
         const interpolatedUnits =
-          liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
+          liveUnits.length > 0
+            ? getInterpolatedUnits(serverHistoryRef.current, currentTime, !isPausedRef.current)
+            : [];
         const unitsToDraw =
           interpolatedUnits && interpolatedUnits.length > 0 ? interpolatedUnits : liveUnits;
 
@@ -828,14 +834,14 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           });
         }
 
-        // 3. Projectiles
+        // 3. Projectiles (bounded extrapolation between snapshots, respecting pause & timeScale)
         const rawProjectiles = snap.projectiles || [];
         const renderProjectiles: RenderProjectile[] = [];
         for (let i = 0; i < rawProjectiles.length; i++) {
           const p = rawProjectiles[i];
           renderProjectiles.push({
-            x: p.pos.x,
-            y: p.pos.y,
+            x: p.pos.x + (p.vel?.x || 0) * sinceSnapTicks,
+            y: p.pos.y + (p.vel?.y || 0) * sinceSnapTicks,
             kind: 'dot',
             color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
             radius: 3,

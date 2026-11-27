@@ -21,15 +21,18 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 
 type TDMRoom struct {
 	*game.GameRoom
-	mu              sync.Mutex
-	clients         map[*game.WSClient]bool
-	pilotedUnitType string
-	pilotedUnitID   string
-	customUnitPool  []string
-	isGameOver      bool
-	winningFaction  string
-	lastInput       game.SandboxClientInput
-	lastInputAt     time.Time
+	mu               sync.Mutex
+	inputMu          sync.Mutex
+	clients          map[*game.WSClient]bool
+	pilotedUnitType  string
+	pilotedUnitID    string
+	customUnitPool   []string
+	isGameOver       bool
+	winningFaction   string
+	lastInput        game.SandboxClientInput
+	lastInputAt      time.Time
+	pendingReset     bool
+	pendingControlID string
 
 	fbBuilder   *flatbuffers.Builder
 	unitOffsets []flatbuffers.UOffsetT
@@ -98,10 +101,17 @@ func (r *TDMRoom) ResetMatch() {
 	r.SetTick(0)
 	r.isGameOver = false
 	r.winningFaction = ""
+	r.inputMu.Lock()
 	r.lastInput = game.SandboxClientInput{}
 	r.lastInputAt = time.Time{}
+	r.pendingReset = false
+	r.pendingControlID = ""
+	r.inputMu.Unlock()
 
 	r.pilotedUnitID = InitializeTDMRoster(r, r.pilotedUnitType, r.customUnitPool)
+	if pilotUnit, ok := r.GetUnits()[r.pilotedUnitID]; ok && pilotUnit != nil {
+		pilotUnit.AIState = "PILOTED"
+	}
 	log.Printf("⚔️ TDM Match Initialized: 20v20 Skirmish spawned. Piloted unit locked to ID: %s", r.pilotedUnitID)
 }
 
@@ -174,7 +184,12 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		delete(r.clients, client)
 		noClientsLeft := len(r.clients) == 0
 		if noClientsLeft {
+			r.inputMu.Lock()
 			r.lastInput = game.SandboxClientInput{}
+			r.lastInputAt = time.Time{}
+			r.pendingReset = false
+			r.pendingControlID = ""
+			r.inputMu.Unlock()
 		}
 		r.mu.Unlock()
 		client.Close()
@@ -194,41 +209,32 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 		clientInput := SpaceTactics.GetRootAsClientInput(msg, 0)
 
-		r.mu.Lock()
-		r.lastInput.W = clientInput.W()
-		r.lastInput.S = clientInput.S()
-		r.lastInput.A = clientInput.A()
-		r.lastInput.D = clientInput.D()
-		r.lastInput.Angle = clientInput.Angle()
-		r.lastInput.IsFiring = clientInput.IsFiring()
-		r.lastInputAt = time.Now()
-		controlledID := string(clientInput.ControlledUnitId())
-		r.lastInput.ControlledUnitID = controlledID
-
+		// Lock only inputMu so incoming WASD key-release packets never queue behind the 60Hz tick lock.
+		r.inputMu.Lock()
 		if clientInput.Reset() {
-			r.ResetMatch()
-		} else if controlledID != "" && controlledID != r.pilotedUnitID {
-			units := r.GetUnits()
-			currentPilot, pilotExists := units[r.pilotedUnitID]
-			if !pilotExists || currentPilot == nil || currentPilot.IsDestroyed {
-				if candidate, ok := units[controlledID]; ok && candidate != nil && !candidate.IsDestroyed && candidate.OwnerID == "player" {
-					r.pilotedUnitID = controlledID
-					candidate.CurrentAngularVel = 0
-					r.lastInput.W = false
-					r.lastInput.S = false
-					r.lastInput.A = false
-					r.lastInput.D = false
-					r.lastInput.IsFiring = false
-					log.Printf("🔄 TDM Pilot transferred to surviving ally: %s (%s)", candidate.ID, candidate.Type)
-				}
+			r.pendingReset = true
+			r.pendingControlID = ""
+			r.lastInput = game.SandboxClientInput{}
+			r.lastInputAt = time.Time{}
+		} else {
+			r.lastInput.W = clientInput.W()
+			r.lastInput.S = clientInput.S()
+			r.lastInput.A = clientInput.A()
+			r.lastInput.D = clientInput.D()
+			r.lastInput.Angle = clientInput.Angle()
+			r.lastInput.IsFiring = clientInput.IsFiring()
+			r.lastInputAt = time.Now()
+			if controlledID := string(clientInput.ControlledUnitId()); controlledID != "" {
+				r.lastInput.ControlledUnitID = controlledID
+				r.pendingControlID = controlledID
 			}
 		}
-		r.mu.Unlock()
+		r.inputMu.Unlock()
 	}
 }
 
 func (r *TDMRoom) Run() {
-	ticker := time.NewTicker(16 * time.Millisecond)
+	ticker := time.NewTicker(time.Second / 60)
 	defer ticker.Stop()
 
 	for {
@@ -237,7 +243,66 @@ func (r *TDMRoom) Run() {
 			return
 		case <-ticker.C:
 		}
+
+		// Snapshot latest inputs under lightweight inputMu before acquiring simulation lock r.mu
+		r.inputMu.Lock()
+		doReset := r.pendingReset
+		r.pendingReset = false
+		requestedControlID := r.pendingControlID
+		r.pendingControlID = ""
+		frameInput := r.lastInput
+		inputAt := r.lastInputAt
+
+		// Watchdog: while any movement/fire input is held, the client streams heartbeats ~60Hz.
+		// If no input packet arrives for >500ms, clear latched keys so runaway thrust is impossible.
+		if (frameInput.W || frameInput.S || frameInput.A || frameInput.D || frameInput.IsFiring) &&
+			!inputAt.IsZero() && time.Since(inputAt) > 500*time.Millisecond {
+			frameInput.W = false
+			frameInput.S = false
+			frameInput.A = false
+			frameInput.D = false
+			frameInput.IsFiring = false
+			r.lastInput.W = false
+			r.lastInput.S = false
+			r.lastInput.A = false
+			r.lastInput.D = false
+			r.lastInput.IsFiring = false
+		}
+		r.inputMu.Unlock()
+
 		r.mu.Lock()
+		if doReset {
+			r.ResetMatch()
+			r.mu.Unlock()
+			continue
+		}
+
+		// Handle pilot transfer when the previous piloted unit was destroyed
+		if requestedControlID != "" && requestedControlID != r.pilotedUnitID {
+			units := r.GetUnits()
+			currentPilot, pilotExists := units[r.pilotedUnitID]
+			if !pilotExists || currentPilot == nil || currentPilot.IsDestroyed {
+				if candidate, ok := units[requestedControlID]; ok && candidate != nil && !candidate.IsDestroyed && candidate.OwnerID == "player" {
+					r.pilotedUnitID = requestedControlID
+					candidate.CurrentAngularVel = 0
+					candidate.AIState = "PILOTED"
+					frameInput.W = false
+					frameInput.S = false
+					frameInput.A = false
+					frameInput.D = false
+					frameInput.IsFiring = false
+					r.inputMu.Lock()
+					r.lastInput.W = false
+					r.lastInput.S = false
+					r.lastInput.A = false
+					r.lastInput.D = false
+					r.lastInput.IsFiring = false
+					r.inputMu.Unlock()
+					log.Printf("🔄 TDM Pilot transferred to surviving ally: %s (%s)", candidate.ID, candidate.Type)
+				}
+			}
+		}
+
 		r.SetTick(r.GetTick() + 1)
 
 		// 1. Check Win Conditions
@@ -251,48 +316,48 @@ func (r *TDMRoom) Run() {
 
 		arenaW, arenaH := r.GetArenaSize()
 
-		// Watchdog: while any movement/fire input is held, the client streams heartbeats ~60Hz.
-		// If no input packet arrives for >500ms, clear latched keys so runaway thrust is impossible.
-		if (r.lastInput.W || r.lastInput.S || r.lastInput.A || r.lastInput.D || r.lastInput.IsFiring) &&
-			!r.lastInputAt.IsZero() && time.Since(r.lastInputAt) > 500*time.Millisecond {
-			r.lastInput.W = false
-			r.lastInput.S = false
-			r.lastInput.A = false
-			r.lastInput.D = false
-			r.lastInput.IsFiring = false
-		}
-
 		// 2. Run Game Physics & AI Simulation Loops
 		if !r.isGameOver {
 			if envW := r.GetEnvWorld(); envW != nil {
 				envW.StepAuthored()
 			}
 
+			// Precompute O(N^2) per-faction radar visibility once per tick (replaces O(N^3) scans)
+			r.RefreshVisibilityCache()
+
 			units := r.GetUnits()
 			for id, unit := range units {
 				if unit.IsDestroyed {
 					if id == r.pilotedUnitID {
 						r.pilotedUnitID = ""
+						frameInput.W = false
+						frameInput.S = false
+						frameInput.A = false
+						frameInput.D = false
+						frameInput.IsFiring = false
+						r.inputMu.Lock()
 						r.lastInput.W = false
 						r.lastInput.S = false
 						r.lastInput.A = false
 						r.lastInput.D = false
 						r.lastInput.IsFiring = false
+						r.inputMu.Unlock()
 					}
 					delete(units, id)
 					continue
 				}
 
 				if unit.ID == r.pilotedUnitID {
+					unit.AIState = "PILOTED"
 					game.HandlePlayerMovement(unit, game.SandboxClientInput{
-						W:        r.lastInput.W,
-						S:        r.lastInput.S,
-						A:        r.lastInput.A,
-						D:        r.lastInput.D,
-						Angle:    r.lastInput.Angle,
-						IsFiring: r.lastInput.IsFiring,
+						W:        frameInput.W,
+						S:        frameInput.S,
+						A:        frameInput.A,
+						D:        frameInput.D,
+						Angle:    frameInput.Angle,
+						IsFiring: frameInput.IsFiring,
 					}, arenaW, arenaH)
-					unit.IsFiring = r.lastInput.IsFiring
+					unit.IsFiring = frameInput.IsFiring
 				} else {
 					game.RunUnitAI(unit, r.GameRoom, nil)
 				}
