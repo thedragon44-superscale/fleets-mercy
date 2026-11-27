@@ -3,6 +3,8 @@ package game
 import (
 	"fmt"
 	"math"
+
+	"space-tactics-server/internal/game/envphysics"
 	"space-tactics-server/internal/models"
 )
 
@@ -98,6 +100,17 @@ func UpdateProjectiles(r *GameRoom) {
 		p.Pos.X += p.Vel.X
 		p.Pos.Y += p.Vel.Y
 		p.Life--
+
+		// Shared universal environment cover blocking & Singularity Rift refraction
+		if r.envWorld != nil {
+			vel := envphysics.Vec2{X: p.Vel.X, Y: p.Vel.Y}
+			if envphysics.StepProjectile(envphysics.Vec2{X: p.Pos.X, Y: p.Pos.Y}, &vel, &p.RefractedBy, r.envWorld) {
+				continue
+			}
+			p.Vel.X = vel.X
+			p.Vel.Y = vel.Y
+		}
+
 		hit := false
 
 		for _, unit := range r.units {

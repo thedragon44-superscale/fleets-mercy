@@ -16,22 +16,21 @@ import (
 
 var (
 	roomMu      sync.Mutex
-	activeRooms = make(map[string]*game.GameRoom)
+	activeRooms = make(map[int]*game.GameRoom)
 )
 
-func getOrCreateRoom(mapID int, isSandbox bool) *game.GameRoom {
+func getOrCreateSandboxRoom(mapID int) *game.GameRoom {
 	roomMu.Lock()
 	defer roomMu.Unlock()
 
-	key := fmt.Sprintf("%d-%v", mapID, isSandbox)
-	if room, exists := activeRooms[key]; exists {
+	if room, exists := activeRooms[mapID]; exists {
 		return room
 	}
 
-	room := game.NewGameRoom(mapID, isSandbox)
+	room := game.NewGameRoom(mapID)
 	go room.Run()
-	activeRooms[key] = room
-	log.Printf("🗺️ Spawned dynamic GameRoom for Map ID %d (Sandbox: %v)", mapID, isSandbox)
+	activeRooms[mapID] = room
+	log.Printf("🗺️ Spawned Unit Testing Sandbox room for Map ID %d", mapID)
 	return room
 }
 
@@ -53,16 +52,16 @@ func main() {
 			fmt.Sscanf(mapIDStr, "%d", &mapID)
 		}
 
-		mode := r.URL.Query().Get("mode")
-		isSandbox := (mode == "sandbox")
-
-		room := getOrCreateRoom(mapID, isSandbox)
+		room := getOrCreateSandboxRoom(mapID)
 		room.HandleWS(w, r)
 	})
 
 	// Dedicated WebSocket route for 20v20 Team Deathmatch Mode
 	http.HandleFunc("/ws/tdm", func(w http.ResponseWriter, r *http.Request) {
 		mapIDStr := r.URL.Query().Get("mapId")
+		if mapIDStr == "" {
+			mapIDStr = r.URL.Query().Get("map")
+		}
 		mapID := 1
 		if mapIDStr != "" {
 			fmt.Sscanf(mapIDStr, "%d", &mapID)
@@ -96,12 +95,13 @@ func main() {
 	http.HandleFunc("/api/admin/players", api.AdminListPlayersHandler)
 	http.HandleFunc("/api/admin/wallet/adjust", api.AdminAdjustWalletHandler)
 
-	// --- SPACE PIRATES CONFIG & CLUSTER DESIGNER ROUTES ---
+	// --- SPACE PIRATES CONFIG & SPAWN POOL ROUTES ---
 
 	http.HandleFunc("/api/casino/sp/config", api.GetSPConfigHandler)
 	http.HandleFunc("/api/casino/sp/clusters", api.SPClustersHandler)
+	http.HandleFunc("/api/casino/sp/pool", api.SPEnvPoolHandler)
 
-	// --- UNIVERSAL ENVIRONMENT BLUEPRINT & MAP PLACEMENT ROUTES ---
+	// --- UNIVERSAL ENVIRONMENT BLUEPRINT & MAP ROUTES ---
 
 	http.HandleFunc("/api/env/blueprints", api.EnvBlueprintsHandler)
 	http.HandleFunc("/api/env/pools", api.EnvPoolsHandler)
@@ -112,15 +112,8 @@ func main() {
 	http.HandleFunc("/api/loadouts", api.GetLoadoutsHandler)
 	http.HandleFunc("/api/loadouts/save", api.SaveLoadoutHandler)
 
-	http.HandleFunc("/api/maps", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			api.SaveCustomMapHandler(w, r)
-		} else {
-			api.GetMapsHandler(w, r)
-		}
-	})
-
-	http.HandleFunc("/api/map-detail", api.GetMapDetailHandler)
+	http.HandleFunc("/api/maps", api.UniversalMapsHandler)
+	http.HandleFunc("/api/map-detail", api.UniversalMapDetailHandler)
 
 	http.HandleFunc("/api/templates", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {

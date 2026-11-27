@@ -113,6 +113,21 @@ export interface ModeEnvPoolEntry {
   isEnabled: boolean;
 }
 
+export interface SPEnvPoolEntry {
+  poolId: number;
+  rulesetId: number;
+  blueprintId: number;
+  spawnWeight: number;
+  maxConcurrent: number;
+  scaleOverride: number | null;
+  speedMin: number | null;
+  speedMax: number | null;
+  minWraps: number | null;
+  maxWraps: number | null;
+  isEnabled: boolean;
+  blueprint?: EnvBlueprint;
+}
+
 export interface MapEnvPlacement {
   placementId: number;
   mapId: number;
@@ -404,5 +419,34 @@ export async function saveMapEnvPlacements(
     body: JSON.stringify({ mapId, placements }),
   });
   if (!res.ok) throw new Error(await readErr(res, 'Failed to save map placements'));
+  return await res.json();
+}
+
+export async function fetchSPEnvPool(rulesetId = 0): Promise<SPEnvPoolEntry[]> {
+  const qs = rulesetId > 0 ? `?rulesetId=${encodeURIComponent(rulesetId)}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/casino/sp/pool${qs}`);
+  if (!res.ok) throw new Error(await readErr(res, 'Failed to fetch Space Pirates spawn pool'));
+  const data = await res.json();
+  return Array.isArray(data) ? (data as SPEnvPoolEntry[]) : [];
+}
+
+export async function saveSPEnvPoolEntry(
+  entry: Omit<SPEnvPoolEntry, 'poolId' | 'blueprint'> & { poolId?: number }
+): Promise<{ success: boolean; poolId: number; entry: SPEnvPoolEntry }> {
+  const res = await fetch(`${API_BASE_URL}/api/casino/sp/pool`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  });
+  if (!res.ok) throw new Error(await readErr(res, 'Failed to save Space Pirates pool entry'));
+  return await res.json();
+}
+
+export async function deleteSPEnvPoolEntry(poolId: number): Promise<{ success: boolean }> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/casino/sp/pool?id=${encodeURIComponent(poolId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) throw new Error(await readErr(res, 'Failed to delete Space Pirates pool entry'));
   return await res.json();
 }

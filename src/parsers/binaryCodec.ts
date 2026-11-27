@@ -6,6 +6,13 @@ import { UnitConfigUpdate } from "../generated/space-tactics/unit-config-update"
 import { UnitGroupingPayload } from "../generated/space-tactics/unit-grouping-payload";
 import { SandboxCountPair } from "../generated/space-tactics/sandbox-count-pair";
 import { SandboxTimeControl } from "../generated/space-tactics/sandbox-time-control";
+import { EnvObject } from "../generated/space-tactics/env-object";
+import { EnvComponent } from "../generated/space-tactics/env-component";
+import { EnvObjectType } from "../generated/space-tactics/env-object-type";
+import { EnvComponentKind } from "../generated/space-tactics/env-component-kind";
+import { Vector2D as FBVector2D } from "../generated/space-tactics/vector2d";
+
+export { EnvObjectType, EnvComponentKind };
 
 export interface Vector2D {
   x: number;
@@ -37,6 +44,7 @@ export interface SnapshotUnit {
   aiState: string;
   currentThermal: number;
   currentAmmo: number;
+  isStealthed: boolean;
 }
 
 export interface SnapshotProjectile {
@@ -47,10 +55,37 @@ export interface SnapshotProjectile {
   vel: Vector2D;
 }
 
+export interface SnapshotEnvComponent {
+  id: number;
+  kind: EnvComponentKind;
+  pos: Vector2D;
+  vel: Vector2D;
+  radius: number;
+  innerRadius: number;
+  isNode: boolean;
+  resourceType: number;
+  colorHex: string;
+}
+
+export interface SnapshotEnvObject {
+  id: number;
+  blueprintId: number;
+  objectType: EnvObjectType;
+  pos: Vector2D;
+  vel: Vector2D;
+  angle: number;
+  scale: number;
+  boundingRadius: number;
+  parentObjectId: number;
+  orbitRadius: number;
+  components: SnapshotEnvComponent[];
+}
+
 export interface ServerStateSnapshot {
   tick: number | bigint;
   units: SnapshotUnit[];
   projectiles: SnapshotProjectile[];
+  envObjects: SnapshotEnvObject[];
   mapBounds: {
     width: number;
     height: number;
@@ -58,6 +93,12 @@ export interface ServerStateSnapshot {
   isGameOver: boolean;
   winningFaction: string;
 }
+
+// Reusable FlatBuffers accessors for 60Hz env decoding
+const _envObj = new EnvObject();
+const _envComp = new EnvComponent();
+const _envPos = new FBVector2D();
+const _envVel = new FBVector2D();
 
 // Safe interop fallback for Vite / CJS package bundling of flatbuffers
 const FB = (flatbuffersNS as any).Flatbuffers || flatbuffersNS;
@@ -120,6 +161,7 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
         aiState: u.aiState() || '',
         currentThermal: u.currentThermal(),
         currentAmmo: u.currentAmmo(),
+        isStealthed: u.isStealthed(),
       });
     }
 
@@ -141,10 +183,57 @@ export function unpackServerBinaryMessage(arrayBuffer: ArrayBuffer): ServerState
       });
     }
 
+    // Parse Universal Environmental Objects
+    const envLen = serverState.envObjectsLength();
+    const envObjects: SnapshotEnvObject[] = new Array(envLen);
+    for (let i = 0; i < envLen; i++) {
+      const eo = serverState.envObjects(i, _envObj)!;
+      const ePos = eo.pos(_envPos);
+      const eVel = eo.vel(_envVel);
+      const ox = ePos ? ePos.x() : 0;
+      const oy = ePos ? ePos.y() : 0;
+      const ovx = eVel ? eVel.x() : 0;
+      const ovy = eVel ? eVel.y() : 0;
+
+      const cLen = eo.componentsLength();
+      const components: SnapshotEnvComponent[] = new Array(cLen);
+      for (let j = 0; j < cLen; j++) {
+        const ec = eo.components(j, _envComp)!;
+        const cPos = ec.pos(_envPos);
+        const cVel = ec.vel(_envVel);
+        components[j] = {
+          id: ec.id(),
+          kind: ec.kind(),
+          pos: { x: cPos ? cPos.x() : 0, y: cPos ? cPos.y() : 0 },
+          vel: { x: cVel ? cVel.x() : 0, y: cVel ? cVel.y() : 0 },
+          radius: ec.radius(),
+          innerRadius: ec.innerRadius(),
+          isNode: ec.isNode(),
+          resourceType: ec.resourceType(),
+          colorHex: ec.colorHex() || '',
+        };
+      }
+
+      envObjects[i] = {
+        id: eo.id(),
+        blueprintId: eo.blueprintId(),
+        objectType: eo.objectType(),
+        pos: { x: ox, y: oy },
+        vel: { x: ovx, y: ovy },
+        angle: eo.angle(),
+        scale: eo.scale() || 1,
+        boundingRadius: eo.boundingRadius(),
+        parentObjectId: eo.parentObjectId(),
+        orbitRadius: eo.orbitRadius(),
+        components,
+      };
+    }
+
     return {
       tick: serverState.tick(),
       units,
       projectiles,
+      envObjects,
       mapBounds: {
         width: mapWidth,
         height: mapHeight,

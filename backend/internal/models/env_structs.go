@@ -1,6 +1,9 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // EnvComponentSpec defines one local-space primitive inside an EnvBlueprint.
 type EnvComponentSpec struct {
@@ -114,4 +117,54 @@ type MapEnvPlacement struct {
 type SaveMapPlacementsRequest struct {
 	MapID      int               `json:"mapId"`
 	Placements []MapEnvPlacement `json:"placements"`
+}
+
+// SPEnvPoolEntry represents a customizable Space Pirates spawn pool entry in sp_env_pool.
+type SPEnvPoolEntry struct {
+	PoolID        int           `json:"poolId"`
+	RulesetID     int           `json:"rulesetId"`
+	BlueprintID   int           `json:"blueprintId"`
+	SpawnWeight   int           `json:"spawnWeight"`
+	MaxConcurrent int           `json:"maxConcurrent"`
+	ScaleOverride *float64      `json:"scaleOverride"`
+	SpeedMin      *float64      `json:"speedMin"`
+	SpeedMax      *float64      `json:"speedMax"`
+	MinWraps      *int          `json:"minWraps"`
+	MaxWraps      *int          `json:"maxWraps"`
+	IsEnabled     bool          `json:"isEnabled"`
+	Blueprint     *EnvBlueprint `json:"blueprint,omitempty"`
+}
+
+// HydratedMapPlacement pairs a map_env_placements row with its full EnvBlueprint.
+type HydratedMapPlacement struct {
+	MapEnvPlacement
+	Blueprint *EnvBlueprint `json:"blueprint,omitempty"`
+}
+
+// UniversalMapSummary is returned by GET /api/maps for the Map Picker & Universal Map Builder.
+type UniversalMapSummary struct {
+	ID             int       `json:"id"`
+	MapKey         string    `json:"mapKey"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	Width          float64   `json:"width"`
+	Height         float64   `json:"height"`
+	PlacementCount int       `json:"placementCount"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// UniversalMapDetail is returned by GET /api/map-detail?id=<id> with hydrated blueprint placements.
+type UniversalMapDetail struct {
+	UniversalMapSummary
+	Placements []HydratedMapPlacement `json:"placements"`
+}
+
+// SaveUniversalMapRequest is the atomic payload for POST /api/maps.
+type SaveUniversalMapRequest struct {
+	ID          *int              `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Width       float64           `json:"width"`
+	Height      float64           `json:"height"`
+	Placements  []MapEnvPlacement `json:"placements"`
 }

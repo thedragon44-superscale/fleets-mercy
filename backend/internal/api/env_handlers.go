@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -175,4 +176,146 @@ func EnvPlacementsHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// SPEnvPoolHandler serves GET / POST / DELETE /api/casino/sp/pool for Space Pirates' customizable spawn pool.
+func SPEnvPoolHandler(w http.ResponseWriter, r *http.Request) {
+	enableCasinoCORS(w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		rulesetID, _ := strconv.Atoi(r.URL.Query().Get("rulesetId"))
+		list, err := db.GetSPEnvPool(rulesetID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+
+	case "POST":
+		var req models.SPEnvPoolEntry
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		if req.BlueprintID <= 0 {
+			http.Error(w, "blueprintId is required", http.StatusBadRequest)
+			return
+		}
+		id, err := db.UpsertSPEnvPoolEntry(&req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"poolId":  id,
+		})
+
+	case "DELETE":
+		poolID, err := strconv.Atoi(r.URL.Query().Get("id"))
+		if err != nil || poolID <= 0 {
+			http.Error(w, "Missing or invalid id", http.StatusBadRequest)
+			return
+		}
+		if err := db.DeleteSPEnvPoolEntry(poolID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// UniversalMapsHandler serves GET / POST / DELETE /api/maps backed by maps + map_env_placements.
+func UniversalMapsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCasinoCORS(w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		list, err := db.ListUniversalMaps()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+
+	case "POST":
+		var req models.SaveUniversalMapRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			http.Error(w, "Map name is required", http.StatusBadRequest)
+			return
+		}
+		saved, err := db.SaveUniversalMap(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"mapId":   saved.ID,
+			"map":     saved,
+		})
+
+	case "DELETE":
+		mapID, err := strconv.Atoi(r.URL.Query().Get("id"))
+		if err != nil || mapID <= 0 {
+			http.Error(w, "Missing or invalid id", http.StatusBadRequest)
+			return
+		}
+		if err := db.DeleteUniversalMap(mapID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// UniversalMapDetailHandler serves GET /api/map-detail?id=<id> with hydrated blueprint placements.
+func UniversalMapDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCasinoCORS(w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	mapID, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil || mapID <= 0 {
+		http.Error(w, "Missing or invalid map id parameter", http.StatusBadRequest)
+		return
+	}
+
+	detail, err := db.GetUniversalMapDetail(mapID)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Map not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(detail)
 }

@@ -10,12 +10,13 @@ import {
   fetchWallet,
   formatCents,
 } from '../../services/walletService';
+import { SpawnPoolManagerPanel } from './SpawnPoolManagerPanel';
 
 export interface CasinoLobbyProps {
   player: PlayerSession;
   onBalanceSync: (balanceCents: number) => void;
   onOpenSpacePirates: (tableId: string) => void;
-  onOpenClusterDesigner: () => void;
+  onOpenMapBuilder: () => void;
   onBackToMenu: () => void;
 }
 
@@ -25,7 +26,7 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
   player,
   onBalanceSync,
   onOpenSpacePirates,
-  onOpenClusterDesigner,
+  onOpenMapBuilder,
   onBackToMenu,
 }) => {
   const [config, setConfig] = useState<SPConfigResponse | null>(null);
@@ -194,7 +195,7 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
             </div>
           )}
 
-          {/* Game Tables & Studio Cards */}
+          {/* Space Pirates Pit #1 Card */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Space Pirates Pit #1 */}
             <div className="p-5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-cyan-500/40 shadow-xl flex flex-col justify-between gap-4">
@@ -210,8 +211,8 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed mb-4">
                   Deploy autonomous 1W–5W strike fleets from your corner base, use drifting
-                  asteroids as cover, and land the killing blow on cargo-laden House harvesters
-                  and the Jackpot Flagship Boss.
+                  celestial hazards as cover, and land the killing blow on cargo-laden House
+                  harvesters and the Jackpot Flagship Boss.
                 </p>
 
                 {config && (
@@ -247,21 +248,20 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
               </button>
             </div>
 
-            {/* Environment Blueprint Studio */}
-            <div className="p-5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/35 shadow-xl flex flex-col justify-between gap-4">
+            {/* Bounty Resource Reference & Quick Link to Universal Map Builder */}
+            <div className="p-5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-xl flex flex-col justify-between gap-4">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase">
-                    Universal Blueprints · All 9 Archetypes
+                  <span className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/40 text-sky-300 text-[10px] font-black uppercase">
+                    Resource Bounty Table
                   </span>
                 </div>
-                <h2 className="text-xl font-black text-white uppercase tracking-wide mb-1">
-                  Environment Blueprint Studio
+                <h2 className="text-lg font-black text-white uppercase tracking-wide mb-1">
+                  Harvestable Cargo Bounties
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                  Design Asteroid Clusters, Dense Belts, Nebulas, Singularity Rifts, Planetoids,
-                  Gas Giants, Major Worlds, Moons, and Comets — complete with Test Shot raycasting
-                  and Space Pirates spawn pool controls.
+                  House harvesters scale their live bounty as they mine unlimited celestial nodes.
+                  Customize active drifting blueprints below or author new objects in the Universal Map Builder.
                 </p>
 
                 {config && (
@@ -289,13 +289,19 @@ export const CasinoLobby: React.FC<CasinoLobbyProps> = ({
 
               <button
                 type="button"
-                onClick={onOpenClusterDesigner}
-                className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm uppercase tracking-wider cursor-pointer transition"
+                onClick={onOpenMapBuilder}
+                className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-sky-500/40 text-sky-300 font-black text-xs uppercase tracking-wider cursor-pointer transition"
               >
-                Open Environment Blueprint Studio &rarr;
+                Open Universal Map Builder (Blueprints) &rarr;
               </button>
             </div>
           </section>
+
+          {/* Lightweight Customizable Spawn Pool Manager (sp_env_pool) */}
+          <SpawnPoolManagerPanel
+            rulesetId={config?.ruleset?.rulesetId || 1}
+            onOpenUniversalMapBuilder={onOpenMapBuilder}
+          />
 
           {/* Recent Wallet Audit Ledger */}
           <section className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">

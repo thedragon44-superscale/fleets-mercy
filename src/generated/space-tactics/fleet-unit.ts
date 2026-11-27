@@ -118,8 +118,13 @@ currentAmmo():number {
   return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
+isStealthed():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 38);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
 static startFleetUnit(builder:flatbuffers.Builder) {
-  builder.startObject(17);
+  builder.startObject(18);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -188,6 +193,10 @@ static addCurrentThermal(builder:flatbuffers.Builder, currentThermal:number) {
 
 static addCurrentAmmo(builder:flatbuffers.Builder, currentAmmo:number) {
   builder.addFieldInt32(16, currentAmmo, 0);
+}
+
+static addIsStealthed(builder:flatbuffers.Builder, isStealthed:boolean) {
+  builder.addFieldInt8(17, +isStealthed, +false);
 }
 
 static endFleetUnit(builder:flatbuffers.Builder):flatbuffers.Offset {

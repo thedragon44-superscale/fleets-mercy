@@ -791,7 +791,7 @@ func (r *SpacePiratesRoom) pickAvailableHarvesterClassLocked() string {
 	db.SPCache.Mu.RUnlock()
 
 	candidates := make([]string, 0, 12)
-	for _, obj := range r.world.EnvObjects {
+	for _, obj := range r.world.Env.Objects {
 		for _, c := range obj.Components {
 			if !c.IsNode || c.ResourceKey == "" {
 				continue

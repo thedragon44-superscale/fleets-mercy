@@ -8,12 +8,16 @@ import {
   drawUnitAsset,
   drawProjectile,
   drawHUDDiagnostics,
-  renderEnvironmentVector,
   drawUnitDebugOverlays,
   drawSpawnGhost,
   DebugOverlayFlags,
   UNIT_SCALES,
 } from '../../renderer/vectorAssets';
+import {
+  drawEnvLayer,
+  drawEnvObjectsOnRadar,
+  drawStealthRing,
+} from '../../utils/envRenderer';
 import { getInterpolatedUnits } from '../../renderer/interpolation';
 import { SnapshotUnit, ServerStateSnapshot } from '../../parsers/binaryCodec';
 import { UNIT_DB } from '../garage/GarageDashboard';
@@ -114,7 +118,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
     sendInput,
     sendTemplateOverride,
     sendUnitGrouping,
-  } = useGameSocket(`${WS_BASE_URL}/ws?mode=sandbox`);
+  } = useGameSocket(`${WS_BASE_URL}/ws?mapId=${mapId}`);
 
   useEffect(() => {
     controlledUnitIdRef.current = controlledUnitId;
@@ -600,14 +604,9 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         ctx.lineWidth = 4 / z;
         ctx.strokeRect(0, 0, mapW, mapH);
 
-        if (mapDetails?.structures) {
-          mapDetails.structures.forEach((s) => {
-            ctx.save();
-            ctx.translate(s.posX, s.posY);
-            renderEnvironmentVector(ctx, s.structureType, s.radius);
-            ctx.restore();
-          });
-        }
+        const liveEnvObjects = serverState.current.envObjects || [];
+        drawEnvLayer(ctx, liveEnvObjects, 'soft', currentTime, mapW, mapH);
+        drawEnvLayer(ctx, liveEnvObjects, 'solid', currentTime, mapW, mapH);
 
         const interpolatedUnits =
           liveUnits.length > 0 ? getInterpolatedUnits(serverHistoryRef.current, currentTime) : [];
@@ -623,6 +622,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           const rx = isControlled ? renderPos.current.x : mergedUnit.pos.x;
           const ry = isControlled ? renderPos.current.y : mergedUnit.pos.y;
           const isAccelerating = isControlled && !!keysRef.current['w'];
+
+          ctx.save();
+          if (mergedUnit.isStealthed) {
+            ctx.globalAlpha = 0.48;
+            drawStealthRing(ctx, rx, ry, 34);
+          }
 
           if (mergedUnit.type === 'flagship' || mergedUnit.type === 'battalion_command_ship') {
             drawFlagship(
@@ -647,6 +652,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
               mergedUnit.isDestroyed
             );
           }
+          ctx.restore();
 
           drawUnitDebugOverlays(
             ctx,
@@ -726,24 +732,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
             radarCtx.stroke();
           });
 
-          if (mapDetails?.structures) {
-            mapDetails.structures.forEach((s) => {
-              if (!isVisibleToPlayer(s.posX, s.posY)) return;
-              const rx = s.posX * scaleX;
-              const ry = s.posY * scaleY;
-              const rr = Math.max(2, s.radius * scaleX);
-              radarCtx.fillStyle =
-                s.structureType === 'gas_giant'
-                  ? 'rgba(100, 150, 255, 0.2)'
-                  : 'rgba(168, 85, 247, 0.5)';
-              radarCtx.strokeStyle = 'rgba(168, 85, 247, 0.8)';
-              radarCtx.lineWidth = 1;
-              radarCtx.beginPath();
-              radarCtx.arc(rx, ry, rr, 0, Math.PI * 2);
-              radarCtx.fill();
-              radarCtx.stroke();
-            });
-          }
+          drawEnvObjectsOnRadar(radarCtx, liveEnvObjects, scaleX, scaleY);
 
           liveUnits.forEach((u) => {
             if (u.isDestroyed) return;

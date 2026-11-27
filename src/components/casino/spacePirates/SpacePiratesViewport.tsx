@@ -1,15 +1,13 @@
 // src/components/casino/spacePirates/SpacePiratesViewport.tsx
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  EnvComponentKind,
-  EnvObjectType,
   ResourceType,
-  SPEnvObjectSnapshot,
   SPServerStateSnapshot,
   SPUnitSnapshot,
 } from '../../../parsers/spacePiratesCodec';
 import { SPResourceConfig } from '../../../services/clusterService';
 import { formatCents } from '../../../services/walletService';
+import { drawEnvLayer, drawRockPolygon } from '../../../utils/envRenderer';
 
 export const SEAT_COLORS = [
   '#22d3ee', // Seat 0 (NW): Cyan
@@ -62,27 +60,6 @@ function generateStars(count: number): StarDot[] {
 }
 
 const STARFIELD = generateStars(140);
-
-function drawRockPolygon(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  seed: number
-) {
-  const verts = 10;
-  ctx.beginPath();
-  for (let i = 0; i < verts; i++) {
-    const a = (i / verts) * Math.PI * 2;
-    const jitter = 0.87 + 0.13 * Math.sin(seed * 2.9 + i * 2.1) * Math.cos(seed * 1.7 - i * 1.3);
-    const r = radius * jitter;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
 
 function getShipDrawScale(unitType: string, isBoss: boolean): number {
   if (isBoss) return 38;
@@ -184,246 +161,6 @@ function drawShipHull(
   }
 
   ctx.restore();
-}
-
-function drawEnvObject(
-  ctx: CanvasRenderingContext2D,
-  obj: SPEnvObjectSnapshot,
-  parentById: Map<number, SPEnvObjectSnapshot>,
-  colorByResourceEnum: Record<number, string>,
-  now: number,
-  arenaW: number,
-  arenaH: number
-) {
-  // Draw orbital path ring for orbiting moons
-  if (obj.parentObjectId > 0 && obj.orbitRadius > 0) {
-    const parent = parentById.get(obj.parentObjectId);
-    if (parent) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.22)';
-      ctx.lineWidth = 1.8;
-      ctx.setLineDash([10, 8]);
-      ctx.beginPath();
-      ctx.arc(parent.pos.x, parent.pos.y, obj.orbitRadius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
-  }
-
-  // Comet dashed full-arena radar trajectory warning line
-  if (obj.objectType === EnvObjectType.Comet) {
-    const spd = Math.hypot(obj.vel.x, obj.vel.y);
-    if (spd > 0.2) {
-      const nx = obj.vel.x / spd;
-      const ny = obj.vel.y / spd;
-      const maxSpan = Math.hypot(arenaW, arenaH);
-
-      ctx.save();
-      // Forward dashed radar warning vector
-      ctx.strokeStyle = 'rgba(248, 113, 113, 0.55)';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([16, 12]);
-      ctx.beginPath();
-      ctx.moveTo(obj.pos.x, obj.pos.y);
-      ctx.lineTo(obj.pos.x + nx * maxSpan, obj.pos.y + ny * maxSpan);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Luminous ice tail behind comet
-      const tailGrad = ctx.createLinearGradient(
-        obj.pos.x,
-        obj.pos.y,
-        obj.pos.x - nx * 190,
-        obj.pos.y - ny * 190
-      );
-      tailGrad.addColorStop(0, 'rgba(186, 230, 253, 0.85)');
-      tailGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.35)');
-      tailGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-      ctx.strokeStyle = tailGrad;
-      ctx.lineWidth = 22;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(obj.pos.x, obj.pos.y);
-      ctx.lineTo(obj.pos.x - nx * 190, obj.pos.y - ny * 190);
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  // Sort components largest-first so inner cores/nodes render cleanly on top of atmospheres/fields
-  const sorted = [...obj.components].sort((a, b) => b.radius - a.radius);
-
-  for (const c of sorted) {
-    const resColor = colorByResourceEnum[c.resourceType] || c.colorHex || '#94a3b8';
-
-    ctx.save();
-    switch (c.kind) {
-      case EnvComponentKind.NebulaBlob: {
-        const base = c.colorHex || '#7c3aed';
-        const ng = ctx.createRadialGradient(c.pos.x, c.pos.y, c.radius * 0.12, c.pos.x, c.pos.y, c.radius);
-        ng.addColorStop(0, `${base}66`);
-        ng.addColorStop(0.65, `${base}2b`);
-        ng.addColorStop(1, `${base}00`);
-        ctx.fillStyle = ng;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        if (c.isNode) {
-          ctx.shadowColor = resColor;
-          ctx.shadowBlur = 18;
-          ctx.fillStyle = resColor;
-          ctx.beginPath();
-          ctx.arc(c.pos.x, c.pos.y, Math.max(9, c.radius * 0.18), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        break;
-      }
-
-      case EnvComponentKind.GasOuter:
-      case EnvComponentKind.GasDeep:
-      case EnvComponentKind.GasCore: {
-        const col =
-          c.colorHex ||
-          (c.kind === EnvComponentKind.GasCore
-            ? '#581c87'
-            : c.kind === EnvComponentKind.GasDeep
-            ? '#7e22ce'
-            : '#c084fc');
-        const g = ctx.createRadialGradient(c.pos.x, c.pos.y, c.innerRadius * 0.6, c.pos.x, c.pos.y, c.radius);
-        if (c.kind === EnvComponentKind.GasCore) {
-          g.addColorStop(0, '#3b0764');
-          g.addColorStop(1, `${col}dd`);
-        } else if (c.kind === EnvComponentKind.GasDeep) {
-          g.addColorStop(0, `${col}66`);
-          g.addColorStop(1, `${col}22`);
-        } else {
-          g.addColorStop(0, `${col}2c`);
-          g.addColorStop(1, `${col}08`);
-        }
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = c.kind === EnvComponentKind.GasCore ? '#f43f5e' : `${col}99`;
-        ctx.lineWidth = c.kind === EnvComponentKind.GasCore ? 3 : 1.8;
-        ctx.stroke();
-        break;
-      }
-
-      case EnvComponentKind.RiftField: {
-        const pulse = 0.94 + 0.06 * Math.sin(now * 0.006 + obj.id);
-        const rg = ctx.createRadialGradient(c.pos.x, c.pos.y, c.innerRadius, c.pos.x, c.pos.y, c.radius * pulse);
-        rg.addColorStop(0, 'rgba(56, 189, 248, 0.36)');
-        rg.addColorStop(0.6, 'rgba(139, 92, 246, 0.16)');
-        rg.addColorStop(1, 'rgba(56, 189, 248, 0)');
-        ctx.fillStyle = rg;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius * pulse, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Refraction ripple rings
-        for (let rIdx = 0; rIdx < 2; rIdx++) {
-          const frac = ((now * 0.0005 + rIdx * 0.5) % 1);
-          const ringR = c.innerRadius + (c.radius - c.innerRadius) * frac;
-          ctx.strokeStyle = `rgba(125, 211, 252, ${0.48 * (1 - frac)})`;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(c.pos.x, c.pos.y, ringR, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        break;
-      }
-
-      case EnvComponentKind.RiftCore: {
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 24;
-        ctx.fillStyle = '#020617';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 3.5;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        if (c.isNode) {
-          ctx.fillStyle = resColor;
-          ctx.beginPath();
-          ctx.arc(c.pos.x, c.pos.y, c.radius * 0.42, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        break;
-      }
-
-      case EnvComponentKind.CometCore: {
-        ctx.shadowColor = '#bae6fd';
-        ctx.shadowBlur = 26;
-        ctx.fillStyle = '#f0f9ff';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        break;
-      }
-
-      case EnvComponentKind.SolidCore: {
-        const base = c.colorHex || '#475569';
-        const pg = ctx.createRadialGradient(
-          c.pos.x - c.radius * 0.3,
-          c.pos.y - c.radius * 0.3,
-          c.radius * 0.1,
-          c.pos.x,
-          c.pos.y,
-          c.radius
-        );
-        pg.addColorStop(0, base);
-        pg.addColorStop(1, '#0f172a');
-        ctx.fillStyle = pg;
-        ctx.beginPath();
-        ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth = 2.6;
-        ctx.stroke();
-        break;
-      }
-
-      default: {
-        // SolidRock, ResourceNode, CraterNode, CaveMouth
-        if (c.isNode) {
-          ctx.shadowColor = resColor;
-          ctx.shadowBlur = 20;
-        }
-        drawRockPolygon(ctx, c.pos.x, c.pos.y, c.radius, c.id);
-        ctx.fillStyle =
-          c.isNode
-            ? '#1e293b'
-            : obj.objectType === EnvObjectType.AsteroidBelt
-            ? '#1e293b'
-            : '#2d3748';
-        ctx.fill();
-        ctx.lineWidth = c.isNode ? 2.8 : 2;
-        ctx.strokeStyle = c.isNode
-          ? resColor
-          : obj.objectType === EnvObjectType.AsteroidBelt
-          ? '#64748b'
-          : '#475569';
-        ctx.stroke();
-
-        if (c.isNode) {
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = resColor;
-          ctx.globalAlpha = 0.88;
-          ctx.beginPath();
-          ctx.arc(c.pos.x, c.pos.y, Math.max(7, c.radius * 0.36), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        break;
-      }
-    }
-    ctx.restore();
-  }
 }
 
 export const SpacePiratesViewport: React.FC<SpacePiratesViewportProps> = ({
@@ -563,18 +300,7 @@ export const SpacePiratesViewport: React.FC<SpacePiratesViewportProps> = ({
 
       if (snap) {
         // 1. Background Soft Environment Layers (Nebulas, Gas Giants, Singularity Rifts)
-        const envParentMap = new Map<number, SPEnvObjectSnapshot>();
-        for (const eo of snap.envObjects) envParentMap.set(eo.id, eo);
-
-        for (const eo of snap.envObjects) {
-          if (
-            eo.objectType === EnvObjectType.NebulaField ||
-            eo.objectType === EnvObjectType.GasGiant ||
-            eo.objectType === EnvObjectType.SingularityRift
-          ) {
-            drawEnvObject(ctx, eo, envParentMap, colorByResourceEnum, now, arenaW, arenaH);
-          }
-        }
+        drawEnvLayer(ctx, snap.envObjects, 'soft', now, arenaW, arenaH, colorByResourceEnum);
 
         // 2. Cryo Flak Clouds
         for (const cl of snap.cryoClouds) {
@@ -603,15 +329,7 @@ export const SpacePiratesViewport: React.FC<SpacePiratesViewportProps> = ({
 
         // 3. Solid Environment Objects (Worlds, Planetoids, Moons, Belts, Clusters, Comets)
         if (snap.envObjects.length > 0) {
-          for (const eo of snap.envObjects) {
-            if (
-              eo.objectType !== EnvObjectType.NebulaField &&
-              eo.objectType !== EnvObjectType.GasGiant &&
-              eo.objectType !== EnvObjectType.SingularityRift
-            ) {
-              drawEnvObject(ctx, eo, envParentMap, colorByResourceEnum, now, arenaW, arenaH);
-            }
-          }
+          drawEnvLayer(ctx, snap.envObjects, 'solid', now, arenaW, arenaH, colorByResourceEnum);
         } else {
           // Fallback to legacy asteroids vector if connected to older server
           for (const rock of snap.asteroids) {

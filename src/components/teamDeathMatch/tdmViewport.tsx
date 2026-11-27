@@ -15,8 +15,12 @@ import {
   drawUnitAsset,
   drawProjectile,
   drawHUDDiagnostics,
-  renderEnvironmentVector,
 } from '../../renderer/vectorAssets';
+import {
+  drawEnvLayer,
+  drawEnvObjectsOnRadar,
+  drawStealthRing,
+} from '../../utils/envRenderer';
 import { getInterpolatedUnits } from '../../renderer/interpolation';
 import { TacticalRadar } from '../common/TacticalRadar';
 
@@ -162,7 +166,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     clearInputs();
 
     const poolQuery = customPool.join(',');
-    const wsUrl = `${WS_BASE_URL}/ws/tdm?map=${mapId}&unit=${encodeURIComponent(
+    const wsUrl = `${WS_BASE_URL}/ws/tdm?mapId=${mapId}&unit=${encodeURIComponent(
       pilotedUnit
     )}&pool=${encodeURIComponent(poolQuery)}`;
 
@@ -305,15 +309,10 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           ctx.lineWidth = 4;
           ctx.strokeRect(0, 0, mapW, mapH);
 
-          // Environmental structures (shared vector renderer)
-          if (mapDetails?.structures) {
-            mapDetails.structures.forEach((s) => {
-              ctx.save();
-              ctx.translate(s.posX, s.posY);
-              renderEnvironmentVector(ctx, s.structureType, s.radius);
-              ctx.restore();
-            });
-          }
+          // Live universal environmental objects (shared 9-archetype renderer)
+          const liveEnvObjects = snapshot.envObjects || [];
+          drawEnvLayer(ctx, liveEnvObjects, 'soft', currentTime, mapW, mapH);
+          drawEnvLayer(ctx, liveEnvObjects, 'solid', currentTime, mapW, mapH);
 
           // Interpolated fleet units rendered with real PNG/vector assets
           const interpolatedUnits =
@@ -351,6 +350,12 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
               ctx.restore();
             }
 
+            ctx.save();
+            if (mergedUnit.isStealthed) {
+              ctx.globalAlpha = 0.48;
+              drawStealthRing(ctx, rx, ry, 34);
+            }
+
             if (mergedUnit.type === 'flagship' || mergedUnit.type === 'battalion_command_ship') {
               drawFlagship(
                 ctx,
@@ -374,6 +379,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
                 mergedUnit.isDestroyed
               );
             }
+            ctx.restore();
           });
 
           // Projectiles (shared renderer)
@@ -401,20 +407,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
             radarCtx.lineWidth = 1.5;
             radarCtx.strokeRect(0, 0, rw, rh);
 
-            if (mapDetails?.structures) {
-              mapDetails.structures.forEach((s) => {
-                const sx = s.posX * scaleX;
-                const sy = s.posY * scaleY;
-                const sr = Math.max(2, s.radius * scaleX);
-                radarCtx.fillStyle =
-                  s.structureType === 'gas_giant'
-                    ? 'rgba(100, 150, 255, 0.2)'
-                    : 'rgba(168, 85, 247, 0.45)';
-                radarCtx.beginPath();
-                radarCtx.arc(sx, sy, sr, 0, Math.PI * 2);
-                radarCtx.fill();
-              });
-            }
+            drawEnvObjectsOnRadar(radarCtx, liveEnvObjects, scaleX, scaleY);
 
             liveUnits.forEach((u) => {
               if (u.isDestroyed) return;

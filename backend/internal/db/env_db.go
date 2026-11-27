@@ -1,11 +1,14 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"sync"
+	"time"
 
 	"space-tactics-server/internal/models"
 )
@@ -16,12 +19,14 @@ type EnvConfigCache struct {
 	Blueprints    map[int]models.EnvBlueprint
 	BlueprintList []models.EnvBlueprint
 	PoolsByMode   map[string][]models.ModeEnvPoolEntry // key: game_mode (e.g. "space_pirates")
+	SPPool        []models.SPEnvPoolEntry              // Dedicated customizable sp_env_pool entries
 }
 
 var EnvCache = &EnvConfigCache{
 	Blueprints:    make(map[int]models.EnvBlueprint),
 	BlueprintList: make([]models.EnvBlueprint, 0),
 	PoolsByMode:   make(map[string][]models.ModeEnvPoolEntry),
+	SPPool:        make([]models.SPEnvPoolEntry, 0),
 }
 
 // ComputeEnvBoundingRadius computes the enclosing local radius including all geometry components
@@ -90,13 +95,40 @@ func LoadEnvCache() error {
 		poolCount++
 	}
 
+	// Load dedicated sp_env_pool (gracefully tolerate if migration 003 not applied yet)
+	spPool := make([]models.SPEnvPoolEntry, 0)
+	spRows, spErr := Conn.Query(
+		`SELECT pool_id, ruleset_id, blueprint_id, spawn_weight, max_concurrent,
+		        scale_override, speed_min, speed_max, min_wraps, max_wraps, is_enabled
+		 FROM sp_env_pool
+		 ORDER BY pool_id ASC`,
+	)
+	if spErr == nil {
+		defer spRows.Close()
+		for spRows.Next() {
+			var e models.SPEnvPoolEntry
+			if scanErr := spRows.Scan(
+				&e.PoolID, &e.RulesetID, &e.BlueprintID, &e.SpawnWeight, &e.MaxConcurrent,
+				&e.ScaleOverride, &e.SpeedMin, &e.SpeedMax, &e.MinWraps, &e.MaxWraps, &e.IsEnabled,
+			); scanErr == nil {
+				if bp, ok := bpMap[e.BlueprintID]; ok {
+					bpCopy := bp
+					e.Blueprint = &bpCopy
+				}
+				spPool = append(spPool, e)
+			}
+		}
+	}
+
 	EnvCache.Mu.Lock()
 	EnvCache.Blueprints = bpMap
 	EnvCache.BlueprintList = blueprints
 	EnvCache.PoolsByMode = poolsByMode
+	EnvCache.SPPool = spPool
 	EnvCache.Mu.Unlock()
 
-	log.Printf("🌌 Loaded Universal EnvCache: %d blueprints, %d mode pool entries", len(blueprints), poolCount)
+	log.Printf("🌌 Loaded Universal EnvCache: %d blueprints, %d mode pool entries, %d sp_env_pool entries",
+		len(blueprints), poolCount, len(spPool))
 	return nil
 }
 
@@ -417,4 +449,269 @@ func ReplaceMapEnvPlacements(mapID int, placements []models.MapEnvPlacement) ([]
 		return nil, err
 	}
 	return placements, nil
+}
+
+// --- SPACE PIRATES CUSTOMIZABLE SPAWN POOL (sp_env_pool) ---
+
+func GetSPEnvPool(rulesetID int) ([]models.SPEnvPoolEntry, error) {
+	query := `SELECT pool_id, ruleset_id, blueprint_id, spawn_weight, max_concurrent,
+	                 scale_override, speed_min, speed_max, min_wraps, max_wraps, is_enabled
+	          FROM sp_env_pool`
+	args := make([]interface{}, 0, 1)
+	if rulesetID > 0 {
+		query += ` WHERE ruleset_id = $1`
+		args = append(args, rulesetID)
+	}
+	query += ` ORDER BY pool_id ASC`
+
+	rows, err := Conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	EnvCache.Mu.RLock()
+	bpMap := EnvCache.Blueprints
+	EnvCache.Mu.RUnlock()
+
+	list := make([]models.SPEnvPoolEntry, 0)
+	for rows.Next() {
+		var e models.SPEnvPoolEntry
+		if err := rows.Scan(
+			&e.PoolID, &e.RulesetID, &e.BlueprintID, &e.SpawnWeight, &e.MaxConcurrent,
+			&e.ScaleOverride, &e.SpeedMin, &e.SpeedMax, &e.MinWraps, &e.MaxWraps, &e.IsEnabled,
+		); err != nil {
+			return nil, err
+		}
+		if bp, ok := bpMap[e.BlueprintID]; ok {
+			bpCopy := bp
+			e.Blueprint = &bpCopy
+		}
+		list = append(list, e)
+	}
+	return list, nil
+}
+
+// UpsertSPEnvPoolEntry updates an existing sp_env_pool row (poolId > 0) or inserts a new one (unlimited entries).
+func UpsertSPEnvPoolEntry(e *models.SPEnvPoolEntry) (int, error) {
+	if e.RulesetID <= 0 {
+		SPCache.Mu.RLock()
+		e.RulesetID = SPCache.Ruleset.RulesetID
+		SPCache.Mu.RUnlock()
+		if e.RulesetID <= 0 {
+			e.RulesetID = 1
+		}
+	}
+	if e.SpawnWeight <= 0 {
+		e.SpawnWeight = 10
+	}
+	if e.MaxConcurrent <= 0 {
+		e.MaxConcurrent = 1
+	}
+
+	var id int
+	var err error
+	if e.PoolID > 0 {
+		err = Conn.QueryRow(
+			`UPDATE sp_env_pool
+			 SET blueprint_id = $1, spawn_weight = $2, max_concurrent = $3,
+			     scale_override = $4, speed_min = $5, speed_max = $6,
+			     min_wraps = $7, max_wraps = $8, is_enabled = $9, updated_at = NOW()
+			 WHERE pool_id = $10
+			 RETURNING pool_id`,
+			e.BlueprintID, e.SpawnWeight, e.MaxConcurrent,
+			e.ScaleOverride, e.SpeedMin, e.SpeedMax,
+			e.MinWraps, e.MaxWraps, e.IsEnabled, e.PoolID,
+		).Scan(&id)
+	} else {
+		err = Conn.QueryRow(
+			`INSERT INTO sp_env_pool (
+				ruleset_id, blueprint_id, spawn_weight, max_concurrent,
+				scale_override, speed_min, speed_max, min_wraps, max_wraps, is_enabled
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			RETURNING pool_id`,
+			e.RulesetID, e.BlueprintID, e.SpawnWeight, e.MaxConcurrent,
+			e.ScaleOverride, e.SpeedMin, e.SpeedMax, e.MinWraps, e.MaxWraps, e.IsEnabled,
+		).Scan(&id)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	_ = LoadEnvCache()
+	return id, nil
+}
+
+func DeleteSPEnvPoolEntry(poolID int) error {
+	_, err := Conn.Exec(`DELETE FROM sp_env_pool WHERE pool_id = $1`, poolID)
+	if err != nil {
+		return err
+	}
+	_ = LoadEnvCache()
+	return nil
+}
+
+// --- UNIFIED MAPS & HYDRATED PLACEMENTS CRUD ---
+
+func ListUniversalMaps() ([]models.UniversalMapSummary, error) {
+	rows, err := Conn.Query(
+		`SELECT m.map_id, m.map_key, m.map_name, COALESCE(m.description, ''), m.width, m.height,
+		        COUNT(p.placement_id)::int AS placement_count,
+		        COALESCE(m.updated_at, NOW())
+		 FROM maps m
+		 LEFT JOIN map_env_placements p ON p.map_id = m.map_id
+		 GROUP BY m.map_id, m.map_key, m.map_name, m.description, m.width, m.height, m.updated_at
+		 ORDER BY m.map_id ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]models.UniversalMapSummary, 0)
+	for rows.Next() {
+		var m models.UniversalMapSummary
+		if err := rows.Scan(
+			&m.ID, &m.MapKey, &m.Name, &m.Description, &m.Width, &m.Height,
+			&m.PlacementCount, &m.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		list = append(list, m)
+	}
+	return list, nil
+}
+
+func GetUniversalMapDetail(mapID int) (*models.UniversalMapDetail, error) {
+	var detail models.UniversalMapDetail
+	err := Conn.QueryRow(
+		`SELECT map_id, map_key, map_name, COALESCE(description, ''), width, height, COALESCE(updated_at, NOW())
+		 FROM maps
+		 WHERE map_id = $1`,
+		mapID,
+	).Scan(&detail.ID, &detail.MapKey, &detail.Name, &detail.Description, &detail.Width, &detail.Height, &detail.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, sql.ErrNoRows
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	rawPlacements, err := GetMapEnvPlacements(mapID)
+	if err != nil {
+		return nil, err
+	}
+
+	EnvCache.Mu.RLock()
+	bpMap := EnvCache.Blueprints
+	EnvCache.Mu.RUnlock()
+
+	hydrated := make([]models.HydratedMapPlacement, 0, len(rawPlacements))
+	for _, p := range rawPlacements {
+		hp := models.HydratedMapPlacement{MapEnvPlacement: p}
+		if bp, ok := bpMap[p.BlueprintID]; ok {
+			bpCopy := bp
+			hp.Blueprint = &bpCopy
+		}
+		hydrated = append(hydrated, hp)
+	}
+	detail.Placements = hydrated
+	detail.PlacementCount = len(hydrated)
+	return &detail, nil
+}
+
+// SaveUniversalMap atomically creates/updates a map and replaces its map_env_placements with 2-pass parent resolution.
+func SaveUniversalMap(req models.SaveUniversalMapRequest) (*models.UniversalMapDetail, error) {
+	if req.Width <= 0 {
+		req.Width = 12000
+	}
+	if req.Height <= 0 {
+		req.Height = 12000
+	}
+
+	tx, err := Conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var mapID int
+	if req.ID != nil && *req.ID > 0 {
+		mapID = *req.ID
+		_, err = tx.Exec(
+			`UPDATE maps
+			 SET map_name = $1, description = $2, width = $3, height = $4, updated_at = NOW()
+			 WHERE map_id = $5`,
+			req.Name, req.Description, req.Width, req.Height, mapID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`DELETE FROM map_env_placements WHERE map_id = $1`, mapID); err != nil {
+			return nil, err
+		}
+	} else {
+		mapKey := "umap_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		err = tx.QueryRow(
+			`INSERT INTO maps (map_key, map_name, description, width, height, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, NOW())
+			 RETURNING map_id`,
+			mapKey, req.Name, req.Description, req.Width, req.Height,
+		).Scan(&mapID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	insertedIDs := make([]int, len(req.Placements))
+	for i := range req.Placements {
+		p := &req.Placements[i]
+		scale := p.Scale
+		if scale <= 0 {
+			scale = 1.0
+		}
+		ov := []byte("{}")
+		if len(p.Overrides) > 0 {
+			ov = p.Overrides
+		}
+		var newID int
+		err := tx.QueryRow(
+			`INSERT INTO map_env_placements (
+				map_id, blueprint_id, pos_x, pos_y, scale, angle,
+				vel_x, vel_y, parent_placement_id, orbit_radius, orbit_speed, overrides
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$10,$11)
+			RETURNING placement_id`,
+			mapID, p.BlueprintID, p.PosX, p.PosY, scale, p.Angle,
+			p.VelX, p.VelY, p.OrbitRadius, p.OrbitSpeed, ov,
+		).Scan(&newID)
+		if err != nil {
+			return nil, err
+		}
+		insertedIDs[i] = newID
+	}
+
+	for i := range req.Placements {
+		p := &req.Placements[i]
+		if p.ParentIndex != nil {
+			idx := *p.ParentIndex
+			if idx >= 0 && idx < len(insertedIDs) && idx != i {
+				if _, err := tx.Exec(
+					`UPDATE map_env_placements SET parent_placement_id = $1 WHERE placement_id = $2`,
+					insertedIDs[idx], insertedIDs[i],
+				); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return GetUniversalMapDetail(mapID)
+}
+
+func DeleteUniversalMap(mapID int) error {
+	_, err := Conn.Exec(`DELETE FROM maps WHERE map_id = $1`, mapID)
+	return err
 }

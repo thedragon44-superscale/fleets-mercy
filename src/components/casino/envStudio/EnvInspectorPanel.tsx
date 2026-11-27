@@ -6,7 +6,6 @@ import {
   EnvMotionMode,
   EnvMotionProfile,
   EnvPhysicsProfile,
-  ModeEnvPoolEntry,
   ProjectileBehavior,
   computeEnvBoundingRadius,
 } from '../../../services/envService';
@@ -14,13 +13,11 @@ import {
 export interface EnvInspectorPanelProps {
   blueprint: EnvBlueprint;
   allBlueprints: EnvBlueprint[];
-  poolDraft: Omit<ModeEnvPoolEntry, 'poolId'>;
   saving: boolean;
   dirty: boolean;
   statusMessage: string | null;
   errorMessage: string | null;
   onChangeBlueprint: (patch: Partial<EnvBlueprint>) => void;
-  onChangePool: (patch: Partial<Omit<ModeEnvPoolEntry, 'poolId'>>) => void;
   onSave: () => void;
   onDelete: () => void;
 }
@@ -30,13 +27,11 @@ const IMMUNITY_OPTIONS = ['plasma_skimmer', 'grav_extractor', 'mining_barge', 'f
 export const EnvInspectorPanel: React.FC<EnvInspectorPanelProps> = ({
   blueprint,
   allBlueprints,
-  poolDraft,
   saving,
   dirty,
   statusMessage,
   errorMessage,
   onChangeBlueprint,
-  onChangePool,
   onSave,
   onDelete,
 }) => {
@@ -94,73 +89,6 @@ export const EnvInspectorPanel: React.FC<EnvInspectorPanelProps> = ({
             onChange={(e) => onChangeBlueprint({ name: e.target.value })}
             className="w-full px-2.5 py-2 rounded bg-slate-900 border border-slate-700 focus:border-sky-400 focus:outline-none text-slate-100 text-xs"
           />
-        </div>
-
-        {/* Space Pirates Mode Pool Assignment */}
-        <div className="p-3 rounded-lg bg-slate-900/90 border border-cyan-500/35 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-black tracking-wider text-cyan-300">
-              Space Pirates Pool
-            </span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <span className="text-[10px] text-slate-400">
-                {poolDraft.isEnabled ? 'Active' : 'Disabled'}
-              </span>
-              <input
-                type="checkbox"
-                checked={poolDraft.isEnabled}
-                onChange={(e) => onChangePool({ isEnabled: e.target.checked })}
-                className="accent-cyan-400 w-4 h-4 cursor-pointer"
-              />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-[9px] text-slate-500">Weight</span>
-              <input
-                type="number"
-                min="1"
-                max="500"
-                value={poolDraft.spawnWeight}
-                onChange={(e) =>
-                  onChangePool({ spawnWeight: Math.max(1, Math.floor(num(e.target.value, 10))) })
-                }
-                className="px-2 py-1 rounded bg-slate-950 border border-slate-700 text-slate-100"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[9px] text-slate-500">Max Active</span>
-              <input
-                type="number"
-                min="1"
-                max="8"
-                value={poolDraft.maxConcurrent}
-                onChange={(e) =>
-                  onChangePool({ maxConcurrent: Math.max(1, Math.floor(num(e.target.value, 1))) })
-                }
-                className="px-2 py-1 rounded bg-slate-950 border border-slate-700 text-slate-100"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[9px] text-slate-500">Scale Override</span>
-              <input
-                type="number"
-                step="0.05"
-                min="0.2"
-                max="2.5"
-                placeholder="Auto"
-                value={poolDraft.scaleOverride ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value.trim();
-                  onChangePool({
-                    scaleOverride: val === '' ? null : Math.max(0.2, num(val, 1.0)),
-                  });
-                }}
-                className="px-2 py-1 rounded bg-slate-950 border border-slate-700 text-sky-300"
-              />
-            </label>
-          </div>
         </div>
 
         {/* Motion Profile */}
@@ -477,7 +405,7 @@ export const EnvInspectorPanel: React.FC<EnvInspectorPanelProps> = ({
           onClick={onSave}
           className="w-full py-2.5 rounded-lg font-black text-xs uppercase tracking-wider bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 transition cursor-pointer"
         >
-          {saving ? 'Saving to PostgreSQL...' : 'Save Blueprint & Pool'}
+          {saving ? 'Saving to PostgreSQL...' : 'Save Blueprint'}
         </button>
 
         {blueprint.blueprintId > 0 && (

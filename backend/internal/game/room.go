@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"space-tactics-server/internal/db"
+	"space-tactics-server/internal/game/envphysics"
 	SpaceTactics "space-tactics-server/internal/generated/SpaceTactics"
 	"space-tactics-server/internal/models"
 
@@ -59,14 +60,13 @@ type UnitGroupingData struct {
 type SandboxClientInput = ClientStateInput
 
 type GameRoom struct {
-	resetTimer      int
 	deployQueue     []string
-	isSandbox       bool
 	isPaused        bool
 	timeScale       float64
 	tickAccumulator float64
 	mapID           int
 	structures      []models.MapStructure
+	envWorld        *envphysics.World
 
 	clients     map[*websocket.Conn]bool
 	mu          sync.Mutex
@@ -77,18 +77,31 @@ type GameRoom struct {
 	idCounter   uint64
 }
 
-func NewGameRoom(mapID int, isSandbox bool) *GameRoom {
+func NewGameRoom(mapID int) *GameRoom {
 	room := &GameRoom{
 		clients:     make(map[*websocket.Conn]bool),
 		units:       make(map[string]*models.FleetUnit),
 		deployQueue: make([]string, 0),
-		isSandbox:   isSandbox,
 		timeScale:   1.0,
 		mapID:       mapID,
+		envWorld:    envphysics.NewAuthoredWorld(mapID),
 	}
 	room.loadMapStructures()
 	room.resetWorld()
 	return room
+}
+
+// GetEnvWorld returns the shared universal envphysics.World for this room.
+func (r *GameRoom) GetEnvWorld() *envphysics.World {
+	return r.envWorld
+}
+
+// GetArenaSize returns the active map's width and height from envWorld (defaulting to 12000x12000).
+func (r *GameRoom) GetArenaSize() (float64, float64) {
+	if r.envWorld != nil && r.envWorld.ArenaWidth > 0 && r.envWorld.ArenaHeight > 0 {
+		return r.envWorld.ArenaWidth, r.envWorld.ArenaHeight
+	}
+	return 12000.0, 12000.0
 }
 
 // Exported getters & setters so sub-packages (like teamDeathMatch) can read/write room state safely
@@ -113,6 +126,11 @@ func (r *GameRoom) SetMapID(id int) {
 }
 
 func (r *GameRoom) ReloadMapStructures() {
+	if r.envWorld == nil {
+		r.envWorld = envphysics.NewAuthoredWorld(r.mapID)
+	} else {
+		r.envWorld.LoadAuthoredMap(r.mapID)
+	}
 	r.loadMapStructures()
 }
 
@@ -172,13 +190,6 @@ func (r *GameRoom) resetWorld() {
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
 	r.tickAccumulator = 0
-
-	if !r.isSandbox {
-		r.spawnUnit("flagship", "player", 6000, 10000, "MANUAL")
-		r.spawnUnit("battalion_command_ship", "player", 6000, 9500, "COMMAND")
-		r.spawnUnit("flagship", "enemy", 6000, 2000, "SEEK")
-		r.spawnUnit("battalion_command_ship", "enemy", 6000, 2500, "COMMAND")
-	}
 }
 
 func (r *GameRoom) findSquadLeader(ownerID string, args ...int) *models.FleetUnit {
@@ -348,7 +359,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	clientAddr := conn.RemoteAddr().String()
-	log.Printf("🔌 Player connected to room (Sandbox: %v): %s", r.isSandbox, clientAddr)
+	log.Printf("🔌 Player connected to Sandbox room (Map %d): %s", r.mapID, clientAddr)
 
 	r.mu.Lock()
 	r.clients[conn] = true
@@ -395,7 +406,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 		// Sandbox Time Controls (Pause & Simulation Speed)
 		var timeCtrl SpaceTactics.SandboxTimeControl
-		if r.isSandbox && clientInput.TimeControl(&timeCtrl) != nil {
+		if clientInput.TimeControl(&timeCtrl) != nil {
 			r.isPaused = timeCtrl.IsPaused()
 			if ts := float64(timeCtrl.TimeScale()); ts > 0 {
 				r.timeScale = math.Max(0.1, math.Min(ts, 4.0))
@@ -649,56 +660,6 @@ func (r *GameRoom) IsTargetVisibleToFaction(factionOwner string, target *models.
 	return false
 }
 
-func (r *GameRoom) runAI() {
-	if r.isSandbox {
-		return
-	}
-
-	var ai *models.FleetUnit
-	var player *models.FleetUnit
-
-	for _, u := range r.units {
-		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "enemy" {
-			ai = u
-		}
-		if (u.Type == "flagship" || u.Type == "battalion_command_ship") && u.OwnerID == "player" {
-			player = u
-		}
-	}
-
-	if ai == nil || player == nil || ai.IsDestroyed || player.IsDestroyed {
-		return
-	}
-
-	// Enforce radar telemetry: Enemy faction must have visual/radar contact to track and engage
-	if !r.IsTargetVisibleToFaction("enemy", player) {
-		ai.IsFiring = false
-		ai.Vel.X *= 0.95
-		ai.Vel.Y *= 0.95
-		return
-	}
-
-	dx := player.Pos.X - ai.Pos.X
-	dy := player.Pos.Y - ai.Pos.Y
-	dist := math.Hypot(dx, dy)
-
-	ai.Angle = math.Atan2(dy, dx)
-	ai.IsFiring = dist < 1200
-
-	if dist > 800 {
-		ai.Vel.X += math.Cos(ai.Angle) * 0.4
-		ai.Vel.Y += math.Sin(ai.Angle) * 0.4
-	}
-
-	if dist < 8000 && rand.Float64() < 0.025 {
-		reserves := []string{"viper_interceptor", "viper_interceptor", "lancer_corvette", "torpedo_bomber", "aegis_wall", "command_escort"}
-		choice := reserves[rand.Intn(len(reserves))]
-		spawnX := ai.Pos.X + (rand.Float64()-0.5)*300
-		spawnY := ai.Pos.Y + (rand.Float64()-0.5)*300
-		r.spawnUnit(choice, "enemy", spawnX, spawnY, "SEEK")
-	}
-}
-
 func (r *GameRoom) CalculateSpawnPosition(ownerID string, index int, total int) (float64, float64) {
 	var baseX, baseY float64
 	if ownerID == "player" {
@@ -738,21 +699,21 @@ func (r *GameRoom) Run() {
 		}
 
 		// Determine simulation steps for this 16ms frame (supports sandbox pause & 0.25x-2.0x scaling)
-		steps := 1
-		if r.isSandbox {
-			if r.isPaused {
-				steps = 0
-			} else {
-				r.tickAccumulator += r.timeScale
-				steps = int(r.tickAccumulator)
-				r.tickAccumulator -= float64(steps)
-			}
+		steps := 0
+		if !r.isPaused {
+			r.tickAccumulator += r.timeScale
+			steps = int(r.tickAccumulator)
+			r.tickAccumulator -= float64(steps)
 		}
+
+		arenaW, arenaH := r.GetArenaSize()
 
 		for step := 0; step < steps; step++ {
 			r.tick++
 
-			r.runAI()
+			if r.envWorld != nil {
+				r.envWorld.StepAuthored()
+			}
 			ProcessLogisticsLoops(r)
 
 			if deployDebounce > 0 {
@@ -786,11 +747,7 @@ func (r *GameRoom) Run() {
 
 			for id, unit := range r.units {
 				if unit.IsDestroyed {
-					if (unit.Type == "flagship" || unit.Type == "battalion_command_ship") && !r.isSandbox {
-						// Capital ship down tracking
-					} else {
-						delete(r.units, id)
-					}
+					delete(r.units, id)
 					continue
 				}
 
@@ -809,7 +766,7 @@ func (r *GameRoom) Run() {
 
 				// Player Movement or Autonomous AI State Machine (with room dimensions passed)
 				if unit.ID == controlledID {
-					HandlePlayerMovement(unit, r.lastInput, 12000.0, 12000.0)
+					HandlePlayerMovement(unit, r.lastInput, arenaW, arenaH)
 					unit.IsFiring = r.lastInput.IsFiring
 				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
 					// Player flagship should NEVER move or run AI when unpiloted; it holds position and coasts spin to zero.
@@ -825,8 +782,9 @@ func (r *GameRoom) Run() {
 					RunUnitAI(unit, r, flagship)
 				}
 
-				// Physics, Damping, Environment Collisions & World Gravity (with room dimensions passed)
-				ApplyUnitPhysics(unit, 12000.0, 12000.0)
+				// Physics, Damping, Universal Environment Physics & Legacy Structures
+				ApplyUnitPhysics(unit, arenaW, arenaH)
+				ApplyUniversalEnvPhysics(unit, r.envWorld)
 				ApplyEnvironmentalCollisions(unit, r.structures)
 				ApplyMajorWorldGravity(unit, r.structures)
 
@@ -835,12 +793,12 @@ func (r *GameRoom) Run() {
 			}
 
 			// Unit-to-Unit Collisions and Projectile Updates
-			ResolveUnitCollisions(r.units, r.isSandbox)
+			ResolveUnitCollisions(r.units, true)
 			UpdateProjectiles(r)
 		}
 
 		// Downstream: Build and broadcast binary FlatBuffers frame (runs even while paused so UI edits stay live)
-		builder := flatbuffers.NewBuilder(1024)
+		builder := flatbuffers.NewBuilder(8192)
 
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(r.units))
 		for _, u := range r.units {
@@ -879,6 +837,7 @@ func (r *GameRoom) Run() {
 			SpaceTactics.FleetUnitAddAiState(builder, aiStateOffset)
 			SpaceTactics.FleetUnitAddCurrentThermal(builder, float32(u.CurrentThermal))
 			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
+			SpaceTactics.FleetUnitAddIsStealthed(builder, u.StealthActive)
 			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
 
@@ -914,12 +873,15 @@ func (r *GameRoom) Run() {
 		}
 		projVector := builder.EndVector(len(projOffsets))
 
+		envObjectsVector := EncodeEnvObjectsVector(builder, r.envWorld)
+
 		SpaceTactics.ServerStateStart(builder)
 		SpaceTactics.ServerStateAddTick(builder, r.tick)
 		SpaceTactics.ServerStateAddUnits(builder, unitsVector)
 		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
-		SpaceTactics.ServerStateAddMapWidth(builder, 12000.0)
-		SpaceTactics.ServerStateAddMapHeight(builder, 12000.0)
+		SpaceTactics.ServerStateAddMapWidth(builder, float32(arenaW))
+		SpaceTactics.ServerStateAddMapHeight(builder, float32(arenaH))
+		SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)

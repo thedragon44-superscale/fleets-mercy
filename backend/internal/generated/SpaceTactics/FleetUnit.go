@@ -225,8 +225,20 @@ func (rcv *FleetUnit) MutateCurrentAmmo(n int32) bool {
 	return rcv._tab.MutateInt32Slot(36, n)
 }
 
+func (rcv *FleetUnit) IsStealthed() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(38))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *FleetUnit) MutateIsStealthed(n bool) bool {
+	return rcv._tab.MutateBoolSlot(38, n)
+}
+
 func FleetUnitStart(builder *flatbuffers.Builder) {
-	builder.StartObject(17)
+	builder.StartObject(18)
 }
 func FleetUnitAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -278,6 +290,9 @@ func FleetUnitAddCurrentThermal(builder *flatbuffers.Builder, currentThermal flo
 }
 func FleetUnitAddCurrentAmmo(builder *flatbuffers.Builder, currentAmmo int32) {
 	builder.PrependInt32Slot(16, currentAmmo, 0)
+}
+func FleetUnitAddIsStealthed(builder *flatbuffers.Builder, isStealthed bool) {
+	builder.PrependBoolSlot(17, isStealthed, false)
 }
 func FleetUnitEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

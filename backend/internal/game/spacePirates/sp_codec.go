@@ -179,11 +179,11 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 	c.cryoOffsets = c.cryoOffsets[:0]
 	var arenaW, arenaH float32
 
-	if snap.World != nil {
+	if snap.World != nil && snap.World.Env != nil {
 		arenaW = float32(snap.World.ArenaWidth)
 		arenaH = float32(snap.World.ArenaHeight)
 
-		for _, obj := range snap.World.EnvObjects {
+		for _, obj := range snap.World.Env.Objects {
 			if obj == nil {
 				continue
 			}
@@ -196,17 +196,16 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 				colorOff := b.CreateString(comp.ColorHex)
 				SpacePirates.SPEnvComponentStart(b)
 				SpacePirates.SPEnvComponentAddId(b, comp.ID)
-				SpacePirates.SPEnvComponentAddKind(b, comp.KindEnum)
+				SpacePirates.SPEnvComponentAddKind(b, SpacePirates.EnvComponentKind(comp.KindCode))
 				SpacePirates.SPEnvComponentAddPos(b, SpacePirates.CreateVec2(b, float32(comp.Pos.X), float32(comp.Pos.Y)))
 				SpacePirates.SPEnvComponentAddVel(b, SpacePirates.CreateVec2(b, float32(comp.Vel.X), float32(comp.Vel.Y)))
 				SpacePirates.SPEnvComponentAddRadius(b, float32(comp.Radius))
 				SpacePirates.SPEnvComponentAddInnerRadius(b, float32(comp.InnerRadius))
 				SpacePirates.SPEnvComponentAddIsNode(b, comp.IsNode)
-				SpacePirates.SPEnvComponentAddResourceType(b, comp.ResourceType)
+				SpacePirates.SPEnvComponentAddResourceType(b, SpacePirates.ResourceType(comp.ResourceEnumCode))
 				SpacePirates.SPEnvComponentAddColorHex(b, colorOff)
 				c.envCompOffsets = append(c.envCompOffsets, SpacePirates.SPEnvComponentEnd(b))
 
-				// Backward-compatible asteroid projection for cluster rocks
 				if obj.ObjectType == "asteroid_cluster" {
 					SpacePirates.SPAsteroidNodeStart(b)
 					SpacePirates.SPAsteroidNodeAddId(b, comp.ID)
@@ -215,7 +214,7 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 					SpacePirates.SPAsteroidNodeAddVel(b, SpacePirates.CreateVec2(b, float32(comp.Vel.X), float32(comp.Vel.Y)))
 					SpacePirates.SPAsteroidNodeAddRadius(b, float32(comp.Radius))
 					SpacePirates.SPAsteroidNodeAddIsNode(b, comp.IsNode)
-					SpacePirates.SPAsteroidNodeAddResourceType(b, comp.ResourceType)
+					SpacePirates.SPAsteroidNodeAddResourceType(b, SpacePirates.ResourceType(comp.ResourceEnumCode))
 					c.rockOffsets = append(c.rockOffsets, SpacePirates.SPAsteroidNodeEnd(b))
 				}
 			}
@@ -229,7 +228,7 @@ func (c *Codec) EncodeServerState(snap ServerStateSnapshot) []byte {
 			SpacePirates.SPEnvObjectStart(b)
 			SpacePirates.SPEnvObjectAddId(b, obj.ID)
 			SpacePirates.SPEnvObjectAddBlueprintId(b, int32(obj.BlueprintID))
-			SpacePirates.SPEnvObjectAddObjectType(b, obj.ObjectTypeEnum)
+			SpacePirates.SPEnvObjectAddObjectType(b, SpacePirates.EnvObjectType(obj.ObjectTypeCode))
 			SpacePirates.SPEnvObjectAddPos(b, SpacePirates.CreateVec2(b, float32(obj.Center.X), float32(obj.Center.Y)))
 			SpacePirates.SPEnvObjectAddVel(b, SpacePirates.CreateVec2(b, float32(obj.Vel.X), float32(obj.Vel.Y)))
 			SpacePirates.SPEnvObjectAddAngle(b, float32(obj.Angle))

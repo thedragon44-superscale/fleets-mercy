@@ -2,6 +2,7 @@
 
 import * as flatbuffers from 'flatbuffers';
 
+import { EnvObject } from '../space-tactics/env-object';
 import { FleetUnit } from '../space-tactics/fleet-unit';
 import { Projectile } from '../space-tactics/projectile';
 
@@ -71,8 +72,18 @@ winningFaction(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
+envObjects(index: number, obj?:EnvObject):EnvObject|null {
+  const offset = this.bb!.__offset(this.bb_pos, 18);
+  return offset ? (obj || new EnvObject()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
+}
+
+envObjectsLength():number {
+  const offset = this.bb!.__offset(this.bb_pos, 18);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+}
+
 static startServerState(builder:flatbuffers.Builder) {
-  builder.startObject(7);
+  builder.startObject(8);
 }
 
 static addTick(builder:flatbuffers.Builder, tick:bigint) {
@@ -127,6 +138,22 @@ static addWinningFaction(builder:flatbuffers.Builder, winningFactionOffset:flatb
   builder.addFieldOffset(6, winningFactionOffset, 0);
 }
 
+static addEnvObjects(builder:flatbuffers.Builder, envObjectsOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(7, envObjectsOffset, 0);
+}
+
+static createEnvObjectsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+  builder.startVector(4, data.length, 4);
+  for (let i = data.length - 1; i >= 0; i--) {
+    builder.addOffset(data[i]!);
+  }
+  return builder.endVector();
+}
+
+static startEnvObjectsVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(4, numElems, 4);
+}
+
 static endServerState(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
@@ -140,7 +167,7 @@ static finishSizePrefixedServerStateBuffer(builder:flatbuffers.Builder, offset:f
   builder.finish(offset, undefined, true);
 }
 
-static createServerState(builder:flatbuffers.Builder, tick:bigint, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, mapWidth:number, mapHeight:number, isGameOver:boolean, winningFactionOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createServerState(builder:flatbuffers.Builder, tick:bigint, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, mapWidth:number, mapHeight:number, isGameOver:boolean, winningFactionOffset:flatbuffers.Offset, envObjectsOffset:flatbuffers.Offset):flatbuffers.Offset {
   ServerState.startServerState(builder);
   ServerState.addTick(builder, tick);
   ServerState.addUnits(builder, unitsOffset);
@@ -149,6 +176,7 @@ static createServerState(builder:flatbuffers.Builder, tick:bigint, unitsOffset:f
   ServerState.addMapHeight(builder, mapHeight);
   ServerState.addIsGameOver(builder, isGameOver);
   ServerState.addWinningFaction(builder, winningFactionOffset);
+  ServerState.addEnvObjects(builder, envObjectsOffset);
   return ServerState.endServerState(builder);
 }
 }

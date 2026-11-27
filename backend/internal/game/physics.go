@@ -2,6 +2,8 @@ package game
 
 import (
 	"math"
+
+	"space-tactics-server/internal/game/envphysics"
 	"space-tactics-server/internal/models"
 )
 
@@ -163,5 +165,46 @@ func ApplyMajorWorldGravity(unit *models.FleetUnit, structures []models.MapStruc
 			unit.Vel.X += nx * pullFactor
 			unit.Vel.Y += ny * pullFactor
 		}
+	}
+}
+
+// ApplyUniversalEnvPhysics runs the shared 60Hz envphysics simulation for Sandbox & TDM units.
+func ApplyUniversalEnvPhysics(unit *models.FleetUnit, world *envphysics.World) {
+	if unit == nil || unit.IsDestroyed {
+		return
+	}
+	if world == nil {
+		unit.StealthActive = false
+		return
+	}
+
+	st := envphysics.UnitState{
+		UnitType:    unit.Type,
+		WeightClass: unit.WeightClass,
+		Pos:         envphysics.Vec2{X: unit.Pos.X, Y: unit.Pos.Y},
+		Radius:      envphysics.ShipRadiusForWeight(unit.WeightClass),
+	}
+	envphysics.StepUnit(&st, world)
+
+	unit.StealthActive = st.IsStealthed
+	unit.Pos.X = st.Pos.X
+	unit.Pos.Y = st.Pos.Y
+	unit.Vel.X = unit.Vel.X*st.DragScale + st.Accel.X
+	unit.Vel.Y = unit.Vel.Y*st.DragScale + st.Accel.Y
+
+	if st.InstantKill {
+		unit.IsDestroyed = true
+		unit.Shields = models.QuadrantStats{}
+		return
+	}
+	if st.ShieldDrain > 0 {
+		unit.Shields.Front = math.Max(0, unit.Shields.Front-st.ShieldDrain)
+		unit.Shields.Rear = math.Max(0, unit.Shields.Rear-st.ShieldDrain*0.5)
+		unit.Shields.Port = math.Max(0, unit.Shields.Port-st.ShieldDrain*0.5)
+		unit.Shields.Starboard = math.Max(0, unit.Shields.Starboard-st.ShieldDrain*0.5)
+	}
+	if st.DamageAmount > 0 {
+		impactAngle := math.Atan2(st.DamageSource.Y-unit.Pos.Y, st.DamageSource.X-unit.Pos.X)
+		applyDamage(unit, st.DamageAmount, impactAngle)
 	}
 }

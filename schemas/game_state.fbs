@@ -1,5 +1,35 @@
 namespace SpaceTactics;
 
+// --- ENUMS ---
+
+enum EnvObjectType : ubyte {
+  Unknown = 0,
+  MajorWorld = 1,
+  MineralPlanetoid = 2,
+  GasGiant = 3,
+  NebulaField = 4,
+  SingularityRift = 5,
+  Moon = 6,
+  AsteroidBelt = 7,
+  AsteroidCluster = 8,
+  Comet = 9
+}
+
+enum EnvComponentKind : ubyte {
+  SolidRock = 0,
+  ResourceNode = 1,
+  SolidCore = 2,
+  CaveMouth = 3,
+  CraterNode = 4,
+  GasCore = 5,
+  GasDeep = 6,
+  GasOuter = 7,
+  NebulaBlob = 8,
+  RiftCore = 9,
+  RiftField = 10,
+  CometCore = 11
+}
+
 // --- SHARED STRUCTS ---
 
 struct Vector2D {
@@ -43,6 +73,7 @@ table FleetUnit {
   ai_state: string;
   current_thermal: float;
   current_ammo: int;
+  is_stealthed: bool;
 }
 
 table Projectile {
@@ -53,6 +84,32 @@ table Projectile {
   vel: Vector2D;
 }
 
+table EnvComponent {
+  id: uint;
+  kind: EnvComponentKind;
+  pos: Vector2D;
+  vel: Vector2D;
+  radius: float;
+  inner_radius: float;
+  is_node: bool;
+  resource_type: ubyte;
+  color_hex: string;
+}
+
+table EnvObject {
+  id: uint;
+  blueprint_id: int;
+  object_type: EnvObjectType;
+  pos: Vector2D;
+  vel: Vector2D;
+  angle: float;
+  scale: float = 1.0;
+  bounding_radius: float;
+  parent_object_id: uint;
+  orbit_radius: float;
+  components: [EnvComponent];
+}
+
 table ServerState {
   tick: ulong;
   units: [FleetUnit];
@@ -61,6 +118,7 @@ table ServerState {
   map_height: float;
   is_game_over: bool;      // <--- Added for TDM match state tracking
   winning_faction: string; // <--- Added for victory/defeat modal trigger
+  env_objects: [EnvObject];
 }
 
 // --- UPSTREAM: CLIENT INPUT & INSPECTOR TUNING PAYLOADS ---

@@ -4,20 +4,19 @@ import {
   ENV_OBJECT_TYPE_META,
   EnvBlueprint,
   EnvObjectType,
-  ModeEnvPoolEntry,
 } from '../../../services/envService';
 
 export interface EnvLibrarySidebarProps {
   blueprints: EnvBlueprint[];
-  poolsByBlueprint: Record<number, ModeEnvPoolEntry>;
   activeBlueprintId: number;
   loading: boolean;
+  embedded?: boolean;
   onSelect: (bp: EnvBlueprint) => void;
   onCreateNew: (objectType: EnvObjectType) => void;
   onDuplicate: (bp: EnvBlueprint) => void;
   onToggleEnabled: (bp: EnvBlueprint) => void;
   onDelete: (bp: EnvBlueprint) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 const ALL_TYPES: EnvObjectType[] = [
@@ -34,9 +33,9 @@ const ALL_TYPES: EnvObjectType[] = [
 
 export const EnvLibrarySidebar: React.FC<EnvLibrarySidebarProps> = ({
   blueprints,
-  poolsByBlueprint,
   activeBlueprintId,
   loading,
+  embedded = false,
   onSelect,
   onCreateNew,
   onDuplicate,
@@ -61,13 +60,15 @@ export const EnvLibrarySidebar: React.FC<EnvLibrarySidebarProps> = ({
           </h2>
           <p className="text-[10px] text-slate-500">env_blueprints (PostgreSQL)</p>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold uppercase cursor-pointer"
-        >
-          &larr; Hub
-        </button>
+        {!embedded && onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold uppercase cursor-pointer"
+          >
+            &larr; Hub
+          </button>
+        )}
       </div>
 
       {/* New Blueprint Archetype Picker */}
@@ -147,7 +148,6 @@ export const EnvLibrarySidebar: React.FC<EnvLibrarySidebarProps> = ({
           filtered.map((bp) => {
             const isSelected = bp.blueprintId === activeBlueprintId;
             const meta = ENV_OBJECT_TYPE_META[bp.objectType];
-            const pool = poolsByBlueprint[bp.blueprintId];
             const nodeCount = bp.components.filter((c) => c.is_node).length;
 
             return (
@@ -172,17 +172,15 @@ export const EnvLibrarySidebar: React.FC<EnvLibrarySidebarProps> = ({
                       {meta.label}
                     </span>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
-                        pool?.isEnabled
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-slate-800 text-slate-500 border border-slate-700'
-                      }`}
-                    >
-                      {pool?.isEnabled ? `SP W:${pool.spawnWeight}` : 'SP OFF'}
-                    </span>
-                  </div>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
+                      bp.isEnabled
+                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-500 border border-slate-700'
+                    }`}
+                  >
+                    {bp.isEnabled ? 'ACTIVE' : 'DISABLED'}
+                  </span>
                 </div>
 
                 <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-2 gap-y-0.5 mb-2">

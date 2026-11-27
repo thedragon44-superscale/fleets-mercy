@@ -31,7 +31,7 @@ type TDMRoom struct {
 }
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
-	baseRoom := game.NewGameRoom(mapID, false)
+	baseRoom := game.NewGameRoom(mapID)
 
 	room := &TDMRoom{
 		GameRoom:        baseRoom,
@@ -82,7 +82,11 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.pilotedUnitType = unitType
 		needsReset = true
 	}
-	if mapStr := query.Get("map"); mapStr != "" {
+	mapStr := query.Get("mapId")
+	if mapStr == "" {
+		mapStr = query.Get("map")
+	}
+	if mapStr != "" {
 		if parsedMap, err := strconv.Atoi(mapStr); err == nil && parsedMap > 0 {
 			if parsedMap != r.GetMapID() {
 				r.SetMapID(parsedMap)
@@ -160,8 +164,14 @@ func (r *TDMRoom) Run() {
 			}
 		}
 
+		arenaW, arenaH := r.GetArenaSize()
+
 		// 2. Run Game Physics & AI Simulation Loops
 		if !r.isGameOver {
+			if envW := r.GetEnvWorld(); envW != nil {
+				envW.StepAuthored()
+			}
+
 			units := r.GetUnits()
 			for id, unit := range units {
 				if unit.IsDestroyed {
@@ -177,13 +187,14 @@ func (r *TDMRoom) Run() {
 						D:        r.lastInput.D,
 						Angle:    r.lastInput.Angle,
 						IsFiring: r.lastInput.IsFiring,
-					}, 12000.0, 12000.0)
+					}, arenaW, arenaH)
 					unit.IsFiring = r.lastInput.IsFiring
 				} else {
 					game.RunUnitAI(unit, r.GameRoom, nil)
 				}
 
-				game.ApplyUnitPhysics(unit, 12000.0, 12000.0)
+				game.ApplyUnitPhysics(unit, arenaW, arenaH)
+				game.ApplyUniversalEnvPhysics(unit, r.GetEnvWorld())
 				game.ApplyEnvironmentalCollisions(unit, r.GetStructures())
 				game.ApplyMajorWorldGravity(unit, r.GetStructures())
 				game.RegenerateShields(unit)
@@ -195,7 +206,7 @@ func (r *TDMRoom) Run() {
 		}
 
 		// 3. Build & Broadcast Binary FlatBuffers State
-		builder := flatbuffers.NewBuilder(2048)
+		builder := flatbuffers.NewBuilder(8192)
 		units := r.GetUnits()
 		unitOffsets := make([]flatbuffers.UOffsetT, 0, len(units))
 
@@ -235,6 +246,7 @@ func (r *TDMRoom) Run() {
 			SpaceTactics.FleetUnitAddAiState(builder, aiStateOffset)
 			SpaceTactics.FleetUnitAddCurrentThermal(builder, float32(u.CurrentThermal))
 			SpaceTactics.FleetUnitAddCurrentAmmo(builder, int32(u.CurrentAmmo))
+			SpaceTactics.FleetUnitAddIsStealthed(builder, u.StealthActive)
 
 			unitOffsets = append(unitOffsets, SpaceTactics.FleetUnitEnd(builder))
 		}
@@ -273,15 +285,17 @@ func (r *TDMRoom) Run() {
 		projVector := builder.EndVector(len(projOffsets))
 
 		winningFactionOffset := builder.CreateString(r.winningFaction)
+		envObjectsVector := game.EncodeEnvObjectsVector(builder, r.GetEnvWorld())
 
 		SpaceTactics.ServerStateStart(builder)
 		SpaceTactics.ServerStateAddTick(builder, r.GetTick())
 		SpaceTactics.ServerStateAddUnits(builder, unitsVector)
 		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
-		SpaceTactics.ServerStateAddMapWidth(builder, 12000.0)
-		SpaceTactics.ServerStateAddMapHeight(builder, 12000.0)
+		SpaceTactics.ServerStateAddMapWidth(builder, float32(arenaW))
+		SpaceTactics.ServerStateAddMapHeight(builder, float32(arenaH))
 		SpaceTactics.ServerStateAddIsGameOver(builder, r.isGameOver)
 		SpaceTactics.ServerStateAddWinningFaction(builder, winningFactionOffset)
+		SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)

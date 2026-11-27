@@ -233,13 +233,14 @@ type FleetUnit struct {
 }
 
 type Projectile struct {
-	ID      string   `json:"id"`
-	Pos     Vector2D `json:"pos"`
-	Vel     Vector2D `json:"vel"`
-	OwnerID string   `json:"ownerId"`
-	Type    string   `json:"type"`
-	Life    int      `json:"life"`
-	Damage  float64  `json:"-"`
+	ID          string          `json:"id"`
+	Pos         Vector2D        `json:"pos"`
+	Vel         Vector2D        `json:"vel"`
+	OwnerID     string          `json:"ownerId"`
+	Type        string          `json:"type"`
+	Life        int             `json:"life"`
+	Damage      float64         `json:"-"`
+	RefractedBy map[uint32]bool `json:"-"`
 }
 
 type ClientInput struct {
