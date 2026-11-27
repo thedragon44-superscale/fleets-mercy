@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	roomMu    sync.Mutex
+	roomMu      sync.Mutex
 	activeRooms = make(map[string]*game.GameRoom)
 )
 
@@ -36,6 +36,11 @@ func getOrCreateRoom(mapID int, isSandbox bool) *game.GameRoom {
 
 func main() {
 	db.InitDB()
+	if err := db.LoadSPConfigCache(); err != nil {
+		log.Printf("⚠️ Failed to load Space Pirates DB config: %v", err)
+	}
+
+	// --- WEBSOCKET ROUTES ---
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		mapIDStr := r.URL.Query().Get("mapId")
@@ -76,10 +81,24 @@ func main() {
 		room.HandleWS(w, r)
 	})
 
-	http.HandleFunc("/api/login", api.LoginHandler)
+	// --- AUTH, WALLET & ADMIN ROUTES ---
+
+	http.HandleFunc("/api/login", api.CasinoLoginHandler)
+	http.HandleFunc("/api/register", api.RegisterHandler)
+	http.HandleFunc("/api/wallet", api.GetWalletHandler)
+	http.HandleFunc("/api/admin/players", api.AdminListPlayersHandler)
+	http.HandleFunc("/api/admin/wallet/adjust", api.AdminAdjustWalletHandler)
+
+	// --- SPACE PIRATES CONFIG & CLUSTER DESIGNER ROUTES ---
+
+	http.HandleFunc("/api/casino/sp/config", api.GetSPConfigHandler)
+	http.HandleFunc("/api/casino/sp/clusters", api.SPClustersHandler)
+
+	// --- EXISTING FLEET'S MERCY ROUTES ---
+
 	http.HandleFunc("/api/loadouts", api.GetLoadoutsHandler)
 	http.HandleFunc("/api/loadouts/save", api.SaveLoadoutHandler)
-	
+
 	http.HandleFunc("/api/maps", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			api.SaveCustomMapHandler(w, r)
@@ -87,7 +106,7 @@ func main() {
 			api.GetMapsHandler(w, r)
 		}
 	})
-	
+
 	http.HandleFunc("/api/map-detail", api.GetMapDetailHandler)
 
 	http.HandleFunc("/api/templates", func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +117,6 @@ func main() {
 		}
 	})
 
-	log.Println("Fleet's Mercy Server running on :8080 (Dynamic Map WS, TDM Mode & Template Inspector enabled)")
+	log.Println("Fleet's Mercy Server running on :8080 (Dynamic Map WS, TDM, Casino Auth/Wallet & Space Pirates Config enabled)")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
