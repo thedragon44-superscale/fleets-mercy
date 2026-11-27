@@ -69,7 +69,7 @@ table SPUnit {
   // House Harvester & Bounty Telemetry
   resource_type: ResourceType;
   cargo_ratio: float;         // 0.0 -> 1.0 (drives visual cargo ring)
-  current_bounty_cents: long; // Live 1x bounty in cents (integer math)
+  current_bounty_cents: long; // Live 1x bounty in cents
 }
 
 table SPProjectile {
@@ -89,6 +89,7 @@ table SPAsteroidNode {
   pos: Vec2;
   vel: Vec2;
   radius: float;
+  is_node: bool;              // false = tactical cover rock, true = unlimited resource node
   resource_type: ResourceType;
 }
 
@@ -105,9 +106,9 @@ table SPCryoCloud {
 table SPSeatState {
   seat_index: byte;           // 0 = NW, 1 = NE, 2 = SW, 3 = SE
   occupied: bool;
-  player_id: string;
+  player_id: int;             // Matches PostgreSQL players.id
   username: string;
-  balance_cents: long;
+  balance_cents: long;        // Synced with PostgreSQL wallets.balance_cents
   active_multiplier: ubyte;   // 1, 2, 5, 10, 25
   active_unit_count: ushort;
 }
@@ -124,6 +125,7 @@ table SPPayoutEvent {
 
 table SPServerState {
   tick: ulong;
+  table_id: string;
   arena_width: float;
   arena_height: float;
 
@@ -145,8 +147,8 @@ table SPServerState {
 
 table SPClientAction {
   action: ClientActionType;
+  player_id: int;             // Real PostgreSQL players.id (used on JoinSeat)
   seat_index: byte = -1;      // Optional preferred corner (0..3) or -1 for auto-assign
-  username: string;
   multiplier: ubyte;          // Used with SetMultiplier (1, 2, 5, 10, 25)
   unit_type: string;          // Used with DeployUnit ("viper_interceptor", etc.)
 }

@@ -49,13 +49,18 @@ radius():number {
   return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
 }
 
-resourceType():ResourceType {
+isNode():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 14);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+resourceType():ResourceType {
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.readUint8(this.bb_pos + offset) : ResourceType.None;
 }
 
 static startSPAsteroidNode(builder:flatbuffers.Builder) {
-  builder.startObject(6);
+  builder.startObject(7);
 }
 
 static addId(builder:flatbuffers.Builder, id:number) {
@@ -78,8 +83,12 @@ static addRadius(builder:flatbuffers.Builder, radius:number) {
   builder.addFieldFloat32(4, radius, 0.0);
 }
 
+static addIsNode(builder:flatbuffers.Builder, isNode:boolean) {
+  builder.addFieldInt8(5, +isNode, +false);
+}
+
 static addResourceType(builder:flatbuffers.Builder, resourceType:ResourceType) {
-  builder.addFieldInt8(5, resourceType, ResourceType.None);
+  builder.addFieldInt8(6, resourceType, ResourceType.None);
 }
 
 static endSPAsteroidNode(builder:flatbuffers.Builder):flatbuffers.Offset {

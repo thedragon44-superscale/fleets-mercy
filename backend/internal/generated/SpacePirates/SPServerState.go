@@ -45,19 +45,15 @@ func (rcv *SPServerState) MutateTick(n uint64) bool {
 	return rcv._tab.MutateUint64Slot(4, n)
 }
 
-func (rcv *SPServerState) ArenaWidth() float32 {
+func (rcv *SPServerState) TableId() []byte {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
-		return rcv._tab.GetFloat32(o + rcv._tab.Pos)
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
 	}
-	return 0.0
+	return nil
 }
 
-func (rcv *SPServerState) MutateArenaWidth(n float32) bool {
-	return rcv._tab.MutateFloat32Slot(6, n)
-}
-
-func (rcv *SPServerState) ArenaHeight() float32 {
+func (rcv *SPServerState) ArenaWidth() float32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
 		return rcv._tab.GetFloat32(o + rcv._tab.Pos)
@@ -65,12 +61,24 @@ func (rcv *SPServerState) ArenaHeight() float32 {
 	return 0.0
 }
 
-func (rcv *SPServerState) MutateArenaHeight(n float32) bool {
+func (rcv *SPServerState) MutateArenaWidth(n float32) bool {
 	return rcv._tab.MutateFloat32Slot(8, n)
 }
 
-func (rcv *SPServerState) Units(obj *SPUnit, j int) bool {
+func (rcv *SPServerState) ArenaHeight() float32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
+	if o != 0 {
+		return rcv._tab.GetFloat32(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *SPServerState) MutateArenaHeight(n float32) bool {
+	return rcv._tab.MutateFloat32Slot(10, n)
+}
+
+func (rcv *SPServerState) Units(obj *SPUnit, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -82,7 +90,7 @@ func (rcv *SPServerState) Units(obj *SPUnit, j int) bool {
 }
 
 func (rcv *SPServerState) UnitsLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -90,7 +98,7 @@ func (rcv *SPServerState) UnitsLength() int {
 }
 
 func (rcv *SPServerState) Projectiles(obj *SPProjectile, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -102,7 +110,7 @@ func (rcv *SPServerState) Projectiles(obj *SPProjectile, j int) bool {
 }
 
 func (rcv *SPServerState) ProjectilesLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -110,7 +118,7 @@ func (rcv *SPServerState) ProjectilesLength() int {
 }
 
 func (rcv *SPServerState) Asteroids(obj *SPAsteroidNode, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -122,7 +130,7 @@ func (rcv *SPServerState) Asteroids(obj *SPAsteroidNode, j int) bool {
 }
 
 func (rcv *SPServerState) AsteroidsLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -130,7 +138,7 @@ func (rcv *SPServerState) AsteroidsLength() int {
 }
 
 func (rcv *SPServerState) CryoClouds(obj *SPCryoCloud, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -142,7 +150,7 @@ func (rcv *SPServerState) CryoClouds(obj *SPCryoCloud, j int) bool {
 }
 
 func (rcv *SPServerState) CryoCloudsLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -150,7 +158,7 @@ func (rcv *SPServerState) CryoCloudsLength() int {
 }
 
 func (rcv *SPServerState) Seats(obj *SPSeatState, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -162,7 +170,7 @@ func (rcv *SPServerState) Seats(obj *SPSeatState, j int) bool {
 }
 
 func (rcv *SPServerState) SeatsLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -170,7 +178,7 @@ func (rcv *SPServerState) SeatsLength() int {
 }
 
 func (rcv *SPServerState) PayoutEvents(obj *SPPayoutEvent, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(22))
 	if o != 0 {
 		x := rcv._tab.Vector(o)
 		x += flatbuffers.UOffsetT(j) * 4
@@ -182,7 +190,7 @@ func (rcv *SPServerState) PayoutEvents(obj *SPPayoutEvent, j int) bool {
 }
 
 func (rcv *SPServerState) PayoutEventsLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(22))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
 	}
@@ -190,18 +198,6 @@ func (rcv *SPServerState) PayoutEventsLength() int {
 }
 
 func (rcv *SPServerState) BossMeterCurrent() uint32 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(22))
-	if o != 0 {
-		return rcv._tab.GetUint32(o + rcv._tab.Pos)
-	}
-	return 0
-}
-
-func (rcv *SPServerState) MutateBossMeterCurrent(n uint32) bool {
-	return rcv._tab.MutateUint32Slot(22, n)
-}
-
-func (rcv *SPServerState) BossMeterThreshold() uint32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(24))
 	if o != 0 {
 		return rcv._tab.GetUint32(o + rcv._tab.Pos)
@@ -209,12 +205,24 @@ func (rcv *SPServerState) BossMeterThreshold() uint32 {
 	return 0
 }
 
-func (rcv *SPServerState) MutateBossMeterThreshold(n uint32) bool {
+func (rcv *SPServerState) MutateBossMeterCurrent(n uint32) bool {
 	return rcv._tab.MutateUint32Slot(24, n)
 }
 
-func (rcv *SPServerState) BossActive() bool {
+func (rcv *SPServerState) BossMeterThreshold() uint32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.GetUint32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *SPServerState) MutateBossMeterThreshold(n uint32) bool {
+	return rcv._tab.MutateUint32Slot(26, n)
+}
+
+func (rcv *SPServerState) BossActive() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
 	if o != 0 {
 		return rcv._tab.GetBool(o + rcv._tab.Pos)
 	}
@@ -222,11 +230,11 @@ func (rcv *SPServerState) BossActive() bool {
 }
 
 func (rcv *SPServerState) MutateBossActive(n bool) bool {
-	return rcv._tab.MutateBoolSlot(26, n)
+	return rcv._tab.MutateBoolSlot(28, n)
 }
 
 func (rcv *SPServerState) BossEscapeTicksRemaining() uint32 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
 	if o != 0 {
 		return rcv._tab.GetUint32(o + rcv._tab.Pos)
 	}
@@ -234,68 +242,71 @@ func (rcv *SPServerState) BossEscapeTicksRemaining() uint32 {
 }
 
 func (rcv *SPServerState) MutateBossEscapeTicksRemaining(n uint32) bool {
-	return rcv._tab.MutateUint32Slot(28, n)
+	return rcv._tab.MutateUint32Slot(30, n)
 }
 
 func SPServerStateStart(builder *flatbuffers.Builder) {
-	builder.StartObject(13)
+	builder.StartObject(14)
 }
 func SPServerStateAddTick(builder *flatbuffers.Builder, tick uint64) {
 	builder.PrependUint64Slot(0, tick, 0)
 }
+func SPServerStateAddTableId(builder *flatbuffers.Builder, tableId flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(tableId), 0)
+}
 func SPServerStateAddArenaWidth(builder *flatbuffers.Builder, arenaWidth float32) {
-	builder.PrependFloat32Slot(1, arenaWidth, 0.0)
+	builder.PrependFloat32Slot(2, arenaWidth, 0.0)
 }
 func SPServerStateAddArenaHeight(builder *flatbuffers.Builder, arenaHeight float32) {
-	builder.PrependFloat32Slot(2, arenaHeight, 0.0)
+	builder.PrependFloat32Slot(3, arenaHeight, 0.0)
 }
 func SPServerStateAddUnits(builder *flatbuffers.Builder, units flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(3, flatbuffers.UOffsetT(units), 0)
+	builder.PrependUOffsetTSlot(4, flatbuffers.UOffsetT(units), 0)
 }
 func SPServerStateStartUnitsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddProjectiles(builder *flatbuffers.Builder, projectiles flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(4, flatbuffers.UOffsetT(projectiles), 0)
+	builder.PrependUOffsetTSlot(5, flatbuffers.UOffsetT(projectiles), 0)
 }
 func SPServerStateStartProjectilesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddAsteroids(builder *flatbuffers.Builder, asteroids flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(5, flatbuffers.UOffsetT(asteroids), 0)
+	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(asteroids), 0)
 }
 func SPServerStateStartAsteroidsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddCryoClouds(builder *flatbuffers.Builder, cryoClouds flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(cryoClouds), 0)
+	builder.PrependUOffsetTSlot(7, flatbuffers.UOffsetT(cryoClouds), 0)
 }
 func SPServerStateStartCryoCloudsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddSeats(builder *flatbuffers.Builder, seats flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(7, flatbuffers.UOffsetT(seats), 0)
+	builder.PrependUOffsetTSlot(8, flatbuffers.UOffsetT(seats), 0)
 }
 func SPServerStateStartSeatsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddPayoutEvents(builder *flatbuffers.Builder, payoutEvents flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(8, flatbuffers.UOffsetT(payoutEvents), 0)
+	builder.PrependUOffsetTSlot(9, flatbuffers.UOffsetT(payoutEvents), 0)
 }
 func SPServerStateStartPayoutEventsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func SPServerStateAddBossMeterCurrent(builder *flatbuffers.Builder, bossMeterCurrent uint32) {
-	builder.PrependUint32Slot(9, bossMeterCurrent, 0)
+	builder.PrependUint32Slot(10, bossMeterCurrent, 0)
 }
 func SPServerStateAddBossMeterThreshold(builder *flatbuffers.Builder, bossMeterThreshold uint32) {
-	builder.PrependUint32Slot(10, bossMeterThreshold, 0)
+	builder.PrependUint32Slot(11, bossMeterThreshold, 0)
 }
 func SPServerStateAddBossActive(builder *flatbuffers.Builder, bossActive bool) {
-	builder.PrependBoolSlot(11, bossActive, false)
+	builder.PrependBoolSlot(12, bossActive, false)
 }
 func SPServerStateAddBossEscapeTicksRemaining(builder *flatbuffers.Builder, bossEscapeTicksRemaining uint32) {
-	builder.PrependUint32Slot(12, bossEscapeTicksRemaining, 0)
+	builder.PrependUint32Slot(13, bossEscapeTicksRemaining, 0)
 }
 func SPServerStateEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

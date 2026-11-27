@@ -33,114 +33,125 @@ tick():bigint {
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-arenaWidth():number {
+tableId():string|null
+tableId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+tableId(optionalEncoding?:any):string|Uint8Array|null {
   const offset = this.bb!.__offset(this.bb_pos, 6);
-  return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-arenaHeight():number {
+arenaWidth():number {
   const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
 }
 
-units(index: number, obj?:SPUnit):SPUnit|null {
+arenaHeight():number {
   const offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.readFloat32(this.bb_pos + offset) : 0.0;
+}
+
+units(index: number, obj?:SPUnit):SPUnit|null {
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? (obj || new SPUnit()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 unitsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 projectiles(index: number, obj?:SPProjectile):SPProjectile|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? (obj || new SPProjectile()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 projectilesLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 asteroids(index: number, obj?:SPAsteroidNode):SPAsteroidNode|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? (obj || new SPAsteroidNode()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 asteroidsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 cryoClouds(index: number, obj?:SPCryoCloud):SPCryoCloud|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? (obj || new SPCryoCloud()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 cryoCloudsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 seats(index: number, obj?:SPSeatState):SPSeatState|null {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? (obj || new SPSeatState()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 seatsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 payoutEvents(index: number, obj?:SPPayoutEvent):SPPayoutEvent|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? (obj || new SPPayoutEvent()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 payoutEventsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 bossMeterCurrent():number {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
-  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
-}
-
-bossMeterThreshold():number {
   const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
-bossActive():boolean {
+bossMeterThreshold():number {
   const offset = this.bb!.__offset(this.bb_pos, 26);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+}
+
+bossActive():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 bossEscapeTicksRemaining():number {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 30);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 static startSPServerState(builder:flatbuffers.Builder) {
-  builder.startObject(13);
+  builder.startObject(14);
 }
 
 static addTick(builder:flatbuffers.Builder, tick:bigint) {
   builder.addFieldInt64(0, tick, BigInt('0'));
 }
 
+static addTableId(builder:flatbuffers.Builder, tableIdOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, tableIdOffset, 0);
+}
+
 static addArenaWidth(builder:flatbuffers.Builder, arenaWidth:number) {
-  builder.addFieldFloat32(1, arenaWidth, 0.0);
+  builder.addFieldFloat32(2, arenaWidth, 0.0);
 }
 
 static addArenaHeight(builder:flatbuffers.Builder, arenaHeight:number) {
-  builder.addFieldFloat32(2, arenaHeight, 0.0);
+  builder.addFieldFloat32(3, arenaHeight, 0.0);
 }
 
 static addUnits(builder:flatbuffers.Builder, unitsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, unitsOffset, 0);
+  builder.addFieldOffset(4, unitsOffset, 0);
 }
 
 static createUnitsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -156,7 +167,7 @@ static startUnitsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addProjectiles(builder:flatbuffers.Builder, projectilesOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, projectilesOffset, 0);
+  builder.addFieldOffset(5, projectilesOffset, 0);
 }
 
 static createProjectilesVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -172,7 +183,7 @@ static startProjectilesVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addAsteroids(builder:flatbuffers.Builder, asteroidsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, asteroidsOffset, 0);
+  builder.addFieldOffset(6, asteroidsOffset, 0);
 }
 
 static createAsteroidsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -188,7 +199,7 @@ static startAsteroidsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addCryoClouds(builder:flatbuffers.Builder, cryoCloudsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, cryoCloudsOffset, 0);
+  builder.addFieldOffset(7, cryoCloudsOffset, 0);
 }
 
 static createCryoCloudsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -204,7 +215,7 @@ static startCryoCloudsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addSeats(builder:flatbuffers.Builder, seatsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(7, seatsOffset, 0);
+  builder.addFieldOffset(8, seatsOffset, 0);
 }
 
 static createSeatsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -220,7 +231,7 @@ static startSeatsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addPayoutEvents(builder:flatbuffers.Builder, payoutEventsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, payoutEventsOffset, 0);
+  builder.addFieldOffset(9, payoutEventsOffset, 0);
 }
 
 static createPayoutEventsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -236,19 +247,19 @@ static startPayoutEventsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addBossMeterCurrent(builder:flatbuffers.Builder, bossMeterCurrent:number) {
-  builder.addFieldInt32(9, bossMeterCurrent, 0);
+  builder.addFieldInt32(10, bossMeterCurrent, 0);
 }
 
 static addBossMeterThreshold(builder:flatbuffers.Builder, bossMeterThreshold:number) {
-  builder.addFieldInt32(10, bossMeterThreshold, 0);
+  builder.addFieldInt32(11, bossMeterThreshold, 0);
 }
 
 static addBossActive(builder:flatbuffers.Builder, bossActive:boolean) {
-  builder.addFieldInt8(11, +bossActive, +false);
+  builder.addFieldInt8(12, +bossActive, +false);
 }
 
 static addBossEscapeTicksRemaining(builder:flatbuffers.Builder, bossEscapeTicksRemaining:number) {
-  builder.addFieldInt32(12, bossEscapeTicksRemaining, 0);
+  builder.addFieldInt32(13, bossEscapeTicksRemaining, 0);
 }
 
 static endSPServerState(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -264,9 +275,10 @@ static finishSizePrefixedSPServerStateBuffer(builder:flatbuffers.Builder, offset
   builder.finish(offset, undefined, true);
 }
 
-static createSPServerState(builder:flatbuffers.Builder, tick:bigint, arenaWidth:number, arenaHeight:number, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, asteroidsOffset:flatbuffers.Offset, cryoCloudsOffset:flatbuffers.Offset, seatsOffset:flatbuffers.Offset, payoutEventsOffset:flatbuffers.Offset, bossMeterCurrent:number, bossMeterThreshold:number, bossActive:boolean, bossEscapeTicksRemaining:number):flatbuffers.Offset {
+static createSPServerState(builder:flatbuffers.Builder, tick:bigint, tableIdOffset:flatbuffers.Offset, arenaWidth:number, arenaHeight:number, unitsOffset:flatbuffers.Offset, projectilesOffset:flatbuffers.Offset, asteroidsOffset:flatbuffers.Offset, cryoCloudsOffset:flatbuffers.Offset, seatsOffset:flatbuffers.Offset, payoutEventsOffset:flatbuffers.Offset, bossMeterCurrent:number, bossMeterThreshold:number, bossActive:boolean, bossEscapeTicksRemaining:number):flatbuffers.Offset {
   SPServerState.startSPServerState(builder);
   SPServerState.addTick(builder, tick);
+  SPServerState.addTableId(builder, tableIdOffset);
   SPServerState.addArenaWidth(builder, arenaWidth);
   SPServerState.addArenaHeight(builder, arenaHeight);
   SPServerState.addUnits(builder, unitsOffset);

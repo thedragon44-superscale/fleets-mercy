@@ -45,8 +45,20 @@ func (rcv *SPClientAction) MutateAction(n ClientActionType) bool {
 	return rcv._tab.MutateByteSlot(4, byte(n))
 }
 
-func (rcv *SPClientAction) SeatIndex() int8 {
+func (rcv *SPClientAction) PlayerId() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *SPClientAction) MutatePlayerId(n int32) bool {
+	return rcv._tab.MutateInt32Slot(6, n)
+}
+
+func (rcv *SPClientAction) SeatIndex() int8 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
 		return rcv._tab.GetInt8(o + rcv._tab.Pos)
 	}
@@ -54,15 +66,7 @@ func (rcv *SPClientAction) SeatIndex() int8 {
 }
 
 func (rcv *SPClientAction) MutateSeatIndex(n int8) bool {
-	return rcv._tab.MutateInt8Slot(6, n)
-}
-
-func (rcv *SPClientAction) Username() []byte {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
-	if o != 0 {
-		return rcv._tab.ByteVector(o + rcv._tab.Pos)
-	}
-	return nil
+	return rcv._tab.MutateInt8Slot(8, n)
 }
 
 func (rcv *SPClientAction) Multiplier() byte {
@@ -91,11 +95,11 @@ func SPClientActionStart(builder *flatbuffers.Builder) {
 func SPClientActionAddAction(builder *flatbuffers.Builder, action ClientActionType) {
 	builder.PrependByteSlot(0, byte(action), 0)
 }
-func SPClientActionAddSeatIndex(builder *flatbuffers.Builder, seatIndex int8) {
-	builder.PrependInt8Slot(1, seatIndex, -1)
+func SPClientActionAddPlayerId(builder *flatbuffers.Builder, playerId int32) {
+	builder.PrependInt32Slot(1, playerId, 0)
 }
-func SPClientActionAddUsername(builder *flatbuffers.Builder, username flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(username), 0)
+func SPClientActionAddSeatIndex(builder *flatbuffers.Builder, seatIndex int8) {
+	builder.PrependInt8Slot(2, seatIndex, -1)
 }
 func SPClientActionAddMultiplier(builder *flatbuffers.Builder, multiplier byte) {
 	builder.PrependByteSlot(3, multiplier, 0)

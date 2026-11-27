@@ -95,8 +95,20 @@ func (rcv *SPAsteroidNode) MutateRadius(n float32) bool {
 	return rcv._tab.MutateFloat32Slot(12, n)
 }
 
-func (rcv *SPAsteroidNode) ResourceType() ResourceType {
+func (rcv *SPAsteroidNode) IsNode() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *SPAsteroidNode) MutateIsNode(n bool) bool {
+	return rcv._tab.MutateBoolSlot(14, n)
+}
+
+func (rcv *SPAsteroidNode) ResourceType() ResourceType {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		return ResourceType(rcv._tab.GetByte(o + rcv._tab.Pos))
 	}
@@ -104,11 +116,11 @@ func (rcv *SPAsteroidNode) ResourceType() ResourceType {
 }
 
 func (rcv *SPAsteroidNode) MutateResourceType(n ResourceType) bool {
-	return rcv._tab.MutateByteSlot(14, byte(n))
+	return rcv._tab.MutateByteSlot(16, byte(n))
 }
 
 func SPAsteroidNodeStart(builder *flatbuffers.Builder) {
-	builder.StartObject(6)
+	builder.StartObject(7)
 }
 func SPAsteroidNodeAddId(builder *flatbuffers.Builder, id uint32) {
 	builder.PrependUint32Slot(0, id, 0)
@@ -125,8 +137,11 @@ func SPAsteroidNodeAddVel(builder *flatbuffers.Builder, vel flatbuffers.UOffsetT
 func SPAsteroidNodeAddRadius(builder *flatbuffers.Builder, radius float32) {
 	builder.PrependFloat32Slot(4, radius, 0.0)
 }
+func SPAsteroidNodeAddIsNode(builder *flatbuffers.Builder, isNode bool) {
+	builder.PrependBoolSlot(5, isNode, false)
+}
 func SPAsteroidNodeAddResourceType(builder *flatbuffers.Builder, resourceType ResourceType) {
-	builder.PrependByteSlot(5, byte(resourceType), 0)
+	builder.PrependByteSlot(6, byte(resourceType), 0)
 }
 func SPAsteroidNodeEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

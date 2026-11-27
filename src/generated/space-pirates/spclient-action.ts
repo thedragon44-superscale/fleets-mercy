@@ -28,16 +28,14 @@ action():ClientActionType {
   return offset ? this.bb!.readUint8(this.bb_pos + offset) : ClientActionType.None;
 }
 
-seatIndex():number {
+playerId():number {
   const offset = this.bb!.__offset(this.bb_pos, 6);
-  return offset ? this.bb!.readInt8(this.bb_pos + offset) : -1;
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
-username():string|null
-username(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-username(optionalEncoding?:any):string|Uint8Array|null {
+seatIndex():number {
   const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readInt8(this.bb_pos + offset) : -1;
 }
 
 multiplier():number {
@@ -60,12 +58,12 @@ static addAction(builder:flatbuffers.Builder, action:ClientActionType) {
   builder.addFieldInt8(0, action, ClientActionType.None);
 }
 
-static addSeatIndex(builder:flatbuffers.Builder, seatIndex:number) {
-  builder.addFieldInt8(1, seatIndex, -1);
+static addPlayerId(builder:flatbuffers.Builder, playerId:number) {
+  builder.addFieldInt32(1, playerId, 0);
 }
 
-static addUsername(builder:flatbuffers.Builder, usernameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, usernameOffset, 0);
+static addSeatIndex(builder:flatbuffers.Builder, seatIndex:number) {
+  builder.addFieldInt8(2, seatIndex, -1);
 }
 
 static addMultiplier(builder:flatbuffers.Builder, multiplier:number) {
@@ -81,11 +79,11 @@ static endSPClientAction(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createSPClientAction(builder:flatbuffers.Builder, action:ClientActionType, seatIndex:number, usernameOffset:flatbuffers.Offset, multiplier:number, unitTypeOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createSPClientAction(builder:flatbuffers.Builder, action:ClientActionType, playerId:number, seatIndex:number, multiplier:number, unitTypeOffset:flatbuffers.Offset):flatbuffers.Offset {
   SPClientAction.startSPClientAction(builder);
   SPClientAction.addAction(builder, action);
+  SPClientAction.addPlayerId(builder, playerId);
   SPClientAction.addSeatIndex(builder, seatIndex);
-  SPClientAction.addUsername(builder, usernameOffset);
   SPClientAction.addMultiplier(builder, multiplier);
   SPClientAction.addUnitType(builder, unitTypeOffset);
   return SPClientAction.endSPClientAction(builder);

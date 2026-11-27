@@ -57,12 +57,16 @@ func (rcv *SPSeatState) MutateOccupied(n bool) bool {
 	return rcv._tab.MutateBoolSlot(6, n)
 }
 
-func (rcv *SPSeatState) PlayerId() []byte {
+func (rcv *SPSeatState) PlayerId() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
-		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
-	return nil
+	return 0
+}
+
+func (rcv *SPSeatState) MutatePlayerId(n int32) bool {
+	return rcv._tab.MutateInt32Slot(8, n)
 }
 
 func (rcv *SPSeatState) Username() []byte {
@@ -118,8 +122,8 @@ func SPSeatStateAddSeatIndex(builder *flatbuffers.Builder, seatIndex int8) {
 func SPSeatStateAddOccupied(builder *flatbuffers.Builder, occupied bool) {
 	builder.PrependBoolSlot(1, occupied, false)
 }
-func SPSeatStateAddPlayerId(builder *flatbuffers.Builder, playerId flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(2, flatbuffers.UOffsetT(playerId), 0)
+func SPSeatStateAddPlayerId(builder *flatbuffers.Builder, playerId int32) {
+	builder.PrependInt32Slot(2, playerId, 0)
 }
 func SPSeatStateAddUsername(builder *flatbuffers.Builder, username flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(3, flatbuffers.UOffsetT(username), 0)

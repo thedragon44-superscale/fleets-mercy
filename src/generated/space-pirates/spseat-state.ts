@@ -30,11 +30,9 @@ occupied():boolean {
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-playerId():string|null
-playerId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-playerId(optionalEncoding?:any):string|Uint8Array|null {
+playerId():number {
   const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 }
 
 username():string|null
@@ -71,8 +69,8 @@ static addOccupied(builder:flatbuffers.Builder, occupied:boolean) {
   builder.addFieldInt8(1, +occupied, +false);
 }
 
-static addPlayerId(builder:flatbuffers.Builder, playerIdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, playerIdOffset, 0);
+static addPlayerId(builder:flatbuffers.Builder, playerId:number) {
+  builder.addFieldInt32(2, playerId, 0);
 }
 
 static addUsername(builder:flatbuffers.Builder, usernameOffset:flatbuffers.Offset) {
@@ -96,11 +94,11 @@ static endSPSeatState(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createSPSeatState(builder:flatbuffers.Builder, seatIndex:number, occupied:boolean, playerIdOffset:flatbuffers.Offset, usernameOffset:flatbuffers.Offset, balanceCents:bigint, activeMultiplier:number, activeUnitCount:number):flatbuffers.Offset {
+static createSPSeatState(builder:flatbuffers.Builder, seatIndex:number, occupied:boolean, playerId:number, usernameOffset:flatbuffers.Offset, balanceCents:bigint, activeMultiplier:number, activeUnitCount:number):flatbuffers.Offset {
   SPSeatState.startSPSeatState(builder);
   SPSeatState.addSeatIndex(builder, seatIndex);
   SPSeatState.addOccupied(builder, occupied);
-  SPSeatState.addPlayerId(builder, playerIdOffset);
+  SPSeatState.addPlayerId(builder, playerId);
   SPSeatState.addUsername(builder, usernameOffset);
   SPSeatState.addBalanceCents(builder, balanceCents);
   SPSeatState.addActiveMultiplier(builder, activeMultiplier);
