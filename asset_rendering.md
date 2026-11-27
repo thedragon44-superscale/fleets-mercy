@@ -1,9 +1,12 @@
-Inspect `src/components/teamDeathMatch/tdmViewport.tsx` (and `src/renderer/pixiEnvRenderer.ts` / `pixiSprites.ts`) — TDM connects and receives all 35 units + 5 env objects (they render on the 2D TDM Radar), but the main Pixi viewport shows `FPS: 0` and only renders the piloted unit.
+Audit why the player's chosen unit in TDM ignores mouse/keyboard control and continuously circles on its own (camera and selection ring track the unit properly, so the piloted ID is recognized visually).
 
-Check and report on:
-1. Any uncaught exception or early return inside the Pixi ticker / render loop in `tdmViewport.tsx` (especially around the new `BitmapText` labels or `pixiEnvRenderer` calls).
-2. How `FPS` is calculated and updated in the TDM HUD (why it stays stuck at `0`).
-3. Camera transform, zoom scale, and container visibility/z-index for `EnvObjects` and non-piloted units in `tdmViewport.tsx`.
-4. Why the bottom-left shield HUD readout (`FRON SHD`, `REAR SHD`, etc.) is slightly clipped on the left edge.
+Trace the full control pipeline end-to-end and report findings before editing:
+1. **Frontend Input (`src/components/teamDeathMatch/tdmViewport.tsx`):**
+   - Verify pointer/mouse/key listeners are attached and firing (not blocked by a HUD overlay or Pixi v8 canvas `pointer-events` change).
+   - Verify screen-to-world coordinate conversion accounts for the Pixi v8 camera/resolution/DPR setup and that WebSocket input packets are actually being sent.
+2. **Backend WebSocket Read Loop (`backend/internal/game/ws_client.go` & `backend/internal/game/teamDeathMatch/`):**
+   - Confirm incoming TDM client input messages (cursor target, movement, fire, pilot selection) are still being read and routed into the TDM room after the `ws_client.go` refactor.
+3. **Backend Pilot vs. AI Guard (`backend/internal/game/teamDeathMatch/` & `movement.go`):**
+   - Confirm the chosen piloted unit (including non-flagship units) is excluded from automated TDM AI overrides and is reading the live player cursor target instead of a stale `(0, 0)` or spawn target.
 
-Discuss findings before editing any files.
+Present the exact root cause and file/line fix plan before making changes.

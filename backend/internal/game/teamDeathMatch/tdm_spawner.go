@@ -65,10 +65,12 @@ func InitializeTDMRoster(r *TDMRoom, pilotedUnitType string, customPool []string
 					template, _ = db.GetTemplate(unitType)
 				}
 
-				id := fmt.Sprintf("tdm-%s-%s-%d", faction, unitType, r.NextUnitID())
-
+				var id string
 				if faction == "player" && unitIndex == 1 {
+					id = fmt.Sprintf("tdm-pilot-%s-%d", unitType, r.NextUnitID())
 					pilotedID = id
+				} else {
+					id = fmt.Sprintf("tdm-%s-%s-%d", faction, unitType, r.NextUnitID())
 				}
 
 				isLeader := (i == leaderIndexWithinSquad)

@@ -49,17 +49,47 @@ interface TdmHudState {
   isGameOver: boolean;
   winningFaction: string;
   pilotedAlive: boolean;
+  pilotedType: string;
+  transferNotice: string;
   zoomPercent: number;
   shields: TdmShieldHud | null;
 }
 
 const GRID_SPACING = 500;
 const RADAR_REDRAW_INTERVAL_MS = 80; // ~12Hz 2D radar redraw
+const TRANSFER_NOTICE_DURATION_MS = 3000;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.5;
 const DEFAULT_ZOOM = 0.75;
 
 const round1 = (v: number | undefined): number => Math.round((v || 0) * 10) / 10;
+
+const formatHullName = (unitType: string): string =>
+  unitType
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join(' ');
+
+const findNearestAlly = (
+  units: SnapshotUnit[],
+  refX: number,
+  refY: number
+): SnapshotUnit | undefined => {
+  let nearest: SnapshotUnit | undefined;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u.ownerId !== 'player' || u.isDestroyed) continue;
+    const dx = u.pos.x - refX;
+    const dy = u.pos.y - refY;
+    const dSq = dx * dx + dy * dy;
+    if (dSq < bestDistSq) {
+      bestDistSq = dSq;
+      nearest = u;
+    }
+  }
+  return nearest;
+};
 
 export const TdmViewport: React.FC<TdmViewportProps> = ({
   mapId,
@@ -79,6 +109,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   const serverHistoryRef = useRef<{ timestamp: number; units: SnapshotUnit[] }[]>([]);
   const mapDetailsRef = useRef<MapDefinition | null>(null);
   const pilotedIdRef = useRef<string | null>(null);
+  const pendingPilotSyncRef = useRef<boolean>(false);
+  const transferNoticeRef = useRef<{ text: string; expiresAt: number } | null>(null);
   const cameraPosRef = useRef({ x: 6000, y: 6000 });
   const renderPosRef = useRef({ x: 6000, y: 6000 });
   const zoomRef = useRef<number>(DEFAULT_ZOOM);
@@ -94,11 +126,13 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     isGameOver: false,
     winningFaction: '',
     pilotedAlive: true,
+    pilotedType: pilotedUnit,
+    transferNotice: '',
     zoomPercent: Math.round(DEFAULT_ZOOM * 100),
     shields: null,
   });
 
-  const { keysRef, tickFlightInput, clearInputs } = useFlightControls({
+  const { keysRef, tickFlightInput, sendImmediate, clearInputs } = useFlightControls({
     canvasRef,
     cameraPosRef,
     zoomRef,
@@ -109,14 +143,29 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         : undefined;
 
       if (!unit) {
-        unit =
-          units.find(
-            (u) => u.ownerId === 'player' && u.type === pilotedUnit && !u.isDestroyed
-          ) || units.find((u) => u.ownerId === 'player' && !u.isDestroyed);
+        const hadPreviousPilot = pilotedIdRef.current !== null;
+        if (!hadPreviousPilot) {
+          unit =
+            units.find(
+              (u) => u.ownerId === 'player' && u.id.startsWith('tdm-pilot-') && !u.isDestroyed
+            ) || findNearestAlly(units, renderPosRef.current.x, renderPosRef.current.y);
+        } else {
+          unit = findNearestAlly(units, renderPosRef.current.x, renderPosRef.current.y);
+        }
+
         const nextId = unit ? unit.id : null;
         if (pilotedIdRef.current !== nextId) {
           pilotedIdRef.current = nextId;
-          isInitializedRef.current = false;
+          if (!hadPreviousPilot) {
+            isInitializedRef.current = false;
+          } else if (unit) {
+            renderPosRef.current = { x: unit.pos.x, y: unit.pos.y };
+            pendingPilotSyncRef.current = true;
+            transferNoticeRef.current = {
+              text: `HULL LOST // TRANSFERRED TO ${formatHullName(unit.type).toUpperCase()}`,
+              expiresAt: performance.now() + TRANSFER_NOTICE_DURATION_MS,
+            };
+          }
         }
       }
       return unit;
@@ -167,6 +216,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   // Connect to TDM WebSocket (O(1) latest-frame coalescing in ws.onmessage)
   useEffect(() => {
     pilotedIdRef.current = null;
+    pendingPilotSyncRef.current = false;
+    transferNoticeRef.current = null;
     pendingBufferRef.current = null;
     snapshotRef.current = null;
     serverHistoryRef.current = [];
@@ -282,6 +333,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
         let lastTime = performance.now();
         let lastHudSyncTime = lastTime;
+        let lastSyncedNotice = '';
         let fpsAvg = 60;
 
         app.ticker.add(() => {
@@ -341,6 +393,13 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
             }
 
             const playerUnit = tickFlightInput(currentTime, liveUnits);
+
+            if (pendingPilotSyncRef.current) {
+              pendingPilotSyncRef.current = false;
+              if (playerUnit) {
+                sendImmediate(liveUnits);
+              }
+            }
 
             if (playerUnit) {
               if (!isInitializedRef.current) {
@@ -541,10 +600,25 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
               }
             }
 
-            // 6. Low-frequency HUD state sync (~4Hz or immediately on match end)
-            if (currentTime - lastHudSyncTime >= 250 || snapshot.isGameOver) {
+            // 6. Low-frequency HUD state sync (~4Hz, or immediately on transfer notice / match end)
+            let activeTransferNotice = '';
+            if (transferNoticeRef.current) {
+              if (currentTime < transferNoticeRef.current.expiresAt) {
+                activeTransferNotice = transferNoticeRef.current.text;
+              } else {
+                transferNoticeRef.current = null;
+              }
+            }
+
+            if (
+              currentTime - lastHudSyncTime >= 250 ||
+              snapshot.isGameOver ||
+              activeTransferNotice !== lastSyncedNotice
+            ) {
               lastHudSyncTime = currentTime;
+              lastSyncedNotice = activeTransferNotice;
               const zoomPercent = Math.round(z * 100);
+              const nextPilotedType = playerUnit ? playerUnit.type : '';
               const nextShields: TdmShieldHud | null = playerUnit
                 ? {
                     front: round1(playerUnit.shields?.front),
@@ -570,6 +644,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
                   prev.isGameOver === !!snapshot.isGameOver &&
                   prev.winningFaction === (snapshot.winningFaction || '') &&
                   prev.pilotedAlive === !!playerUnit &&
+                  prev.pilotedType === nextPilotedType &&
+                  prev.transferNotice === activeTransferNotice &&
                   prev.zoomPercent === zoomPercent &&
                   shieldsSame
                 ) {
@@ -582,6 +658,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
                   isGameOver: !!snapshot.isGameOver,
                   winningFaction: snapshot.winningFaction || '',
                   pilotedAlive: !!playerUnit,
+                  pilotedType: nextPilotedType,
+                  transferNotice: activeTransferNotice,
                   zoomPercent,
                   shields: nextShields,
                 };
@@ -607,7 +685,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         app.destroy(false, { children: true, texture: false, textureSource: false });
       }
     };
-  }, [pilotedUnit, templatesRef, tickFlightInput]);
+  }, [pilotedUnit, templatesRef, tickFlightInput, sendImmediate]);
 
   const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
@@ -617,6 +695,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   const handleResetMatch = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       pilotedIdRef.current = null;
+      pendingPilotSyncRef.current = false;
+      transferNoticeRef.current = null;
       serverHistoryRef.current = [];
       isInitializedRef.current = false;
       clearInputs();
@@ -667,9 +747,24 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         </div>
       </div>
 
-      {/* PILOTED SHIP 4-QUADRANT SHIELD HUD (Crisp DOM Overlay) */}
+      {/* PILOT TRANSFER NOTICE BANNER */}
+      {hud.transferNotice && !hud.isGameOver && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-950/90 border border-amber-400/60 px-4 py-1.5 rounded-lg backdrop-blur pointer-events-none font-mono text-xs font-bold tracking-wider text-amber-300 shadow-lg">
+          {hud.transferNotice}
+        </div>
+      )}
+
+      {/* PILOTED SHIP HULL & 4-QUADRANT SHIELD HUD (Crisp DOM Overlay) */}
       {hud.pilotedAlive && hud.shields && (
-        <div className="absolute bottom-4 left-4 bg-slate-900/85 border border-cyan-500/35 px-3.5 py-2.5 rounded-lg backdrop-blur pointer-events-none font-mono text-[11px] leading-relaxed text-cyan-300 shadow-lg tabular-nums">
+        <div className="absolute bottom-4 left-4 bg-slate-900/85 border border-cyan-500/35 px-3.5 py-2.5 rounded-lg backdrop-blur pointer-events-none font-mono text-[11px] leading-relaxed text-cyan-300 shadow-lg tabular-nums min-w-[170px]">
+          {hud.pilotedType && (
+            <div className="mb-1.5 pb-1 border-b border-cyan-500/25 flex items-center justify-between gap-3">
+              <span className="text-[9px] uppercase tracking-widest text-slate-400">PILOTING</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                {formatHullName(hud.pilotedType)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <span className="text-slate-400">FRONT SHD</span>
             <span className="text-cyan-300 font-bold">{hud.shields.front.toFixed(1)}</span>

@@ -32,6 +32,21 @@ type TDMRoom struct {
 	fbBuilder   *flatbuffers.Builder
 	unitOffsets []flatbuffers.UOffsetT
 	projOffsets []flatbuffers.UOffsetT
+
+	stopCh   chan struct{}
+	stopOnce sync.Once
+}
+
+func poolsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom {
@@ -45,9 +60,17 @@ func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom
 		fbBuilder:       flatbuffers.NewBuilder(16384),
 		unitOffsets:     make([]flatbuffers.UOffsetT, 0, 64),
 		projOffsets:     make([]flatbuffers.UOffsetT, 0, 128),
+		stopCh:          make(chan struct{}),
 	}
 	room.ResetMatch()
 	return room
+}
+
+// Stop terminates the room's 60Hz Run goroutine cleanly once all clients disconnect.
+func (r *TDMRoom) Stop() {
+	r.stopOnce.Do(func() {
+		close(r.stopCh)
+	})
 }
 
 func (r *TDMRoom) LoadMapStructures() {
@@ -74,6 +97,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	conn, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		log.Printf("⚠️ TDM WebSocket upgrade failed: %v", err)
+		r.Stop()
 		return
 	}
 	clientAddr := conn.RemoteAddr().String()
@@ -84,7 +108,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	needsReset := len(r.GetUnits()) == 0
 	mapChanged := false
 
-	if unitType := query.Get("unit"); unitType != "" {
+	if unitType := query.Get("unit"); unitType != "" && unitType != r.pilotedUnitType {
 		r.pilotedUnitType = unitType
 		needsReset = true
 	}
@@ -97,13 +121,16 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 			if parsedMap != r.GetMapID() {
 				r.SetMapID(parsedMap)
 				mapChanged = true
+				needsReset = true
 			}
-			needsReset = true
 		}
 	}
 	if poolStr := query.Get("pool"); poolStr != "" {
-		r.customUnitPool = strings.Split(poolStr, ",")
-		needsReset = true
+		parsedPool := strings.Split(poolStr, ",")
+		if !poolsEqual(parsedPool, r.customUnitPool) {
+			r.customUnitPool = parsedPool
+			needsReset = true
+		}
 	}
 
 	if mapChanged {
@@ -123,11 +150,15 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		log.Printf("❌ Player disconnected from TDM: %s", clientAddr)
 		r.mu.Lock()
 		delete(r.clients, client)
-		if len(r.clients) == 0 {
+		noClientsLeft := len(r.clients) == 0
+		if noClientsLeft {
 			r.lastInput = game.SandboxClientInput{}
 		}
 		r.mu.Unlock()
 		client.Close()
+		if noClientsLeft {
+			r.Stop()
+		}
 	}()
 
 	for {
@@ -148,9 +179,21 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		r.lastInput.D = clientInput.D()
 		r.lastInput.Angle = clientInput.Angle()
 		r.lastInput.IsFiring = clientInput.IsFiring()
+		controlledID := string(clientInput.ControlledUnitId())
+		r.lastInput.ControlledUnitID = controlledID
 
 		if clientInput.Reset() {
 			r.ResetMatch()
+		} else if controlledID != "" && controlledID != r.pilotedUnitID {
+			units := r.GetUnits()
+			currentPilot, pilotExists := units[r.pilotedUnitID]
+			if !pilotExists || currentPilot == nil || currentPilot.IsDestroyed {
+				if candidate, ok := units[controlledID]; ok && candidate != nil && !candidate.IsDestroyed && candidate.OwnerID == "player" {
+					r.pilotedUnitID = controlledID
+					candidate.CurrentAngularVel = 0
+					log.Printf("🔄 TDM Pilot transferred to surviving ally: %s (%s)", candidate.ID, candidate.Type)
+				}
+			}
 		}
 		r.mu.Unlock()
 	}
@@ -160,7 +203,12 @@ func (r *TDMRoom) Run() {
 	ticker := time.NewTicker(16 * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-r.stopCh:
+			return
+		case <-ticker.C:
+		}
 		r.mu.Lock()
 		r.SetTick(r.GetTick() + 1)
 
@@ -184,6 +232,10 @@ func (r *TDMRoom) Run() {
 			units := r.GetUnits()
 			for id, unit := range units {
 				if unit.IsDestroyed {
+					if id == r.pilotedUnitID {
+						r.pilotedUnitID = ""
+						r.lastInput.IsFiring = false
+					}
 					delete(units, id)
 					continue
 				}
