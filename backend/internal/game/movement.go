@@ -204,8 +204,8 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 	}
 
 	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-	if currentSpeed > 0.005 {
-		// 0.93 (crisp stop) up to 0.985 (heavy space drift)
+	if currentSpeed > 0.03 {
+		// Preserve drift_coefficient glide curve: 0.93 (crisp) up to 0.985 (heavy space drift)
 		linearDamp := 0.93 + (drift * 0.055)
 		quadraticDragFactor := 0.0005 * (1.0 - (drift * 0.6))
 
@@ -227,6 +227,21 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 
 		unit.Vel.X *= effectiveDamp
 		unit.Vel.Y *= effectiveDamp
+
+		// Eliminate the endless sub-pixel exponential tail only once the ship has already
+		// drifted down to a near-stop, so drift glide stays intact and units reach exact (0, 0).
+		postSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+		if postSpeed < 0.35 {
+			settleDecel := 0.015 * (1.0 - drift*0.4)
+			if postSpeed <= settleDecel || postSpeed <= 0.03 {
+				unit.Vel.X = 0
+				unit.Vel.Y = 0
+			} else {
+				scale := (postSpeed - settleDecel) / postSpeed
+				unit.Vel.X *= scale
+				unit.Vel.Y *= scale
+			}
+		}
 	} else {
 		unit.Vel.X = 0
 		unit.Vel.Y = 0

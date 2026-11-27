@@ -140,10 +140,11 @@ type ActiveEnvObject struct {
 // UnitState is a mode-agnostic physics adapter so Space Pirates, Sandbox, and TDM
 // all run the exact same environmental physics with zero circular dependencies.
 type UnitState struct {
-	// Inputs
+	// Inputs (Pos and Vel are updated in place on solid hitbox contact)
 	UnitType    string
 	WeightClass int
 	Pos         Vec2
+	Vel         Vec2
 	Radius      float64
 
 	// Outputs populated by StepUnit
@@ -156,9 +157,41 @@ type UnitState struct {
 	ShieldDrain  float64
 }
 
+// ShipHitboxRadius returns the canonical circular hull hitbox radius shared across
+// Sandbox, TDM, and Space Pirates. Aligned 1:1 with the visible 80% hull footprint
+// inside the 10%-padded unit PNG sprites (matching src/renderer/spriteRegistry.ts).
+func ShipHitboxRadius(unitType string, weightClass int) float64 {
+	switch unitType {
+	case "flagship", "battalion_command_ship":
+		return 37.0
+	case "aegis_wall", "warp_frigate":
+		return 29.0
+	case "torpedo_bomber":
+		return 28.0
+	case "gun_emplacement":
+		return 26.5
+	case "lancer_corvette":
+		return 25.5
+	case "cryo_flak", "specter_jammer":
+		return 25.0
+	case "assault_gunship", "command_escort", "aegis_repair", "vortex_minelayer":
+		return 22.5
+	case "mining_barge", "supply_tender", "grav_extractor":
+		return 21.0
+	case "plasma_skimmer":
+		return 20.0
+	case "viper_interceptor", "phantom_transport", "ion_interceptor":
+		return 18.0
+	case "recon_probe":
+		return 16.5
+	default:
+		return ShipRadiusForWeight(weightClass)
+	}
+}
+
 func ShipRadiusForWeight(weightClass int) float64 {
 	if weightClass < 1 {
 		weightClass = 1
 	}
-	return 18.0 + 3.5*float64(weightClass)
+	return 15.0 + 3.0*float64(weightClass)
 }

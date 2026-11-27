@@ -2,12 +2,14 @@ package game
 
 import (
 	"math"
+
+	"space-tactics-server/internal/game/envphysics"
 	"space-tactics-server/internal/models"
 )
 
-// getUnitRadius returns a uniform, sprite-accurate physical footprint radius decoupled from weight class
+// getUnitRadius returns the canonical hull hitbox radius shared across all game modes.
 func getUnitRadius(unit *models.FleetUnit) float64 {
-	return 30.0
+	return envphysics.ShipHitboxRadius(unit.Type, unit.WeightClass)
 }
 
 // ResolveUnitCollisions checks and resolves physics-based overlapping collisions between individual fleet units
@@ -89,6 +91,17 @@ func ResolveUnitCollisions(units map[string]*models.FleetUnit, isSandbox bool) {
 				unit.Pos.Y -= ny * overlap * ratioA
 				other.Pos.X += nx * overlap * ratioB
 				other.Pos.Y += ny * overlap * ratioB
+
+				// Cancel inward relative normal velocity on hitbox touch so ships do not bounce or grind
+				relVx := other.Vel.X - unit.Vel.X
+				relVy := other.Vel.Y - unit.Vel.Y
+				relNormal := relVx*nx + relVy*ny
+				if relNormal < 0 {
+					unit.Vel.X += nx * relNormal * ratioA
+					unit.Vel.Y += ny * relNormal * ratioA
+					other.Vel.X -= nx * relNormal * ratioB
+					other.Vel.Y -= ny * relNormal * ratioB
+				}
 
 				if !(isSandbox && unit.OwnerID == "player" && other.OwnerID == "player") {
 					impactVel := math.Hypot(unit.Vel.X-other.Vel.X, unit.Vel.Y-other.Vel.Y)

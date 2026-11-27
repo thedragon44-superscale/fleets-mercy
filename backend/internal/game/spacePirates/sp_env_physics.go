@@ -17,12 +17,15 @@ func StepUnitEnvPhysics(u *Unit, world *WorldState) bool {
 		UnitType:    u.UnitType,
 		WeightClass: u.WeightClass,
 		Pos:         envphysics.Vec2{X: u.Pos.X, Y: u.Pos.Y},
-		Radius:      shipCollisionRadius(u.WeightClass),
+		Vel:         envphysics.Vec2{X: u.Vel.X, Y: u.Vel.Y},
+		Radius:      envphysics.ShipHitboxRadius(u.UnitType, u.WeightClass),
 	}
 	envphysics.StepUnit(&st, world.Env)
 
 	u.Pos.X = st.Pos.X
 	u.Pos.Y = st.Pos.Y
+	u.Vel.X = st.Vel.X
+	u.Vel.Y = st.Vel.Y
 	u.IsStealthed = st.IsStealthed
 	u.EnvDragScale = st.DragScale
 	u.EnvAccel = Vec2{X: st.Accel.X, Y: st.Accel.Y}

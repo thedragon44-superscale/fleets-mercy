@@ -187,8 +187,39 @@ export function getUnitSpriteImage(unitType: string): HTMLImageElement | null {
   return img;
 }
 
+// Canonical circular hull hitbox radii mirroring backend envphysics.ShipHitboxRadius
+// (visible 80% hull inside 10%-padded square PNG sprites).
+export const UNIT_HITBOX_RADII: Record<string, number> = {
+  viper_interceptor: 18.0,
+  recon_probe: 16.5,
+  phantom_transport: 18.0,
+  ion_interceptor: 18.0,
+  mining_barge: 21.0,
+  supply_tender: 21.0,
+  plasma_skimmer: 20.0,
+  grav_extractor: 21.0,
+  assault_gunship: 22.5,
+  command_escort: 22.5,
+  aegis_repair: 22.5,
+  vortex_minelayer: 22.5,
+  lancer_corvette: 25.5,
+  cryo_flak: 25.0,
+  specter_jammer: 25.0,
+  aegis_wall: 29.0,
+  torpedo_bomber: 28.0,
+  warp_frigate: 29.0,
+  gun_emplacement: 26.5,
+  battalion_command_ship: 37.0,
+  flagship: 37.0,
+  default: 20.0,
+};
+
 export function getUnitSpriteSize(unitType: string): number {
   return UNIT_SPRITE_SIZES[unitType] ?? UNIT_SPRITE_SIZES.default;
+}
+
+export function getUnitHitboxRadius(unitType: string): number {
+  return UNIT_HITBOX_RADII[unitType] ?? UNIT_HITBOX_RADII.default;
 }
 
 export function getUnitRotationOffset(unitType: string): number {

@@ -20,8 +20,9 @@ func isImmune(immuneList []string, unitType string) bool {
 	return false
 }
 
-// StepUnit evaluates broad-phase culled 60Hz environmental forces, stealth zones,
-// Gas Giant 3-layer hazards, Nebula drag, Dense Belt weight filters, solid push-outs, and Comet impacts.
+// StepUnit evaluates broad-phase culled 60Hz environmental physics.
+// Only objects with GravityStrength > 0 affect unit movement before solid hitbox contact.
+// Non-gravity fields retain non-movement tactical effects (stealth, DoT, lethal core, comet impact).
 func StepUnit(u *UnitState, world *World) {
 	if u == nil || world == nil {
 		return
@@ -36,12 +37,11 @@ func StepUnit(u *UnitState, world *World) {
 
 	shipR := u.Radius
 	if shipR <= 0 {
-		shipR = ShipRadiusForWeight(u.WeightClass)
+		shipR = ShipHitboxRadius(u.UnitType, u.WeightClass)
 	}
 
 	for _, obj := range world.Objects {
-		fieldR := math.Max(obj.Physics.GravityRadius, obj.Physics.RepulsionRadius)
-		broadR := math.Max(obj.BoundingRadius, fieldR) + shipR + 40.0
+		broadR := math.Max(obj.BoundingRadius, obj.Physics.GravityRadius) + shipR + 40.0
 		dxObj := obj.Center.X - u.Pos.X
 		dyObj := obj.Center.Y - u.Pos.Y
 		distObjSq := dxObj*dxObj + dyObj*dyObj
@@ -52,7 +52,7 @@ func StepUnit(u *UnitState, world *World) {
 		distObj := math.Sqrt(distObjSq)
 		immune := isImmune(obj.Physics.ImmuneUnitClasses, u.UnitType)
 
-		// 1. Gravity Well Pull
+		// 1. Gravity Well Pull (the ONLY pre-contact movement force from env objects)
 		if !immune && obj.Physics.GravityStrength > 0 && obj.Physics.GravityRadius > 0 && distObj > 1.0 && distObj < obj.Physics.GravityRadius {
 			falloff := 1.0 - (distObj / obj.Physics.GravityRadius)
 			weightScale := 1.4 - 0.15*float64(u.WeightClass)
@@ -64,19 +64,7 @@ func StepUnit(u *UnitState, world *World) {
 			u.Accel.Y += (dyObj / distObj) * pull
 		}
 
-		// 2. Singularity Rift Repulsion Field
-		if !immune && obj.Physics.RepulsionStrength > 0 && obj.Physics.RepulsionRadius > 0 && distObj > 1.0 && distObj < obj.Physics.RepulsionRadius {
-			falloff := 1.0 - (distObj / obj.Physics.RepulsionRadius)
-			weightScale := 1.35
-			if u.WeightClass >= 4 {
-				weightScale = 0.45
-			}
-			push := obj.Physics.RepulsionStrength * falloff * weightScale
-			u.Accel.X -= (dxObj / distObj) * push
-			u.Accel.Y -= (dyObj / distObj) * push
-		}
-
-		// 3. Per-Component Zones, Stealth, Belt Filter, Solid Collisions & Comet Impacts
+		// 2. Per-Component Zones (stealth/DoT/lethal core) & Strict Solid Hitbox Contact
 		for _, c := range obj.Components {
 			dx := u.Pos.X - c.Pos.X
 			dy := u.Pos.Y - c.Pos.Y
@@ -94,35 +82,18 @@ func StepUnit(u *UnitState, world *World) {
 					if obj.Physics.RadarOpaque {
 						u.IsStealthed = true
 					}
-					if !immune {
-						if obj.Physics.DeepPullWeightMax > 0 && u.WeightClass <= obj.Physics.DeepPullWeightMax && dist > 1.0 {
-							u.Accel.X -= (dx / dist) * 0.28
-							u.Accel.Y -= (dy / dist) * 0.28
-						} else {
-							u.DragScale = math.Min(u.DragScale, 1.0-math.Max(0.25, obj.Physics.DragFactor))
-							if obj.Physics.DeepDotDPS > 0 {
-								u.DamageAmount += obj.Physics.DeepDotDPS / float64(TickRateHz)
-								u.DamageSource = c.Pos
-							}
-						}
+					if !immune && obj.Physics.DeepDotDPS > 0 {
+						u.DamageAmount += obj.Physics.DeepDotDPS / float64(TickRateHz)
+						u.DamageSource = c.Pos
 					}
 				}
 
 			case "gas_outer":
-				if dist < c.Radius && dist >= c.InnerRadius && !immune {
-					if obj.Physics.OuterDragFactor > 0 && u.WeightClass >= obj.Physics.OuterDragMinWeight {
-						u.DragScale = math.Min(u.DragScale, 1.0-obj.Physics.OuterDragFactor)
-					}
-				}
+				// No pre-contact movement drag; gravity is driven solely by GravityStrength > 0.
 
 			case "nebula_blob":
-				if dist < c.Radius {
-					if obj.Physics.RadarOpaque {
-						u.IsStealthed = true
-					}
-					if !immune && obj.Physics.DragFactor > 0 && (obj.Physics.DragMaxWeight == 0 || u.WeightClass <= obj.Physics.DragMaxWeight) {
-						u.DragScale = math.Min(u.DragScale, 1.0-obj.Physics.DragFactor)
-					}
+				if dist < c.Radius && obj.Physics.RadarOpaque {
+					u.IsStealthed = true
 				}
 
 			case "comet_core":
@@ -137,24 +108,23 @@ func StepUnit(u *UnitState, world *World) {
 				if obj.ObjectType == "gas_giant" || obj.ObjectType == "nebula_field" {
 					continue
 				}
-				extraMargin := 0.0
-				if obj.ObjectType == "asteroid_belt" && obj.Physics.MaxPassableWeight > 0 && u.WeightClass > obj.Physics.MaxPassableWeight {
-					extraMargin = 26.0
-				}
-				minDist := c.Radius + shipR + extraMargin
+				minDist := c.Radius + shipR
 				if dist < minDist && dist > 0.01 {
 					nx := dx / dist
 					ny := dy / dist
 					overlap := minDist - dist
 					u.Pos.X += nx * overlap
 					u.Pos.Y += ny * overlap
+
+					// Cancel inward normal velocity on solid hitbox contact so ships slide or stop cleanly
+					dot := u.Vel.X*nx + u.Vel.Y*ny
+					if dot < 0 {
+						u.Vel.X -= dot * nx
+						u.Vel.Y -= dot * ny
+					}
 				}
 			}
 		}
-	}
-
-	if u.DragScale < 0.25 {
-		u.DragScale = 0.25
 	}
 }
 
@@ -339,17 +309,6 @@ func ComputeHazardAvoidance(pos Vec2, weightClass int, world *World) (Vec2, bool
 				}
 			}
 			continue
-		}
-
-		if obj.ObjectType == "asteroid_belt" && obj.Physics.MaxPassableWeight > 0 && weightClass > obj.Physics.MaxPassableWeight {
-			dx := pos.X - obj.Center.X
-			dy := pos.Y - obj.Center.Y
-			dist := math.Hypot(dx, dy)
-			if dist < obj.BoundingRadius+50 && dist > 0.01 {
-				steer.X += (dx/dist)*1.1 + (-dy/dist)*0.8
-				steer.Y += (dy/dist)*1.1 + (dx/dist)*0.8
-				urgent = true
-			}
 		}
 	}
 

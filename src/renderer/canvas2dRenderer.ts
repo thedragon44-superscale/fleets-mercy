@@ -11,6 +11,7 @@ import {
   isSoftEnvLayer,
 } from '../utils/envRenderer';
 import {
+  getUnitHitboxRadius,
   getUnitRotationOffset,
   getUnitSpriteImage,
   preloadUnitSprites,
@@ -848,11 +849,14 @@ export class Canvas2DRenderer implements ViewportRenderer {
         ctx.restore();
       }
 
-      // 4. Optional hitbox
+      // 4. Optional hitbox (matches backend envphysics.ShipHitboxRadius 1:1)
       if (u.hitbox) {
+        const hitR = getUnitHitboxRadius(u.unitType);
         ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(u.x - half, u.y - half, u.size, u.size);
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, hitR, 0, Math.PI * 2);
+        ctx.stroke();
       }
 
       // 5. Harvester cargo ring

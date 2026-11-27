@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"space-tactics-server/internal/db"
+	"space-tactics-server/internal/game/envphysics"
 	SpacePirates "space-tactics-server/internal/generated/SpacePirates"
 	"space-tactics-server/internal/models"
 
@@ -984,11 +985,8 @@ func (r *SpacePiratesRoom) spawnHouseEscortsLocked(unitClass, vipID string, orig
 
 // --- ASYMMETRIC WEIGHTCLASS SHOVING COLLISIONS ---
 
-func shipCollisionRadius(weightClass int) float64 {
-	if weightClass < 1 {
-		weightClass = 1
-	}
-	return 18.0 + 3.5*float64(weightClass)
+func shipCollisionRadius(unitType string, weightClass int) float64 {
+	return envphysics.ShipHitboxRadius(unitType, weightClass)
 }
 
 func (r *SpacePiratesRoom) resolveShipShovingLocked() {
@@ -1002,7 +1000,7 @@ func (r *SpacePiratesRoom) resolveShipShovingLocked() {
 	n := len(alive)
 	for i := 0; i < n; i++ {
 		a := alive[i]
-		rA := shipCollisionRadius(a.WeightClass)
+		rA := shipCollisionRadius(a.UnitType, a.WeightClass)
 		wA := float64(a.WeightClass)
 		if wA < 1 {
 			wA = 1
@@ -1012,7 +1010,7 @@ func (r *SpacePiratesRoom) resolveShipShovingLocked() {
 			b := alive[j]
 			dx := a.Pos.X - b.Pos.X
 			dy := a.Pos.Y - b.Pos.Y
-			minDist := rA + shipCollisionRadius(b.WeightClass)
+			minDist := rA + shipCollisionRadius(b.UnitType, b.WeightClass)
 			distSq := dx*dx + dy*dy
 			if distSq >= minDist*minDist {
 				continue
@@ -1036,13 +1034,26 @@ func (r *SpacePiratesRoom) resolveShipShovingLocked() {
 			totalW := wA + wB
 
 			// Heavier units shove lighter units proportionally more; zero collision damage.
-			pushA := overlap * (wB / totalW)
-			pushB := overlap * (wA / totalW)
+			ratioA := wB / totalW
+			ratioB := wA / totalW
+			pushA := overlap * ratioA
+			pushB := overlap * ratioB
 
 			a.Pos.X += nx * pushA
 			a.Pos.Y += ny * pushA
 			b.Pos.X -= nx * pushB
 			b.Pos.Y -= ny * pushB
+
+			// Cancel inward relative normal velocity on hitbox touch so ships do not bounce or grind.
+			relVx := a.Vel.X - b.Vel.X
+			relVy := a.Vel.Y - b.Vel.Y
+			relNormal := relVx*nx + relVy*ny
+			if relNormal < 0 {
+				a.Vel.X -= nx * relNormal * ratioA
+				a.Vel.Y -= ny * relNormal * ratioA
+				b.Vel.X += nx * relNormal * ratioB
+				b.Vel.Y += ny * relNormal * ratioB
+			}
 
 			if a.AIState != "ESCAPE" {
 				a.Pos.X = clampFloat(a.Pos.X, 25, r.world.ArenaWidth-25)
@@ -1076,7 +1087,7 @@ func (r *SpacePiratesRoom) stepWeaponsLocked() {
 		if life < 10 {
 			life = 10
 		}
-		muzzle := shipCollisionRadius(u.WeightClass) + 6.0
+		muzzle := shipCollisionRadius(u.UnitType, u.WeightClass) + 6.0
 		p := &Projectile{
 			ID:            fmt.Sprintf("pr-%d", r.nextProjSeq),
 			OwnerID:       u.OwnerID,
@@ -1131,7 +1142,7 @@ func (r *SpacePiratesRoom) stepProjectilesLocked() {
 			if u.IsDestroyed || u.IsHouse == p.IsHouse {
 				continue // Everyone vs. The House: players never hit players, House never hits House
 			}
-			hitR := shipCollisionRadius(u.WeightClass)
+			hitR := shipCollisionRadius(u.UnitType, u.WeightClass)
 			dx := u.Pos.X - p.Pos.X
 			dy := u.Pos.Y - p.Pos.Y
 			if dx*dx+dy*dy <= hitR*hitR {

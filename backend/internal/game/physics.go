@@ -182,15 +182,16 @@ func ApplyUniversalEnvPhysics(unit *models.FleetUnit, world *envphysics.World) {
 		UnitType:    unit.Type,
 		WeightClass: unit.WeightClass,
 		Pos:         envphysics.Vec2{X: unit.Pos.X, Y: unit.Pos.Y},
-		Radius:      envphysics.ShipRadiusForWeight(unit.WeightClass),
+		Vel:         envphysics.Vec2{X: unit.Vel.X, Y: unit.Vel.Y},
+		Radius:      envphysics.ShipHitboxRadius(unit.Type, unit.WeightClass),
 	}
 	envphysics.StepUnit(&st, world)
 
 	unit.StealthActive = st.IsStealthed
 	unit.Pos.X = st.Pos.X
 	unit.Pos.Y = st.Pos.Y
-	unit.Vel.X = unit.Vel.X*st.DragScale + st.Accel.X
-	unit.Vel.Y = unit.Vel.Y*st.DragScale + st.Accel.Y
+	unit.Vel.X = st.Vel.X*st.DragScale + st.Accel.X
+	unit.Vel.Y = st.Vel.Y*st.DragScale + st.Accel.Y
 
 	if st.InstantKill {
 		unit.IsDestroyed = true
