@@ -5,6 +5,7 @@ import {
   unpackServerBinaryMessage,
   serializeClientInput,
   ServerStateSnapshot,
+  SnapshotEnvObject,
   SnapshotUnit,
 } from '../../parsers/binaryCodec';
 import { fetchMapDetail, MapDefinition } from '../../services/mapService';
@@ -108,7 +109,9 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
 
   // High-frequency 60Hz simulation state lives in refs with latest-frame coalescing
   const pendingBufferRef = useRef<ArrayBuffer | null>(null);
+  const pendingTimestampRef = useRef<number>(0);
   const snapshotRef = useRef<ServerStateSnapshot | null>(null);
+  const cachedEnvObjectsRef = useRef<SnapshotEnvObject[]>([]);
   const serverHistoryRef = useRef<{ timestamp: number; units: SnapshotUnit[] }[]>([]);
   const mapDetailsRef = useRef<MapDefinition | null>(null);
   const pilotedIdRef = useRef<string | null>(null);
@@ -241,7 +244,9 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     pendingPilotSyncRef.current = false;
     transferNoticeRef.current = null;
     pendingBufferRef.current = null;
+    pendingTimestampRef.current = 0;
     snapshotRef.current = null;
+    cachedEnvObjectsRef.current = [];
     serverHistoryRef.current = [];
     isInitializedRef.current = false;
     clearInputs();
@@ -266,8 +271,9 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
     ws.onmessage = (event) => {
       if (closedByCleanup || wsRef.current !== ws) return;
       if (event.data instanceof ArrayBuffer) {
-        // Coalesce: keep only the newest binary frame; decode once per render tick
+        // Coalesce: keep only the newest binary frame & record true arrival timestamp
         pendingBufferRef.current = event.data;
+        pendingTimestampRef.current = performance.now();
       }
     };
 
@@ -344,17 +350,21 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         // 0. Decode ONLY the latest arrived binary frame (drops any stale queued packets)
         const pendingBuf = pendingBufferRef.current;
         if (pendingBuf) {
+          const snapTime = pendingTimestampRef.current || currentTime;
           pendingBufferRef.current = null;
           const parsedState = unpackServerBinaryMessage(pendingBuf);
           if (parsedState) {
             snapshotRef.current = parsedState;
-            lastSnapTime = currentTime;
+            lastSnapTime = snapTime;
+            if (parsedState.envObjects && parsedState.envObjects.length > 0) {
+              cachedEnvObjectsRef.current = parsedState.envObjects;
+            }
             if (!parsedState.units || parsedState.units.length === 0) {
               serverHistoryRef.current = [];
               isInitializedRef.current = false;
             } else {
               serverHistoryRef.current.push({
-                timestamp: currentTime,
+                timestamp: snapTime,
                 units: parsedState.units,
               });
               if (serverHistoryRef.current.length > 20) {
@@ -394,25 +404,25 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           }
         }
 
-        const sinceSnapTicks = Math.min(4.8, Math.max(0, (currentTime - lastSnapTime) * 0.06));
-        const pilotExtrapTicks = Math.min(1.8, sinceSnapTicks);
+        const sinceSnapTicks = Math.min(2.5, Math.max(0, (currentTime - lastSnapTime) * 0.06));
 
         if (playerUnit) {
-          const predX = playerUnit.pos.x + (playerUnit.vel?.x || 0) * pilotExtrapTicks;
-          const predY = playerUnit.pos.y + (playerUnit.vel?.y || 0) * pilotExtrapTicks;
+          // Track authoritative server position smoothly without velocity extrapolation overshoot
+          const targetX = playerUnit.pos.x;
+          const targetY = playerUnit.pos.y;
 
           if (
             !isInitializedRef.current ||
-            Math.hypot(predX - renderPosRef.current.x, predY - renderPosRef.current.y) > 220
+            Math.hypot(targetX - renderPosRef.current.x, targetY - renderPosRef.current.y) > 220
           ) {
-            renderPosRef.current = { x: predX, y: predY };
+            renderPosRef.current = { x: targetX, y: targetY };
             renderAngleRef.current = playerUnit.angle;
-            cameraPosRef.current = { x: predX, y: predY };
+            cameraPosRef.current = { x: targetX, y: targetY };
             isInitializedRef.current = true;
           } else {
-            const lerpRate = 1.0 - Math.exp(-28.0 * dt);
-            renderPosRef.current.x += (predX - renderPosRef.current.x) * lerpRate;
-            renderPosRef.current.y += (predY - renderPosRef.current.y) * lerpRate;
+            const lerpRate = 1.0 - Math.exp(-24.0 * dt);
+            renderPosRef.current.x += (targetX - renderPosRef.current.x) * lerpRate;
+            renderPosRef.current.y += (targetY - renderPosRef.current.y) * lerpRate;
             renderAngleRef.current = lerpAngleShort(renderAngleRef.current, playerUnit.angle, lerpRate);
 
             const camLerp = 1.0 - Math.exp(-16.0 * dt);
@@ -425,8 +435,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         const cameraY = cameraPosRef.current.y;
         const z = zoomRef.current;
 
-        // 1. Cached Universal Environmental Objects
-        const liveEnvObjects = snapshot.envObjects || [];
+        // 1. Cached Universal Environmental Objects (same ref on static delta ticks -> O(1) fast-skip)
+        const liveEnvObjects = cachedEnvObjectsRef.current;
         renderer.setEnvObjects(liveEnvObjects);
 
         // 2. Interpolated Fleet Units -> ViewportFrameState
@@ -668,7 +678,9 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
       pendingPilotSyncRef.current = false;
       transferNoticeRef.current = null;
       pendingBufferRef.current = null;
+      pendingTimestampRef.current = 0;
       snapshotRef.current = null;
+      cachedEnvObjectsRef.current = [];
       serverHistoryRef.current = [];
       isInitializedRef.current = false;
       clearInputs();

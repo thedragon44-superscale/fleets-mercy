@@ -19,7 +19,7 @@ import type {
 } from '../../renderer/viewportRenderer';
 import { drawEnvObjectsOnRadar } from '../../utils/envRenderer';
 import { getInterpolatedUnits } from '../../renderer/interpolation';
-import { SnapshotUnit, ServerStateSnapshot } from '../../parsers/binaryCodec';
+import { SnapshotUnit, SnapshotEnvObject, ServerStateSnapshot } from '../../parsers/binaryCodec';
 import { UNIT_DB } from '../garage/GarageDashboard';
 import { WS_BASE_URL } from '../../config';
 import { fetchMapDetail, MapDefinition } from '../../services/mapService';
@@ -81,6 +81,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
   const serverState = useRef<ServerStateSnapshot | null>(null);
   const serverHistoryRef = useRef<{ timestamp: number; units: SnapshotUnit[] }[]>([]);
+  const cachedEnvObjectsRef = useRef<SnapshotEnvObject[]>([]);
   const mapDetailsRef = useRef<MapDefinition | null>(null);
 
   // Camera, Zoom & Pan Refs
@@ -143,6 +144,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
   const {
     state: uiSocketState,
     consumeLatestSnapshot,
+    getLatestSnapshotTimestamp,
     tickMs,
     sendInput,
     sendTemplateOverride,
@@ -272,6 +274,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
   useEffect(() => {
     if (!mapId) return;
+    cachedEnvObjectsRef.current = [];
     let active = true;
     fetchMapDetail(mapId)
       .then((data) => {
@@ -314,6 +317,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
   const handleResetSandbox = () => {
     serverHistoryRef.current = [];
+    cachedEnvObjectsRef.current = [];
     isInitialized.current = false;
     controlledUnitIdRef.current = '';
     setControlledUnitId('');
@@ -512,7 +516,11 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         const freshSnap = consumeLatestSnapshot();
         if (freshSnap) {
           serverState.current = freshSnap;
-          lastSnapTime = currentTime;
+          const snapTime = getLatestSnapshotTimestamp() || currentTime;
+          lastSnapTime = snapTime;
+          if (freshSnap.envObjects && freshSnap.envObjects.length > 0) {
+            cachedEnvObjectsRef.current = freshSnap.envObjects;
+          }
           if (isBootstrappingRef.current) {
             isBootstrappingRef.current = false;
             setIsBootstrapping(false);
@@ -530,7 +538,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
               setSelectedWorldUnitId(null);
             }
           } else {
-            serverHistoryRef.current.push({ timestamp: currentTime, units: freshSnap.units });
+            serverHistoryRef.current.push({ timestamp: snapTime, units: freshSnap.units });
             if (serverHistoryRef.current.length > 20) {
               serverHistoryRef.current.shift();
             }
@@ -591,26 +599,27 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
         const sinceSnapTicks = isPausedRef.current
           ? 0
-          : Math.min(4.8, Math.max(0, (currentTime - lastSnapTime) * 0.06 * simulationSpeedRef.current));
+          : Math.min(2.5, Math.max(0, (currentTime - lastSnapTime) * 0.06 * simulationSpeedRef.current));
 
         if (controlledUnit) {
-          const predX = controlledUnit.pos.x + (controlledUnit.vel?.x || 0) * sinceSnapTicks;
-          const predY = controlledUnit.pos.y + (controlledUnit.vel?.y || 0) * sinceSnapTicks;
+          // Track authoritative server position smoothly without velocity extrapolation overshoot
+          const targetX = controlledUnit.pos.x;
+          const targetY = controlledUnit.pos.y;
 
           if (
             !isInitialized.current ||
-            Math.hypot(predX - renderPos.current.x, predY - renderPos.current.y) > 220
+            Math.hypot(targetX - renderPos.current.x, targetY - renderPos.current.y) > 220
           ) {
-            renderPos.current = { x: predX, y: predY };
+            renderPos.current = { x: targetX, y: targetY };
             renderAngle.current = controlledUnit.angle;
             if (isCameraLockedRef.current) {
-              cameraPos.current = { x: predX, y: predY };
+              cameraPos.current = { x: targetX, y: targetY };
             }
             isInitialized.current = true;
           } else {
-            const lerpRate = 1.0 - Math.exp(-28.0 * dt);
-            renderPos.current.x += (predX - renderPos.current.x) * lerpRate;
-            renderPos.current.y += (predY - renderPos.current.y) * lerpRate;
+            const lerpRate = 1.0 - Math.exp(-24.0 * dt);
+            renderPos.current.x += (targetX - renderPos.current.x) * lerpRate;
+            renderPos.current.y += (targetY - renderPos.current.y) * lerpRate;
             renderAngle.current = lerpAngleShort(renderAngle.current, controlledUnit.angle, lerpRate);
           }
 
@@ -636,8 +645,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
 
         const z = zoomRef.current;
 
-        // 1. Cached Universal Environmental Objects
-        const liveEnvObjects = snap.envObjects || [];
+        // 1. Cached Universal Environmental Objects (same ref on static delta ticks -> O(1) fast-skip)
+        const liveEnvObjects = cachedEnvObjectsRef.current;
         renderer.setEnvObjects(liveEnvObjects);
 
         // 2. Interpolated Units -> ViewportFrameState
@@ -1015,7 +1024,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
       window.removeEventListener('blur', onPanBlur);
       renderer.destroy();
     };
-  }, [consumeLatestSnapshot, templatesRef, tickFlightInput, canvasToWorld]);
+  }, [consumeLatestSnapshot, getLatestSnapshotTimestamp, templatesRef, tickFlightInput, canvasToWorld]);
 
   // Low-frequency (~5Hz) UI-only derivations from uiSocketState
   const allUnits = uiSocketState?.units || [];

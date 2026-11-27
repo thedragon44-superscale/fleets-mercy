@@ -36,7 +36,7 @@ import type {
   ViewportRendererInitOptions,
 } from './viewportRenderer';
 
-const MAX_ENV_CACHE_CANVAS_DIM = 1536;
+const MAX_ENV_CACHE_CANVAS_DIM = 768;
 
 interface CachedEnvSprite {
   canvas: HTMLCanvasElement;
@@ -315,6 +315,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
   private defaultBackground = '#050811';
 
   private envObjects: readonly RenderableEnvObject[] = [];
+  private lastEnvColorMap: Record<number, string> | null = null;
   private envCache = new Map<number, CachedEnvSprite>();
   private envActiveIds = new Set<number>();
   private envParentById = new Map<number, RenderableEnvObject>();
@@ -332,7 +333,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
   public resize(width: number, height: number, dpr?: number): void {
     const nextW = Math.max(1, Math.floor(width));
     const nextH = Math.max(1, Math.floor(height));
-    const nextDpr = Math.min(Math.max(1, dpr ?? window.devicePixelRatio ?? 1), 2);
+    const nextDpr = Math.min(Math.max(1, dpr ?? 1), 1.5);
 
     this.viewWidth = nextW;
     this.viewHeight = nextH;
@@ -349,7 +350,12 @@ export class Canvas2DRenderer implements ViewportRenderer {
     envObjects: readonly RenderableEnvObject[],
     colorByResourceEnum: Record<number, string> = DEFAULT_RESOURCE_COLORS
   ): void {
+    // O(1) fast-skip when static map env objects & color map reference are unchanged
+    if (envObjects === this.envObjects && colorByResourceEnum === this.lastEnvColorMap) {
+      return;
+    }
     this.envObjects = envObjects;
+    this.lastEnvColorMap = colorByResourceEnum;
     this.envActiveIds.clear();
     this.envParentById.clear();
 
@@ -462,6 +468,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
 
   public destroy(): void {
     this.envObjects = [];
+    this.lastEnvColorMap = null;
     this.envCache.clear();
     this.envActiveIds.clear();
     this.envParentById.clear();

@@ -107,6 +107,10 @@ export const useGameSocket = (serverUrl: string) => {
     return serviceRef.current?.consumeLatestSnapshot() ?? null;
   }, []);
 
+  const getLatestSnapshotTimestamp = useCallback((): number => {
+    return serviceRef.current?.getLatestSnapshotTimestamp() ?? 0;
+  }, []);
+
   const sendInput = useCallback((params: ClientInputParams): boolean => {
     return serviceRef.current?.sendInput(params) ?? false;
   }, []);
@@ -135,6 +139,7 @@ export const useGameSocket = (serverUrl: string) => {
     state: uiState,
     latestStateRef,
     consumeLatestSnapshot,
+    getLatestSnapshotTimestamp,
     tickMs,
     sendInput,
     updateUnitCount,

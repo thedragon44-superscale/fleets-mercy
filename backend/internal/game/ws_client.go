@@ -7,7 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const wsClientQueueSize = 1
+const wsClientQueueSize = 3
 
 // WSClient wraps a WebSocket connection with a thread-safe latest-frame-wins (head-drop)
 // send queue and dedicated writePump goroutine so slow or stalled clients never block

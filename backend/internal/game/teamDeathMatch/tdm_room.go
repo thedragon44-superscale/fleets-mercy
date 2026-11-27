@@ -31,8 +31,9 @@ type TDMRoom struct {
 	winningFaction   string
 	lastInput        game.SandboxClientInput
 	lastInputAt      time.Time
-	pendingReset     bool
-	pendingControlID string
+	pendingReset      bool
+	pendingControlID  string
+	forceEnvBroadcast bool
 
 	fbBuilder   *flatbuffers.Builder
 	unitOffsets []flatbuffers.UOffsetT
@@ -64,8 +65,9 @@ func NewTDMRoom(mapID int, pilotedUnitType string, customPool []string) *TDMRoom
 		customUnitPool:  customPool,
 		fbBuilder:       flatbuffers.NewBuilder(16384),
 		unitOffsets:     make([]flatbuffers.UOffsetT, 0, 64),
-		projOffsets:     make([]flatbuffers.UOffsetT, 0, 128),
-		stopCh:          make(chan struct{}),
+		projOffsets:       make([]flatbuffers.UOffsetT, 0, 128),
+		forceEnvBroadcast: true,
+		stopCh:            make(chan struct{}),
 	}
 	room.ResetMatch()
 	return room
@@ -92,6 +94,7 @@ func (r *TDMRoom) LoadMapStructures() {
 
 	r.mu.Lock()
 	r.SetEnvWorld(nextWorld)
+	r.forceEnvBroadcast = true
 	r.mu.Unlock()
 }
 
@@ -101,6 +104,7 @@ func (r *TDMRoom) ResetMatch() {
 	r.SetTick(0)
 	r.isGameOver = false
 	r.winningFaction = ""
+	r.forceEnvBroadcast = true
 	r.inputMu.Lock()
 	r.lastInput = game.SandboxClientInput{}
 	r.lastInputAt = time.Time{}
@@ -176,6 +180,7 @@ func (r *TDMRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 	go client.WritePump()
 
 	r.clients[client] = true
+	r.forceEnvBroadcast = true
 	r.mu.Unlock()
 
 	defer func() {
@@ -358,7 +363,7 @@ func (r *TDMRoom) Run() {
 						IsFiring: frameInput.IsFiring,
 					}, arenaW, arenaH)
 					unit.IsFiring = frameInput.IsFiring
-					game.ApplyPilotedUnitPhysics(unit, arenaW, arenaH)
+					game.ApplyUnitPhysics(unit, arenaW, arenaH)
 				} else {
 					game.RunUnitAI(unit, r.GameRoom, nil)
 					game.ApplyUnitPhysics(unit, arenaW, arenaH)
@@ -459,7 +464,12 @@ func (r *TDMRoom) Run() {
 		projVector := builder.EndVector(len(r.projOffsets))
 
 		winningFactionOffset := builder.CreateString(r.winningFaction)
-		envObjectsVector := game.EncodeEnvObjectsVector(builder, r.GetEnvWorld())
+		var envObjectsVector flatbuffers.UOffsetT
+		envWorld := r.GetEnvWorld()
+		if r.forceEnvBroadcast || envWorld.HasDynamicObjects() || r.GetTick()%60 == 1 {
+			envObjectsVector = game.EncodeEnvObjectsVector(builder, envWorld)
+			r.forceEnvBroadcast = false
+		}
 
 		SpaceTactics.ServerStateStart(builder)
 		SpaceTactics.ServerStateAddTick(builder, r.GetTick())
@@ -469,7 +479,9 @@ func (r *TDMRoom) Run() {
 		SpaceTactics.ServerStateAddMapHeight(builder, float32(arenaH))
 		SpaceTactics.ServerStateAddIsGameOver(builder, r.isGameOver)
 		SpaceTactics.ServerStateAddWinningFaction(builder, winningFactionOffset)
-		SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
+		if envObjectsVector != 0 {
+			SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
+		}
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)

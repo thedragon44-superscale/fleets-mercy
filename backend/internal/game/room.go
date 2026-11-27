@@ -64,8 +64,9 @@ type GameRoom struct {
 	isPaused        bool
 	timeScale       float64
 	tickAccumulator float64
-	mapID           int
-	envWorld        *envphysics.World
+	mapID             int
+	envWorld          *envphysics.World
+	forceEnvBroadcast bool
 
 	clients     map[*WSClient]bool
 	mu          sync.Mutex
@@ -96,8 +97,9 @@ func NewGameRoom(mapID int) *GameRoom {
 		units:       make(map[string]*models.FleetUnit),
 		deployQueue: make([]string, 0),
 		timeScale:   1.0,
-		mapID:       mapID,
-		envWorld:    envphysics.NewAuthoredWorld(mapID),
+		mapID:             mapID,
+		envWorld:          envphysics.NewAuthoredWorld(mapID),
+		forceEnvBroadcast: true,
 		fbBuilder:   flatbuffers.NewBuilder(16384),
 		unitOffsets: make([]flatbuffers.UOffsetT, 0, 64),
 		projOffsets: make([]flatbuffers.UOffsetT, 0, 128),
@@ -139,6 +141,7 @@ func (r *GameRoom) SetMapID(id int) {
 // SetEnvWorld swaps the shared universal envphysics.World pointer (caller holds room lock).
 func (r *GameRoom) SetEnvWorld(world *envphysics.World) {
 	r.envWorld = world
+	r.forceEnvBroadcast = true
 }
 
 func (r *GameRoom) ReloadMapStructures() {
@@ -151,6 +154,7 @@ func (r *GameRoom) ReloadMapStructures() {
 
 	r.mu.Lock()
 	r.envWorld = nextWorld
+	r.forceEnvBroadcast = true
 	r.mu.Unlock()
 }
 
@@ -185,6 +189,7 @@ func (r *GameRoom) resetWorld() {
 	r.inputMu.Unlock()
 	r.visCacheValid = false
 	r.tickAccumulator = 0
+	r.forceEnvBroadcast = true
 }
 
 func (r *GameRoom) findSquadLeader(ownerID string, args ...int) *models.FleetUnit {
@@ -363,6 +368,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 
 	r.mu.Lock()
 	r.clients[client] = true
+	r.forceEnvBroadcast = true
 	r.mu.Unlock()
 
 	defer func() {
@@ -856,7 +862,7 @@ func (r *GameRoom) Run() {
 				if unit.ID == controlledID {
 					HandlePlayerMovement(unit, frameInput, arenaW, arenaH)
 					unit.IsFiring = frameInput.IsFiring
-					ApplyPilotedUnitPhysics(unit, arenaW, arenaH)
+					ApplyUnitPhysics(unit, arenaW, arenaH)
 				} else if unit.OwnerID == "player" && unit.Type == "flagship" {
 					// Player flagship should NEVER move or run AI when unpiloted; it holds position and coasts spin to zero.
 					unit.IsFiring = false
@@ -968,7 +974,11 @@ func (r *GameRoom) Run() {
 		}
 		projVector := builder.EndVector(len(r.projOffsets))
 
-		envObjectsVector := EncodeEnvObjectsVector(builder, r.envWorld)
+		var envObjectsVector flatbuffers.UOffsetT
+		if r.forceEnvBroadcast || r.envWorld.HasDynamicObjects() || r.tick%60 == 1 {
+			envObjectsVector = EncodeEnvObjectsVector(builder, r.envWorld)
+			r.forceEnvBroadcast = false
+		}
 
 		SpaceTactics.ServerStateStart(builder)
 		SpaceTactics.ServerStateAddTick(builder, r.tick)
@@ -976,7 +986,9 @@ func (r *GameRoom) Run() {
 		SpaceTactics.ServerStateAddProjectiles(builder, projVector)
 		SpaceTactics.ServerStateAddMapWidth(builder, float32(arenaW))
 		SpaceTactics.ServerStateAddMapHeight(builder, float32(arenaH))
-		SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
+		if envObjectsVector != 0 {
+			SpaceTactics.ServerStateAddEnvObjects(builder, envObjectsVector)
+		}
 		serverState := SpaceTactics.ServerStateEnd(builder)
 
 		builder.Finish(serverState)

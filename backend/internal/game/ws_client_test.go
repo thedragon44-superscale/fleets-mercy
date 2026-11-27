@@ -10,10 +10,15 @@ func TestWSClientHeadDropLatestFrame(t *testing.T) {
 	c.Enqueue([]byte("frame-1"))
 	c.Enqueue([]byte("frame-2"))
 	c.Enqueue([]byte("frame-3"))
+	c.Enqueue([]byte("frame-4"))
 
-	got := string(<-c.send)
-	if got != "frame-3" {
-		t.Fatalf("expected latest frame-3 after head-drop, got %q", got)
+	// With wsClientQueueSize=3, frame-1 is evicted and the newest 3 frames remain in order.
+	expected := []string{"frame-2", "frame-3", "frame-4"}
+	for _, want := range expected {
+		got := string(<-c.send)
+		if got != want {
+			t.Fatalf("expected %q after head-drop, got %q", want, got)
+		}
 	}
 	c.Close()
 }

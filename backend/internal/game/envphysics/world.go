@@ -149,8 +149,26 @@ func (w *World) LoadAuthoredMap(mapID int) {
 		len(w.Objects), mapID, w.ArenaWidth, w.ArenaHeight)
 }
 
+// HasDynamicObjects reports whether any object in the world moves, spins, orbits,
+// or is a transient comet. Purely static maps return false so rooms can skip per-tick
+// env_objects serialization and step allocations.
+func (w *World) HasDynamicObjects() bool {
+	if w == nil || len(w.Objects) == 0 {
+		return false
+	}
+	for _, obj := range w.Objects {
+		if obj.Vel.X != 0 || obj.Vel.Y != 0 || obj.SpinRate != 0 || obj.OrbitSpeed != 0 || obj.ParentObjectID != 0 || obj.ObjectType == "comet" {
+			return true
+		}
+	}
+	return false
+}
+
 // StepAuthored advances authored map objects (static, drifting+wrapping, and parent-child orbital moons).
 func (w *World) StepAuthored() {
+	if !w.HasDynamicObjects() {
+		return
+	}
 	parentByID := make(map[uint32]*ActiveEnvObject, len(w.Objects))
 
 	for _, obj := range w.Objects {

@@ -68,67 +68,8 @@ func RotateTowards(unit *models.FleetUnit, targetAngle float64) {
 	unit.Angle = normalizeAngle(unit.Angle + unit.CurrentAngularVel*dt)
 }
 
-// moveToward smoothly steps current toward target by at most maxDelta without overshooting.
-func moveToward(current, target, maxDelta float64) float64 {
-	if maxDelta <= 0 {
-		return current
-	}
-	diff := target - current
-	if math.Abs(diff) <= maxDelta {
-		return target
-	}
-	if diff > 0 {
-		return current + maxDelta
-	}
-	return current - maxDelta
-}
-
-// stepThrusterAxis steps a single ship-local velocity axis (forward/reverse or lateral)
-// smoothly toward its target velocity using PostgreSQL unit template thruster stats.
-func stepThrusterAxis(cur, target, accelRate, brakeRate, stopRate float64, anyInputActive bool) float64 {
-	if target == 0 {
-		if cur == 0 {
-			return 0
-		}
-		// Active axis stabilization when switching axes (e.g. W->D) or turning under thrust,
-		// vs. hands-off inertial dampeners when all movement keys are released.
-		rate := stopRate
-		if anyInputActive && brakeRate > rate {
-			rate = brakeRate
-		}
-		return moveToward(cur, 0, rate)
-	}
-
-	// Reversing direction across zero (e.g. W->S or A->D): fire active retro/counter-thrust
-	if cur*target < 0 {
-		rate := accelRate
-		if brakeRate > rate {
-			rate = brakeRate
-		}
-		next := moveToward(cur, 0, rate)
-		if next == 0 {
-			// Smoothly use any remaining thrust budget to begin accelerating in the new direction
-			remaining := rate - math.Abs(cur)
-			if remaining > 0 {
-				next = moveToward(0, target, math.Min(remaining, accelRate))
-			}
-		}
-		return next
-	}
-
-	// Same-direction velocity adjustment: accelerate up to target, or smoothly trim excess speed
-	if math.Abs(cur) > math.Abs(target) {
-		rate := accelRate
-		if brakeRate > rate {
-			rate = brakeRate
-		}
-		return moveToward(cur, target, rate)
-	}
-	return moveToward(cur, target, accelRate)
-}
-
 // HandlePlayerMovement processes ship-relative WASD thrust, rotational inertia,
-// active counter-thrust direction switching, and inertial damping driven strictly
+// smooth curved counter-thrust direction bending, and speed clamping driven strictly
 // by PostgreSQL unit_templates parameters.
 func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, roomWidth, roomHeight float64) {
 	unit.IsFiring = input.IsFiring
@@ -145,25 +86,7 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 	revPower := math.Max(0, unit.ReverseThrustPower)
 	latPower := math.Max(0, unit.LateralThrustPower)
 	brakingPower := math.Max(0, unit.BrakingThrustPower)
-	inertialDamp := math.Max(0, unit.InertialDamping)
 	drift := math.Max(0, math.Min(1.0, unit.DriftCoefficient))
-
-	maxFwdSpeed := unit.Speed * 6.0
-	maxStrafeSpeed := math.Max(0, unit.StrafingSpeed) * 6.0
-	maxRevSpeed := maxFwdSpeed * math.Min(revPower, 1.0)
-
-	// Per-tick thruster acceleration budgets derived strictly from unit_templates stats
-	baseAccel := unit.Speed * 0.45 * accelCurve
-	revAccel := baseAccel * revPower
-	strafeAccel := baseAccel * latPower
-
-	// Active counter-thrust / axis-switch stabilization rate
-	driftGrip := 1.0 - (drift * 0.35)
-	fwdBrakeRate := baseAccel * brakingPower * driftGrip
-	latBrakeRate := math.Max(strafeAccel, baseAccel*0.75) * brakingPower * driftGrip
-
-	// Hands-off inertial dampener stop rate when no movement keys are held
-	stopRate := unit.Speed * 0.45 * inertialDamp * (1.0 - drift*0.55)
 
 	// Ship-relative axes where opposing keys (W+S or A+D) cancel cleanly to 0
 	fwdAxis := 0.0
@@ -182,54 +105,74 @@ func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, room
 		latAxis += 1.0
 	}
 
-	anyInput := fwdAxis != 0 || latAxis != 0
+	if fwdAxis == 0 && latAxis == 0 {
+		return
+	}
+
+	accel := unit.Speed * 0.75 * accelCurve
+	strafeAccel := math.Max(0, unit.StrafingSpeed) * 0.75 * accelCurve * latPower
+
+	localFwd := 0.0
+	if fwdAxis > 0 {
+		localFwd = accel
+	} else if fwdAxis < 0 {
+		localFwd = -accel * revPower
+	}
+	localLat := latAxis * strafeAccel
 
 	if fwdAxis != 0 && latAxis != 0 {
 		const invSqrt2 = 0.7071067811865476
-		fwdAxis *= invSqrt2
-		latAxis *= invSqrt2
+		localFwd *= invSqrt2
+		localLat *= invSqrt2
 	}
 
-	var targetFwd float64
-	if fwdAxis > 0 {
-		targetFwd = fwdAxis * maxFwdSpeed
-	} else if fwdAxis < 0 {
-		targetFwd = fwdAxis * maxRevSpeed
-	}
-	targetLat := latAxis * maxStrafeSpeed
-
-	// Decompose current world velocity into ship-local (forward, starboard-lateral) components
 	cosA := math.Cos(unit.Angle)
 	sinA := math.Sin(unit.Angle)
-	curFwd := unit.Vel.X*cosA + unit.Vel.Y*sinA
-	curLat := -unit.Vel.X*sinA + unit.Vel.Y*cosA
+	thrustX := localFwd*cosA - localLat*sinA
+	thrustY := localFwd*sinA + localLat*cosA
+	thrustMag := math.Hypot(thrustX, thrustY)
 
-	activeFwdAccel := baseAccel
-	if fwdAxis < 0 {
-		activeFwdAccel = revAccel
+	// Smooth curved counter-thrust when active thrust opposes or cuts across current velocity
+	// (e.g. W->S reversal or W->A/D lateral switch), driven strictly by BrakingThrustPower & DriftCoefficient.
+	if thrustMag > 1e-6 && brakingPower > 0 {
+		curSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+		if curSpeed > 0.05 {
+			tDirX := thrustX / thrustMag
+			tDirY := thrustY / thrustMag
+
+			vAlong := unit.Vel.X*tDirX + unit.Vel.Y*tDirY
+			vPerpX := unit.Vel.X - vAlong*tDirX
+			vPerpY := unit.Vel.Y - vAlong*tDirY
+
+			grip := 1.0 - (drift * 0.45)
+
+			// Smooth exponential counter-thrust on opposing momentum (W->S)
+			if vAlong < 0 {
+				retroDamp := math.Exp(-0.10 * brakingPower * grip)
+				vAlong *= retroDamp
+			}
+
+			// Smooth exponential velocity bending on perpendicular slip (W->D or turning under thrust)
+			perpDamp := math.Exp(-0.08 * brakingPower * grip)
+			vPerpX *= perpDamp
+			vPerpY *= perpDamp
+
+			unit.Vel.X = vAlong*tDirX + vPerpX
+			unit.Vel.Y = vAlong*tDirY + vPerpY
+		}
 	}
 
-	nextFwd := stepThrusterAxis(curFwd, targetFwd, activeFwdAccel, fwdBrakeRate, stopRate, anyInput)
-	nextLat := stepThrusterAxis(curLat, targetLat, strafeAccel, latBrakeRate, stopRate, anyInput)
+	unit.Vel.X += thrustX
+	unit.Vel.Y += thrustY
 
-	// Reconstruct world-space velocity from updated ship-local axes
-	unit.Vel.X = nextFwd*cosA - nextLat*sinA
-	unit.Vel.Y = nextFwd*sinA + nextLat*cosA
-
-	// Clean zero snap on sub-pixel residual when keys are released
-	if !anyInput && math.Hypot(unit.Vel.X, unit.Vel.Y) < 0.02 {
-		unit.Vel.X = 0
-		unit.Vel.Y = 0
+	// Clean circular speed cap matching the smooth pre-regression handling model
+	maxSpeed := unit.Speed * 6.0
+	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+	if currentSpeed > maxSpeed {
+		scale := maxSpeed / currentSpeed
+		unit.Vel.X *= scale
+		unit.Vel.Y *= scale
 	}
-}
-
-// ApplyPilotedUnitPhysics integrates position and enforces arena bounds for player-piloted
-// units without applying duplicate passive AI damping (piloted inertial damping is handled
-// inside HandlePlayerMovement from PostgreSQL unit_templates stats).
-func ApplyPilotedUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
-	unit.Pos.X += unit.Vel.X
-	unit.Pos.Y += unit.Vel.Y
-	clampUnitToArena(unit, roomWidth, roomHeight)
 }
 
 func clampUnitToArena(unit *models.FleetUnit, roomWidth, roomHeight float64) {
@@ -261,62 +204,61 @@ func clampUnitToArena(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 	}
 }
 
-// ApplyUnitPhysics handles positional displacement, drift-aware braking curves, and map boundary clamping
+// ApplyUnitPhysics handles positional displacement, curved exponential + quadratic inertial
+// damping (modulated by DriftCoefficient and InertialDamping from PostgreSQL unit_templates),
+// anti-skid heading grip, and arena boundary clamping for both piloted and AI units.
 func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 	unit.Pos.X += unit.Vel.X
 	unit.Pos.Y += unit.Vel.Y
 
-	// Clamp drift to [0.0, 1.0]; higher drift_coefficient = more glide, less linear drag
-	drift := unit.DriftCoefficient
-	if drift <= 0 {
-		drift = 0.35
-	}
-	if drift > 1.0 {
-		drift = 1.0
-	}
+	drift := math.Max(0, math.Min(1.0, unit.DriftCoefficient))
+	inertialDamp := math.Max(0, unit.InertialDamping)
 
-	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-	if currentSpeed > 0.03 {
-		// Preserve drift_coefficient glide curve: 0.93 (crisp) up to 0.985 (heavy space drift)
-		linearDamp := 0.93 + (drift * 0.055)
-		quadraticDragFactor := 0.0005 * (1.0 - (drift * 0.6))
+	// Pure data-driven zero-damping mode: InertialDamping == 0 coasts freely without drag
+	if inertialDamp > 0 {
+		currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+		if currentSpeed > 0.03 {
+			// Smooth curved exponential + quadratic drag matching natural space glide
+			linearDamp := 0.93 + (drift * 0.055)
+			quadraticDragFactor := 0.0005 * (1.0 - (drift * 0.6))
+			baseLoss := (1.0 - linearDamp) + (currentSpeed * quadraticDragFactor)
 
-		effectiveDamp := linearDamp - (currentSpeed * quadraticDragFactor)
-
-		// Anti-skid: extra braking grip when nose opposes velocity vector (scaled down on high-drift ships)
-		velAngle := math.Atan2(unit.Vel.Y, unit.Vel.X)
-		headingDiff := math.Abs(math.Remainder(unit.Angle-velAngle, math.Pi*2))
-		if headingDiff > (math.Pi * 0.6) {
-			effectiveDamp -= 0.015 * (1.0 - (drift * 0.5))
-		}
-
-		if effectiveDamp < 0.80 {
-			effectiveDamp = 0.80
-		}
-		if effectiveDamp > 0.992 {
-			effectiveDamp = 0.992
-		}
-
-		unit.Vel.X *= effectiveDamp
-		unit.Vel.Y *= effectiveDamp
-
-		// Eliminate the endless sub-pixel exponential tail only once the ship has already
-		// drifted down to a near-stop, so drift glide stays intact and units reach exact (0, 0).
-		postSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-		if postSpeed < 0.35 {
-			settleDecel := 0.015 * (1.0 - drift*0.4)
-			if postSpeed <= settleDecel || postSpeed <= 0.03 {
-				unit.Vel.X = 0
-				unit.Vel.Y = 0
-			} else {
-				scale := (postSpeed - settleDecel) / postSpeed
-				unit.Vel.X *= scale
-				unit.Vel.Y *= scale
+			// Anti-skid: extra braking grip when nose opposes velocity vector (scaled down on high-drift ships)
+			velAngle := math.Atan2(unit.Vel.Y, unit.Vel.X)
+			headingDiff := math.Abs(math.Remainder(unit.Angle-velAngle, math.Pi*2))
+			if headingDiff > (math.Pi * 0.6) {
+				baseLoss += 0.015 * (1.0 - (drift * 0.5))
 			}
+
+			effectiveDamp := math.Exp(-baseLoss * inertialDamp)
+			if effectiveDamp < 0.50 {
+				effectiveDamp = 0.50
+			}
+			if effectiveDamp > 0.995 {
+				effectiveDamp = 0.995
+			}
+
+			unit.Vel.X *= effectiveDamp
+			unit.Vel.Y *= effectiveDamp
+
+			// Eliminate endless sub-pixel exponential tail only once the ship has drifted
+			// down to a near-stop, preserving smooth natural glide and exact (0, 0) settle.
+			postSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+			if postSpeed < 0.35 {
+				settleDecel := 0.015 * inertialDamp * (1.0 - drift*0.4)
+				if postSpeed <= settleDecel || postSpeed <= 0.03 {
+					unit.Vel.X = 0
+					unit.Vel.Y = 0
+				} else {
+					scale := (postSpeed - settleDecel) / postSpeed
+					unit.Vel.X *= scale
+					unit.Vel.Y *= scale
+				}
+			}
+		} else {
+			unit.Vel.X = 0
+			unit.Vel.Y = 0
 		}
-	} else {
-		unit.Vel.X = 0
-		unit.Vel.Y = 0
 	}
 
 	clampUnitToArena(unit, roomWidth, roomHeight)

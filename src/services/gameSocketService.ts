@@ -46,7 +46,9 @@ export class GameSocketService {
 
   // Latest-frame coalescing buffer (ws.onmessage never blocks decoding a stale backlog)
   private pendingBuffer: ArrayBuffer | null = null;
+  private pendingTimestamp = 0;
   private latestSnapshot: ServerStateSnapshot | null = null;
+  private latestSnapshotTimestamp = 0;
 
   // Rolling average server tick interval (ms)
   private lastMessageTime = 0;
@@ -88,8 +90,9 @@ export class GameSocketService {
       }
       this.lastMessageTime = now;
 
-      // Coalesce: overwrite any undecoded stale frame in O(1)
+      // Coalesce: overwrite any undecoded stale frame in O(1) and record true arrival timestamp
       this.pendingBuffer = event.data;
+      this.pendingTimestamp = now;
     };
 
     ws.onclose = () => {
@@ -114,17 +117,23 @@ export class GameSocketService {
   public consumeLatestSnapshot = (): ServerStateSnapshot | null => {
     const buf = this.pendingBuffer;
     if (!buf) return null;
+    const arrivedAt = this.pendingTimestamp;
     this.pendingBuffer = null;
 
     const decoded = unpackServerBinaryMessage(buf);
     if (!decoded) return null;
     this.latestSnapshot = decoded;
+    this.latestSnapshotTimestamp = arrivedAt;
     this.onFrameDecoded?.(decoded);
     return decoded;
   };
 
   public getLatestSnapshot = (): ServerStateSnapshot | null => {
     return this.latestSnapshot;
+  };
+
+  public getLatestSnapshotTimestamp = (): number => {
+    return this.latestSnapshotTimestamp;
   };
 
   public getTickMs = (): number => {

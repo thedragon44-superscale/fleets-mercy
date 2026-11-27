@@ -13,7 +13,7 @@ export interface InterpolationSnapshot<T extends InterpolatableUnit = Interpolat
   units: T[];
 }
 
-const MAX_EXTRAPOLATION_MS = 60; // Cap dead-reckoning at ~3.6 ticks so paused/stalled servers never drift
+const MAX_EXTRAPOLATION_MS = 25; // Tight 1.5-tick dead-reckoning cap to avoid turn/reversal overshoot snapback
 const _olderById = new Map<string, InterpolatableUnit>();
 
 export function getInterpolatedUnits<T extends InterpolatableUnit>(
