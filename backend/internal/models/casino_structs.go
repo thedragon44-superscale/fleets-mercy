@@ -59,7 +59,7 @@ type SPRuleset struct {
 	Name                  string  `json:"name"`
 	ArenaWidth            float64 `json:"arenaWidth"`
 	ArenaHeight           float64 `json:"arenaHeight"`
-	AllowedMultipliers    []uint8 `json:"allowedMultipliers"`
+	AllowedMultipliers    []int   `json:"allowedMultipliers"`
 	BossExpendedThreshold int     `json:"bossExpendedThreshold"`
 	BossEscapeSeconds     int     `json:"bossEscapeSeconds"`
 	MaxActiveHarvesters   int     `json:"maxActiveHarvesters"`

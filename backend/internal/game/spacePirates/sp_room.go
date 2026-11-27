@@ -194,7 +194,7 @@ func currentRuleset() models.SPRuleset {
 		rs.MaxActiveHarvesters = 8
 	}
 	if len(rs.AllowedMultipliers) == 0 {
-		rs.AllowedMultipliers = []uint8{1, 2, 5, 10, 25}
+		rs.AllowedMultipliers = []int{1, 2, 5, 10, 25}
 	}
 	return rs
 }
@@ -460,8 +460,8 @@ func (r *SpacePiratesRoom) handleJoinSeat(client *spClient, playerID int, prefer
 
 	rs := currentRuleset()
 	defaultMult := uint8(1)
-	if len(rs.AllowedMultipliers) > 0 {
-		defaultMult = rs.AllowedMultipliers[0]
+	if len(rs.AllowedMultipliers) > 0 && rs.AllowedMultipliers[0] > 0 && rs.AllowedMultipliers[0] <= 255 {
+		defaultMult = uint8(rs.AllowedMultipliers[0])
 	}
 
 	// Step 3: Commit seat under lock (guard against disconnect while DB call was in flight).
@@ -578,7 +578,7 @@ func (r *SpacePiratesRoom) handleSetMultiplierLocked(conn *websocket.Conn, mult 
 	rs := currentRuleset()
 	allowed := false
 	for _, m := range rs.AllowedMultipliers {
-		if m == mult {
+		if m == int(mult) {
 			allowed = true
 			break
 		}
