@@ -4,7 +4,14 @@ import { SnapshotUnit } from '../parsers/binaryCodec';
 import { screenToWorld } from '../renderer/viewportCamera';
 
 const DEADZONE_RADIUS = 35.0;
-const INPUT_SEND_INTERVAL_MS = 16; // ~60Hz
+const INPUT_SEND_INTERVAL_MS = 12; // Safely below 16.67ms 60Hz rAF cadence to avoid 30Hz frame drops
+
+const CODE_TO_FLIGHT_KEY: Record<string, 'w' | 'a' | 's' | 'd'> = {
+  KeyW: 'w',
+  KeyA: 'a',
+  KeyS: 's',
+  KeyD: 'd',
+};
 
 export interface FlightInputPayload {
   keys: { [key: string]: boolean };
@@ -46,12 +53,14 @@ export const useFlightControls = ({
 }: UseFlightControlsOptions) => {
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const mouseCanvasPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const hasMouseMovedRef = useRef<boolean>(false);
   const isFiringRef = useRef<boolean>(false);
 
   const mouseDirtyRef = useRef<boolean>(false);
   const inputDirtyRef = useRef<boolean>(false);
   const lastSendTimeRef = useRef<number>(0);
   const lastAngleRef = useRef<number>(0);
+  const lastSentUnitIdRef = useRef<string>('');
 
   // Keep latest callbacks/flags in refs so window listeners never go stale
   const canControlRef = useRef<boolean>(canControl);
@@ -96,6 +105,11 @@ export const useFlightControls = ({
   const computeAimAngle = useCallback(
     (unit: SnapshotUnit | undefined): number => {
       if (!unit) return lastAngleRef.current;
+      // Do not steer toward default (0, 0) top-left before the user has moved the cursor
+      if (!hasMouseMovedRef.current) {
+        lastAngleRef.current = unit.angle;
+        return unit.angle;
+      }
       const worldMouse = canvasToWorld(
         mouseCanvasPosRef.current.x,
         mouseCanvasPosRef.current.y
@@ -108,7 +122,8 @@ export const useFlightControls = ({
         lastAngleRef.current = nextAngle;
         return nextAngle;
       }
-      return unit.angle;
+      // Hold last intentional aim inside deadzone instead of chasing lagged server angle
+      return lastAngleRef.current;
     },
     [canvasToWorld]
   );
@@ -116,6 +131,7 @@ export const useFlightControls = ({
   const clearInputs = useCallback(() => {
     keysRef.current = {};
     isFiringRef.current = false;
+    lastSentUnitIdRef.current = '';
     inputDirtyRef.current = true;
   }, []);
 
@@ -125,6 +141,9 @@ export const useFlightControls = ({
       const unit = resolvePilotedUnitRef.current(units);
       const activeControl = canControlRef.current;
       const angle = computeAimAngle(unit);
+      if (unit?.id) {
+        lastSentUnitIdRef.current = unit.id;
+      }
 
       onSendInputRef.current({
         keys: activeControl ? keysRef.current : {},
@@ -139,12 +158,21 @@ export const useFlightControls = ({
 
   /**
    * Call once per frame inside the viewport's 60Hz render loop.
-   * Continuously updates cursor-guided heading while moving, aiming, or firing.
+   * Continuously updates cursor-guided heading while moving, drifting, aiming, or firing,
+   * and flushes discrete key/pilot transitions immediately without waiting for the throttle interval.
    */
   const tickFlightInput = useCallback(
     (currentTime: number, units: SnapshotUnit[]): SnapshotUnit | undefined => {
       const unit = resolvePilotedUnitRef.current(units);
       const activeControl = canControlRef.current;
+
+      // Immediately sync piloted unit ownership to server whenever the active unit changes
+      if (unit && unit.id !== lastSentUnitIdRef.current) {
+        if (!hasMouseMovedRef.current) {
+          lastAngleRef.current = unit.angle;
+        }
+        inputDirtyRef.current = true;
+      }
 
       const isMoving =
         activeControl &&
@@ -155,14 +183,23 @@ export const useFlightControls = ({
           keysRef.current['d']
         );
 
-      const shouldSend =
-        inputDirtyRef.current ||
-        (activeControl && (mouseDirtyRef.current || isMoving || isFiringRef.current));
+      const isDrifting =
+        activeControl &&
+        !!unit &&
+        hasMouseMovedRef.current &&
+        Math.hypot(unit.vel?.x || 0, unit.vel?.y || 0) > 0.05;
 
-      if (shouldSend && currentTime - lastSendTimeRef.current >= INPUT_SEND_INTERVAL_MS) {
+      const immediateFlush = inputDirtyRef.current;
+      const periodicSend =
+        activeControl &&
+        (mouseDirtyRef.current || isMoving || isFiringRef.current || isDrifting) &&
+        currentTime - lastSendTimeRef.current >= INPUT_SEND_INTERVAL_MS;
+
+      if (immediateFlush || periodicSend) {
         inputDirtyRef.current = false;
         mouseDirtyRef.current = false;
         lastSendTimeRef.current = currentTime;
+        lastSentUnitIdRef.current = unit?.id || '';
 
         const angle = computeAimAngle(unit);
         onSendInputRef.current({
@@ -198,16 +235,15 @@ export const useFlightControls = ({
         return;
       }
 
-      const k = e.key.toLowerCase();
-      if (!keysRef.current[k]) {
-        keysRef.current[k] = true;
+      const flightKey = CODE_TO_FLIGHT_KEY[e.code];
+      if (flightKey && !keysRef.current[flightKey]) {
+        keysRef.current[flightKey] = true;
         inputDirtyRef.current = true;
       }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isTypingInInput(e.target)) return;
-
+      // Never swallow keyup for already-held flight keys even if focus moved into an input
       if (e.code === 'Space') {
         if (isFiringRef.current) {
           isFiringRef.current = false;
@@ -216,9 +252,9 @@ export const useFlightControls = ({
         return;
       }
 
-      const k = e.key.toLowerCase();
-      if (keysRef.current[k]) {
-        keysRef.current[k] = false;
+      const flightKey = CODE_TO_FLIGHT_KEY[e.code];
+      if (flightKey && keysRef.current[flightKey]) {
+        keysRef.current[flightKey] = false;
         inputDirtyRef.current = true;
       }
     };
@@ -231,6 +267,7 @@ export const useFlightControls = ({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       };
+      hasMouseMovedRef.current = true;
       mouseDirtyRef.current = true;
     };
 

@@ -170,6 +170,7 @@ func (r *GameRoom) resetWorld() {
 	r.units = make(map[string]*models.FleetUnit)
 	r.projectiles = []models.Projectile{}
 	r.deployQueue = make([]string, 0)
+	r.lastInput = ClientStateInput{}
 	r.tickAccumulator = 0
 }
 
@@ -375,24 +376,49 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		clientInput := SpaceTactics.GetRootAsClientInput(msg, 0)
 
 		r.mu.Lock()
-		r.lastInput.W = clientInput.W()
-		r.lastInput.S = clientInput.S()
-		r.lastInput.A = clientInput.A()
-		r.lastInput.D = clientInput.D()
-		r.lastInput.Angle = clientInput.Angle()
-		r.lastInput.IsFiring = clientInput.IsFiring()
-		r.lastInput.Reset = clientInput.Reset()
+
+		// Inspect sub-tables first so utility-only packets (spec sliders, spawners,
+		// unit grouping, time controls) never wipe held flight keys or aim angle.
+		var timeCtrl SpaceTactics.SandboxTimeControl
+		hasTimeCtrl := clientInput.TimeControl(&timeCtrl) != nil
+
+		var groupingTable SpaceTactics.UnitGroupingPayload
+		hasGrouping := clientInput.UnitGrouping(&groupingTable) != nil
+
+		isUtilityOnlyPacket := hasTimeCtrl ||
+			hasGrouping ||
+			len(clientInput.SandboxSpawn()) > 0 ||
+			len(clientInput.SandboxRemove()) > 0 ||
+			clientInput.SandboxCountsLength() > 0 ||
+			len(clientInput.TemplateOverrideType()) > 0
+
+		if !isUtilityOnlyPacket {
+			r.lastInput.W = clientInput.W()
+			r.lastInput.S = clientInput.S()
+			r.lastInput.A = clientInput.A()
+			r.lastInput.D = clientInput.D()
+			r.lastInput.Angle = clientInput.Angle()
+			r.lastInput.IsFiring = clientInput.IsFiring()
+		}
+		if clientInput.Reset() {
+			r.lastInput.Reset = true
+		}
 
 		if uid := clientInput.ControlledUnitId(); len(uid) > 0 {
-			r.lastInput.ControlledUnitID = string(uid)
+			nextID := string(uid)
+			if r.lastInput.ControlledUnitID != nextID {
+				if nextUnit, ok := r.units[nextID]; ok && nextUnit != nil {
+					nextUnit.CurrentAngularVel = 0
+				}
+			}
+			r.lastInput.ControlledUnitID = nextID
 		}
 		if dep := clientInput.Deploy(); len(dep) > 0 {
 			r.deployQueue = append(r.deployQueue, string(dep))
 		}
 
 		// Sandbox Time Controls (Pause & Simulation Speed)
-		var timeCtrl SpaceTactics.SandboxTimeControl
-		if clientInput.TimeControl(&timeCtrl) != nil {
+		if hasTimeCtrl {
 			r.isPaused = timeCtrl.IsPaused()
 			if ts := float64(timeCtrl.TimeScale()); ts > 0 {
 				r.timeScale = math.Max(0.1, math.Min(ts, 4.0))
@@ -619,8 +645,7 @@ func (r *GameRoom) HandleWS(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// Parse unit grouping updates
-		var groupingTable SpaceTactics.UnitGroupingPayload
-		if clientInput.UnitGrouping(&groupingTable) != nil {
+		if hasGrouping {
 			uID := string(groupingTable.UnitId())
 			if u, exists := r.units[uID]; exists {
 				u.BattalionID = int(groupingTable.BattalionId())

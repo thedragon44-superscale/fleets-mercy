@@ -5,6 +5,15 @@ import (
 	"space-tactics-server/internal/models"
 )
 
+// normalizeAngle wraps an angle cleanly into [0, 2*Pi).
+func normalizeAngle(a float64) float64 {
+	a = math.Mod(a, math.Pi*2)
+	if a < 0 {
+		a += math.Pi * 2
+	}
+	return a
+}
+
 // RotateTowards smoothly accelerates and decelerates a unit toward targetAngle
 // using TurnRate as max angular speed (rad/s) and AngularVelocity as torque (rad/s^2).
 func RotateTowards(unit *models.FleetUnit, targetAngle float64) {
@@ -20,23 +29,29 @@ func RotateTowards(unit *models.FleetUnit, targetAngle float64) {
 		angAccel = maxTurnSpeed * 2.5
 	}
 
-	// Shortest angular distance in [-Pi, Pi] to prevent wrap-around snapping
-	angleDiff := math.Mod(targetAngle-unit.Angle+math.Pi*3, math.Pi*2) - math.Pi
+	// Shortest signed angular distance in [-Pi, Pi] for any finite angles
+	angleDiff := math.Remainder(targetAngle-unit.Angle, math.Pi*2)
+	absDiff := math.Abs(angleDiff)
 
 	// Clean settle deadzone to prevent micro-jitter on cursor lock
-	if math.Abs(angleDiff) < 0.002 && math.Abs(unit.CurrentAngularVel) < 0.05 {
-		unit.Angle = math.Mod(targetAngle+math.Pi*2, math.Pi*2)
+	if absDiff < 0.002 && math.Abs(unit.CurrentAngularVel) < 0.05 {
+		unit.Angle = normalizeAngle(targetAngle)
 		unit.CurrentAngularVel = 0
 		return
 	}
 
-	// Kinematic braking curve: smoothly decelerates into targetAngle without overshoot
-	desiredVel := math.Sqrt(2.0 * angAccel * math.Abs(angleDiff))
-	if desiredVel > maxTurnSpeed {
-		desiredVel = maxTurnSpeed
+	// Kinematic braking curve, clamped by 1-tick arrival speed (absDiff/dt)
+	// so discrete 60Hz stepping never oscillates past targetAngle.
+	desiredMag := math.Sqrt(2.0 * angAccel * absDiff)
+	if oneTickSpeed := absDiff / dt; desiredMag > oneTickSpeed {
+		desiredMag = oneTickSpeed
 	}
+	if desiredMag > maxTurnSpeed {
+		desiredMag = maxTurnSpeed
+	}
+	desiredVel := desiredMag
 	if angleDiff < 0 {
-		desiredVel = -desiredVel
+		desiredVel = -desiredMag
 	}
 
 	// Step CurrentAngularVel toward desiredVel clamped by angular torque
@@ -50,77 +65,127 @@ func RotateTowards(unit *models.FleetUnit, targetAngle float64) {
 		unit.CurrentAngularVel -= maxVelDelta
 	}
 
-	unit.Angle = math.Mod(unit.Angle+unit.CurrentAngularVel*dt+math.Pi*2, math.Pi*2)
+	unit.Angle = normalizeAngle(unit.Angle + unit.CurrentAngularVel*dt)
 }
 
-// HandlePlayerMovement processes user throttle, strafing, rotational inertia, and velocity clamping
+// HandlePlayerMovement processes ship-relative WASD thrust, rotational inertia,
+// and directional elliptical velocity limits driven by PostgreSQL unit templates.
 func HandlePlayerMovement(unit *models.FleetUnit, input SandboxClientInput, roomWidth, roomHeight float64) {
 	unit.IsFiring = input.IsFiring
 	RotateTowards(unit, float64(input.Angle))
+
+	// Stationary units (e.g. gun_emplacement with Speed <= 0) can aim & fire but never translate.
+	if unit.Speed <= 0 {
+		unit.Vel.X = 0
+		unit.Vel.Y = 0
+		return
+	}
 
 	accelCurve := unit.AccelerationCurve
 	if accelCurve <= 0 {
 		accelCurve = 1.0
 	}
 
-	// Scaled so ships visibly build momentum (~0.1s for interceptors, ~0.4s+ for capitals)
-	accel := unit.Speed * 0.75 * accelCurve
-	maxSpeed := unit.Speed * 6.0
+	maxFwdSpeed := unit.Speed * 6.0
 
-	latPower := unit.LateralThrustPower
-	if latPower <= 0 {
-		latPower = 0.75
+	strafeBase := unit.StrafingSpeed
+	if strafeBase <= 0 {
+		strafeBase = unit.Speed * 0.75
 	}
-	strafeAccel := accel * latPower
-	if unit.StrafingSpeed > 0 {
-		strafeAccel = unit.StrafingSpeed * 0.75 * accelCurve * latPower
-	}
+	maxStrafeSpeed := strafeBase * 6.0
 
 	revPower := unit.ReverseThrustPower
 	if revPower <= 0 {
-		revPower = 0.5
+		revPower = 0.6
+	}
+	maxRevSpeed := maxFwdSpeed * math.Min(revPower, 1.0)
+	if maxRevSpeed < 0.5 {
+		maxRevSpeed = 0.5
 	}
 
-	// Build local forward/lateral thrust vector and normalize diagonal input
-	forwardInput := 0.0
+	latPower := unit.LateralThrustPower
+	if latPower <= 0 {
+		latPower = 0.85
+	}
+
+	// Per-tick thruster accelerations:
+	// - Speed * AccelerationCurve sets forward thrust
+	// - ReverseThrustPower scales reverse thrust
+	// - LateralThrustPower scales strafe responsiveness (StrafingSpeed governs max lateral speed)
+	fwdAccel := unit.Speed * 0.75 * accelCurve
+	revAccel := fwdAccel * revPower
+	strafeAccel := fwdAccel * latPower
+
+	// Ship-relative axes where opposing keys (W+S or A+D) cancel cleanly to 0
+	fwdAxis := 0.0
 	if input.W {
-		forwardInput += 1.0
+		fwdAxis += 1.0
 	}
 	if input.S {
-		forwardInput -= revPower
+		fwdAxis -= 1.0
 	}
 
-	strafeInput := 0.0
+	latAxis := 0.0
 	if input.A {
-		strafeInput -= 1.0
+		latAxis -= 1.0
 	}
 	if input.D {
-		strafeInput += 1.0
+		latAxis += 1.0
 	}
 
-	if forwardInput != 0 && strafeInput != 0 {
+	if fwdAxis == 0 && latAxis == 0 {
+		return
+	}
+
+	if fwdAxis != 0 && latAxis != 0 {
 		const invSqrt2 = 0.7071067811865476
-		forwardInput *= invSqrt2
-		strafeInput *= invSqrt2
+		fwdAxis *= invSqrt2
+		latAxis *= invSqrt2
 	}
 
+	prevSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
 	cosA := math.Cos(unit.Angle)
 	sinA := math.Sin(unit.Angle)
 
-	if forwardInput != 0 {
-		unit.Vel.X += cosA * (accel * forwardInput)
-		unit.Vel.Y += sinA * (accel * forwardInput)
-	}
-	if strafeInput != 0 {
-		// Perpendicular to heading: (-sinA, cosA) is starboard (+Pi/2)
-		unit.Vel.X += -sinA * (strafeAccel * strafeInput)
-		unit.Vel.Y += cosA * (strafeAccel * strafeInput)
+	if fwdAxis > 0 {
+		unit.Vel.X += cosA * (fwdAccel * fwdAxis)
+		unit.Vel.Y += sinA * (fwdAccel * fwdAxis)
+	} else if fwdAxis < 0 {
+		unit.Vel.X += cosA * (revAccel * fwdAxis)
+		unit.Vel.Y += sinA * (revAccel * fwdAxis)
 	}
 
-	currentSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
-	if currentSpeed > maxSpeed {
-		unit.Vel.X = (unit.Vel.X / currentSpeed) * maxSpeed
-		unit.Vel.Y = (unit.Vel.Y / currentSpeed) * maxSpeed
+	if latAxis != 0 {
+		// Perpendicular to heading: (-sinA, cosA) is starboard (+Pi/2)
+		unit.Vel.X += -sinA * (strafeAccel * latAxis)
+		unit.Vel.Y += cosA * (strafeAccel * latAxis)
+	}
+
+	// Enforce directional elliptical speed envelope (forward / reverse / strafe caps)
+	// without abruptly chopping pre-existing drift momentum during sharp turns.
+	vFwd := unit.Vel.X*cosA + unit.Vel.Y*sinA
+	vLat := -unit.Vel.X*sinA + unit.Vel.Y*cosA
+
+	capFwd := maxFwdSpeed
+	if vFwd < 0 {
+		capFwd = maxRevSpeed
+	}
+	capLat := maxStrafeSpeed
+	if capLat < 0.5 {
+		capLat = 0.5
+	}
+
+	ellip := math.Hypot(vFwd/capFwd, vLat/capLat)
+	if ellip > 1.0 {
+		newSpeed := math.Hypot(unit.Vel.X, unit.Vel.Y)
+		envelopeSpeed := newSpeed / ellip
+		maxHullSpeed := math.Max(maxFwdSpeed, maxStrafeSpeed)
+		allowedSpeed := math.Max(envelopeSpeed, math.Min(prevSpeed, maxHullSpeed))
+		if newSpeed > allowedSpeed && newSpeed > 0 {
+			scale := allowedSpeed / newSpeed
+			unit.Vel.X *= scale
+			unit.Vel.Y *= scale
+		}
 	}
 }
 
@@ -148,7 +213,7 @@ func ApplyUnitPhysics(unit *models.FleetUnit, roomWidth, roomHeight float64) {
 
 		// Anti-skid: extra braking grip when nose opposes velocity vector (scaled down on high-drift ships)
 		velAngle := math.Atan2(unit.Vel.Y, unit.Vel.X)
-		headingDiff := math.Abs(math.Mod(unit.Angle-velAngle+math.Pi*3, math.Pi*2) - math.Pi)
+		headingDiff := math.Abs(math.Remainder(unit.Angle-velAngle, math.Pi*2))
 		if headingDiff > (math.Pi * 0.6) {
 			effectiveDamp -= 0.015 * (1.0 - (drift * 0.5))
 		}

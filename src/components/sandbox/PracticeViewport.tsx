@@ -45,6 +45,30 @@ interface PracticeViewportProps {
 
 const RADAR_REDRAW_INTERVAL_MS = 80; // ~12Hz 2D radar redraw
 
+const lerpAngleShort = (from: number, to: number, t: number): number => {
+  const twoPi = Math.PI * 2;
+  let diff = (to - from) % twoPi;
+  if (diff > Math.PI) diff -= twoPi;
+  if (diff < -Math.PI) diff += twoPi;
+  return from + diff * t;
+};
+
+const pickFallbackPlayerUnit = (units: SnapshotUnit[]): SnapshotUnit | undefined => {
+  let best: SnapshotUnit | undefined;
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u.ownerId !== 'player' || u.isDestroyed) continue;
+    if (
+      !best ||
+      u.id === 'player-flagship' ||
+      (best.id !== 'player-flagship' && u.id < best.id)
+    ) {
+      best = u;
+    }
+  }
+  return best;
+};
+
 export const PracticeViewport: React.FC<PracticeViewportProps> = ({
   mapId = 1,
   onNavigateGarage,
@@ -62,6 +86,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
   // Camera, Zoom & Pan Refs
   const cameraPos = useRef({ x: 6000, y: 6000 });
   const renderPos = useRef({ x: 6000, y: 6000 });
+  const renderAngle = useRef<number>(0);
   const zoomRef = useRef<number>(1.0);
   const isCameraLockedRef = useRef<boolean>(true);
   const isPanningRef = useRef<boolean>(false);
@@ -157,11 +182,12 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
     zoomRef,
     canControl: canvasMode === 'pilot',
     resolvePilotedUnit: (units) => {
-      const activePlayerUnits = units.filter((u) => u.ownerId === 'player' && !u.isDestroyed);
-      return (
-        activePlayerUnits.find((u) => u.id === controlledUnitIdRef.current) ||
-        activePlayerUnits[0]
-      );
+      const controlled = controlledUnitIdRef.current
+        ? units.find(
+            (u) => u.id === controlledUnitIdRef.current && u.ownerId === 'player' && !u.isDestroyed
+          )
+        : undefined;
+      return controlled || pickFallbackPlayerUnit(units);
     },
     onSendInput: sendInput,
     onCustomKeyDown: (e) => {
@@ -521,6 +547,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
                   if (!isInitialized.current) {
                     renderPos.current.x = u.pos.x;
                     renderPos.current.y = u.pos.y;
+                    renderAngle.current = u.angle;
                     cameraPos.current.x = u.pos.x;
                     cameraPos.current.y = u.pos.y;
                     isInitialized.current = true;
@@ -532,6 +559,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
               controlledUnitIdRef.current = bestFallbackUnit.id;
               renderPos.current.x = bestFallbackUnit.pos.x;
               renderPos.current.y = bestFallbackUnit.pos.y;
+              renderAngle.current = bestFallbackUnit.angle;
               cameraPos.current.x = bestFallbackUnit.pos.x;
               cameraPos.current.y = bestFallbackUnit.pos.y;
               isInitialized.current = true;
@@ -559,12 +587,14 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         if (controlledUnit) {
           if (!isInitialized.current) {
             renderPos.current = { x: controlledUnit.pos.x, y: controlledUnit.pos.y };
+            renderAngle.current = controlledUnit.angle;
             isInitialized.current = true;
           }
 
           const lerpRate = 1.0 - Math.pow(0.0001, dt);
           renderPos.current.x += (controlledUnit.pos.x - renderPos.current.x) * lerpRate;
           renderPos.current.y += (controlledUnit.pos.y - renderPos.current.y) * lerpRate;
+          renderAngle.current = lerpAngleShort(renderAngle.current, controlledUnit.angle, lerpRate);
 
           if (isCameraLockedRef.current) {
             const worldMouse = canvasToWorld(
@@ -624,7 +654,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           const isSelected = latest.id === selectedWorldUnitIdRef.current;
           const rx = isControlled ? renderPos.current.x : u.pos.x;
           const ry = isControlled ? renderPos.current.y : u.pos.y;
-          const angle = u.angle;
+          const angle = isControlled ? renderAngle.current : u.angle;
           const size = getUnitSpriteSize(latest.type);
           const halfH = size / 2;
           const isFlagship =

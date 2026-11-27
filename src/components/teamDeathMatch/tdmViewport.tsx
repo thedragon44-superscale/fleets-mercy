@@ -59,6 +59,14 @@ const DEFAULT_ZOOM = 0.75;
 
 const round1 = (v: number | undefined): number => Math.round((v || 0) * 10) / 10;
 
+const lerpAngleShort = (from: number, to: number, t: number): number => {
+  const twoPi = Math.PI * 2;
+  let diff = (to - from) % twoPi;
+  if (diff > Math.PI) diff -= twoPi;
+  if (diff < -Math.PI) diff += twoPi;
+  return from + diff * t;
+};
+
 const formatHullName = (unitType: string): string =>
   unitType
     .split('_')
@@ -108,6 +116,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
   const transferNoticeRef = useRef<{ text: string; expiresAt: number } | null>(null);
   const cameraPosRef = useRef({ x: 6000, y: 6000 });
   const renderPosRef = useRef({ x: 6000, y: 6000 });
+  const renderAngleRef = useRef<number>(0);
   const zoomRef = useRef<number>(DEFAULT_ZOOM);
   const isInitializedRef = useRef<boolean>(false);
 
@@ -155,6 +164,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
             isInitializedRef.current = false;
           } else if (unit) {
             renderPosRef.current = { x: unit.pos.x, y: unit.pos.y };
+            renderAngleRef.current = unit.angle;
             pendingPilotSyncRef.current = true;
             transferNoticeRef.current = {
               text: `HULL LOST // TRANSFERRED TO ${formatHullName(unit.type).toUpperCase()}`,
@@ -368,12 +378,14 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
         if (playerUnit) {
           if (!isInitializedRef.current) {
             renderPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
+            renderAngleRef.current = playerUnit.angle;
             cameraPosRef.current = { x: playerUnit.pos.x, y: playerUnit.pos.y };
             isInitializedRef.current = true;
           }
           const lerpRate = 1.0 - Math.pow(0.0001, dt);
           renderPosRef.current.x += (playerUnit.pos.x - renderPosRef.current.x) * lerpRate;
           renderPosRef.current.y += (playerUnit.pos.y - renderPosRef.current.y) * lerpRate;
+          renderAngleRef.current = lerpAngleShort(renderAngleRef.current, playerUnit.angle, lerpRate);
 
           const camLerp = 1.0 - Math.exp(-12.0 * dt);
           cameraPosRef.current.x += (renderPosRef.current.x - cameraPosRef.current.x) * camLerp;
@@ -403,7 +415,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           const isPiloted = playerUnit?.id === latest.id;
           const rx = isPiloted ? renderPosRef.current.x : u.pos.x;
           const ry = isPiloted ? renderPosRef.current.y : u.pos.y;
-          const angle = u.angle;
+          const angle = isPiloted ? renderAngleRef.current : u.angle;
           const size = getUnitSpriteSize(latest.type);
           const halfH = size / 2;
           const isFlagship =
