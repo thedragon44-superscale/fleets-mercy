@@ -1,15 +1,9 @@
-Perform a read-only performance and rendering audit across the WebSocket pipeline, FlatBuffers decoder, and Pixi v8 Sandbox/TDM/Space Pirates viewports before making any edits.
+Inspect `src/components/teamDeathMatch/tdmViewport.tsx` (and `src/renderer/pixiEnvRenderer.ts` / `pixiSprites.ts`) — TDM connects and receives all 35 units + 5 env objects (they render on the 2D TDM Radar), but the main Pixi viewport shows `FPS: 0` and only renders the piloted unit.
 
 Check and report on:
-1. **Backend WebSocket & Tick Loop (`backend/internal/game/room.go`):**
-   - Are WebSocket writes non-blocking, or can a slow client stall the 60Hz tick or silently drop frames?
-   - Why is `Loaded 6 environmental structures` still executing alongside `envphysics: loaded 5 universal env objects`?
-2. **Frontend WebSocket & State Handling:**
-   - Does `ws.onmessage` trigger React `setState` per 60Hz binary frame, or write cleanly to a `useRef`?
-   - If frames arrive faster than the client renders, is it decoding a stale backlog or dropping to the latest snapshot?
-3. **EnvObject Rendering Gap:**
-   - Trace `EnvObjects` from `room.go` -> `game_state.fbs` -> TS parser -> Sandbox Pixi viewport to confirm nothing is being dropped, miscoded, culled, or drawn behind another layer.
-4. **Pixi v8 Render Loop Bottlenecks:**
-   - Identify any per-frame object/texture/Graphics allocations, heavy `clear()` + redraw calls, or filters that would drop FPS to ~20 with ~21 units on screen.
+1. Any uncaught exception or early return inside the Pixi ticker / render loop in `tdmViewport.tsx` (especially around the new `BitmapText` labels or `pixiEnvRenderer` calls).
+2. How `FPS` is calculated and updated in the TDM HUD (why it stays stuck at `0`).
+3. Camera transform, zoom scale, and container visibility/z-index for `EnvObjects` and non-piloted units in `tdmViewport.tsx`.
+4. Why the bottom-left shield HUD readout (`FRON SHD`, `REAR SHD`, etc.) is slightly clipped on the left edge.
 
-Present your findings with exact file/line references and a prioritized fix plan before changing any code.
+Discuss findings before editing any files.

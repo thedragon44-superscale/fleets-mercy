@@ -25,11 +25,14 @@ export function ensurePixiBitmapFont(): void {
   BitmapFont.install({
     name: TACTICAL_BITMAP_FONT,
     style: {
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontFamily: 'monospace',
       fontSize: 24,
       fontWeight: '700',
       fill: '#ffffff',
     },
+    chars: [[' ', '~']],
+    padding: 6,
+    skipKerning: true,
     resolution: 2,
   });
 }
@@ -87,10 +90,12 @@ export function drawPixiDashedLine(
   if (dist < 1) return;
   const nx = dx / dist;
   const ny = dy / dist;
-  const step = Math.max(8, dashLen + gapLen);
+  const maxSegments = 140;
+  const step = Math.max(8, dashLen + gapLen, dist / maxSegments);
+  const effDash = Math.min(dashLen, step * 0.6);
 
   for (let d = 0; d < dist; d += step) {
-    const end = Math.min(dist, d + dashLen);
+    const end = Math.min(dist, d + effDash);
     g.moveTo(x1 + nx * d, y1 + ny * d);
     g.lineTo(x1 + nx * end, y1 + ny * end);
   }

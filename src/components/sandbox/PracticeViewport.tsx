@@ -495,18 +495,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         labelsContainer
       );
 
-      // Screen-space Shield Diagnostics HUD (single BitmapText node)
-      const hudDiagText = new BitmapText({
-        text: '',
-        style: {
-          fontFamily: TACTICAL_BITMAP_FONT,
-          fontSize: 11,
-        },
-      });
-      hudDiagText.tint = 0x00f3ff;
-      hudDiagText.visible = false;
-
-      app.stage.addChild(worldContainer, hudDiagText);
+      app.stage.addChild(worldContainer);
 
       // Pooled BitmapText labels (all share 1 single GPU font atlas = 1 draw call!)
       const labelPool = new Map<string, BitmapText>();
@@ -548,7 +537,6 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
         if (app.screen.width !== w || app.screen.height !== h) {
           app.renderer.resize(w, h);
         }
-        hudDiagText.position.set(20, Math.max(20, h - 84));
       };
       syncSize();
       resizeObserver = new ResizeObserver(syncSize);
@@ -959,20 +947,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           spawnGhostSprite.visible = false;
         }
 
-        // 6. Quadrant Shield Diagnostics HUD
-        if (controlledUnit) {
-          const diagStr =
-            `FRONT SHD: ${(controlledUnit.shields?.front || 0).toFixed(1)}\n` +
-            `REAR  SHD: ${(controlledUnit.shields?.rear || 0).toFixed(1)}\n` +
-            `PORT  SHD: ${(controlledUnit.shields?.port || 0).toFixed(1)}\n` +
-            `STBD  SHD: ${(controlledUnit.shields?.starboard || 0).toFixed(1)}`;
-          if (hudDiagText.text !== diagStr) hudDiagText.text = diagStr;
-          hudDiagText.visible = true;
-        } else {
-          hudDiagText.visible = false;
-        }
-
-        // 7. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
+        // 6. Throttled Tactical Radar Minimap (~12Hz instead of 60Hz)
         if (currentTime - lastRadarDrawMs >= RADAR_REDRAW_INTERVAL_MS) {
           lastRadarDrawMs = currentTime;
           const radarCanvas = radarCanvasRef.current;
@@ -1111,6 +1086,10 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
   );
   const projectileCount = uiSocketState?.projectiles?.length || 0;
   const hasCommandShip = playerUnits.some((u) => u.type === 'battalion_command_ship');
+  const controlledUnitObj = useMemo(
+    () => playerUnits.find((u) => u.id === controlledUnitId) || playerUnits[0] || null,
+    [playerUnits, controlledUnitId]
+  );
 
   const toggleDebugFlag = (flag: keyof DebugOverlayFlags) => {
     setDebugFlags((prev) => ({ ...prev, [flag]: !prev[flag] }));
@@ -1162,6 +1141,35 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
               : 'cursor-crosshair'
           }`}
         />
+
+        {controlledUnitObj && (
+          <div className="absolute bottom-4 left-4 bg-slate-900/85 border border-cyan-500/35 px-3.5 py-2.5 rounded-lg backdrop-blur pointer-events-none font-mono text-[11px] leading-relaxed text-cyan-300 shadow-lg tabular-nums">
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-400">FRONT SHD</span>
+              <span className="text-cyan-300 font-bold">
+                {(controlledUnitObj.shields?.front || 0).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-400">REAR SHD</span>
+              <span className="text-cyan-300 font-bold">
+                {(controlledUnitObj.shields?.rear || 0).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-400">PORT SHD</span>
+              <span className="text-cyan-300 font-bold">
+                {(controlledUnitObj.shields?.port || 0).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-400">STBD SHD</span>
+              <span className="text-cyan-300 font-bold">
+                {(controlledUnitObj.shields?.starboard || 0).toFixed(1)}
+              </span>
+            </div>
+          </div>
+        )}
 
         <TacticalRadar canvasRef={radarCanvasRef} positionClass="bottom-4 right-4" />
 
