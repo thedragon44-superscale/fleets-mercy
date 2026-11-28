@@ -797,11 +797,25 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
             ];
           }
 
+          const totalShieldForVfx = latest.shields
+            ? latest.shields.front +
+              latest.shields.rear +
+              latest.shields.port +
+              latest.shields.starboard
+            : 0;
+          const maxShieldForVfx = Math.max(1, (tmpl?.shieldBase || 100) * 4);
+          const unitShieldRatio = Math.max(0, Math.min(1, totalShieldForVfx / maxShieldForVfx));
+
           renderUnits.push({
             id: latest.id,
             unitType: latest.type,
             x: rx,
             y: ry,
+            vx: latest.vel?.x || 0,
+            vy: latest.vel?.y || 0,
+            faction: latest.ownerId === 'player' ? 'player' : 'enemy',
+            isFiring: !!latest.isFiring,
+            shieldRatio: unitShieldRatio,
             angle,
             size,
             alpha: latest.isStealthed ? 0.48 : 1,
@@ -843,7 +857,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           });
         }
 
-        // 3. Projectiles (bounded extrapolation between snapshots, respecting pause & timeScale)
+        // 3. Projectiles (bounded extrapolation + velocity-aligned glowing plasma bolts)
         const rawProjectiles = snap.projectiles || [];
         const renderProjectiles: RenderProjectile[] = [];
         for (let i = 0; i < rawProjectiles.length; i++) {
@@ -851,6 +865,8 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           renderProjectiles.push({
             x: p.pos.x + (p.vel?.x || 0) * sinceSnapTicks,
             y: p.pos.y + (p.vel?.y || 0) * sinceSnapTicks,
+            vx: p.vel?.x || 0,
+            vy: p.vel?.y || 0,
             kind: 'dot',
             color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
             radius: 3,
@@ -883,7 +899,7 @@ export const PracticeViewport: React.FC<PracticeViewportProps> = ({
           backdrop: {
             kind: 'grid',
             spacing: GRID_SPACING,
-            lineColor: 'rgba(0, 243, 255, 0.06)',
+            lineColor: 'rgba(0, 243, 255, 0.045)',
             borderColor: 'rgba(168, 85, 247, 0.9)',
             borderWidth: 4,
           },

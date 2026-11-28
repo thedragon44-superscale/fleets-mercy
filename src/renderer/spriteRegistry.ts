@@ -137,8 +137,45 @@ export const UNIT_ROTATION_OFFSETS: Record<string, number> = {
   default: 0,
 };
 
+interface SpriteMipLevel {
+  size: number;
+  source: CanvasImageSource;
+}
+
 const imageByFilename = new Map<string, HTMLImageElement>();
+const mipsByFilename = new Map<string, SpriteMipLevel[]>();
 let preloadPromise: Promise<void> | null = null;
+
+/**
+ * Builds a pre-filtered 2x halving mipmap pyramid (full -> /2 -> ... -> 32px) so
+ * Canvas2D ctx.drawImage never downscales by more than 2x in a single pass,
+ * eliminating shimmer and preserving crisp hull panel details at all zoom levels.
+ */
+function buildMipPyramid(img: HTMLImageElement): SpriteMipLevel[] {
+  const fullSize = Math.max(img.naturalWidth, img.naturalHeight);
+  if (fullSize <= 0) return [];
+
+  const descending: SpriteMipLevel[] = [{ size: fullSize, source: img }];
+  let prevSource: CanvasImageSource = img;
+  let prevSize = fullSize;
+
+  while (prevSize > 32) {
+    const nextSize = Math.max(32, Math.floor(prevSize / 2));
+    const off = document.createElement('canvas');
+    off.width = nextSize;
+    off.height = nextSize;
+    const ctx = off.getContext('2d');
+    if (!ctx) break;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(prevSource, 0, 0, nextSize, nextSize);
+    descending.push({ size: nextSize, source: off });
+    prevSource = off;
+    prevSize = nextSize;
+  }
+
+  return descending.reverse();
+}
 
 function loadImageElement(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -158,7 +195,7 @@ function loadImageElement(url: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Preloads all 19 optimized unit PNGs once into a shared HTMLImageElement cache.
+ * Preloads all 19 optimized unit PNGs once into a shared HTMLImageElement + mipmap cache.
  * Safe to invoke repeatedly across mode switches.
  */
 export function preloadUnitSprites(): Promise<void> {
@@ -170,6 +207,7 @@ export function preloadUnitSprites(): Promise<void> {
       try {
         const img = await loadImageElement(entry.url);
         imageByFilename.set(entry.filename, img);
+        mipsByFilename.set(entry.filename, buildMipPyramid(img));
       } catch (err) {
         console.warn(`[SPRITE REGISTRY] Failed to load ${entry.filename}:`, err);
       }
@@ -185,6 +223,28 @@ export function getUnitSpriteImage(unitType: string): HTMLImageElement | null {
   const img = imageByFilename.get(filename);
   if (!img || !img.complete || img.naturalWidth === 0) return null;
   return img;
+}
+
+/**
+ * Selects the sharpest pre-baked mipmap level for a unit drawn at targetPixelSize
+ * physical screen pixels (worldSize * cameraZoom * dpr).
+ */
+export function getUnitSpriteMip(
+  unitType: string,
+  targetPixelSize: number
+): CanvasImageSource | null {
+  const filename = UNIT_ASSET_FILENAMES[unitType];
+  if (!filename) return null;
+  const mips = mipsByFilename.get(filename);
+  if (mips && mips.length > 0) {
+    for (let i = 0; i < mips.length; i++) {
+      if (mips[i].size >= targetPixelSize) {
+        return mips[i].source;
+      }
+    }
+    return mips[mips.length - 1].source;
+  }
+  return getUnitSpriteImage(unitType);
 }
 
 // Canonical circular hull hitbox radii mirroring backend envphysics.ShipHitboxRadius

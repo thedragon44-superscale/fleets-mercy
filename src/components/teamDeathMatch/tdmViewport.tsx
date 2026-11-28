@@ -460,12 +460,26 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           const isFlagship =
             latest.type === 'flagship' || latest.type === 'battalion_command_ship';
           const factionColor = latest.ownerId === 'player' ? '#22d3ee' : '#fb7185';
+          const tmpl = templatesRef.current[latest.type];
+          const totalShield = latest.shields
+            ? latest.shields.front +
+              latest.shields.rear +
+              latest.shields.port +
+              latest.shields.starboard
+            : 0;
+          const maxShield = Math.max(1, (tmpl?.shieldBase || 100) * 4);
+          const unitShieldRatio = Math.max(0, Math.min(1, totalShield / maxShield));
 
           renderUnits.push({
             id: latest.id,
             unitType: latest.type,
             x: rx,
             y: ry,
+            vx: latest.vel?.x || 0,
+            vy: latest.vel?.y || 0,
+            faction: latest.ownerId === 'player' ? 'player' : 'enemy',
+            isFiring: !!latest.isFiring,
+            shieldRatio: unitShieldRatio,
             angle,
             size,
             alpha: latest.isStealthed ? 0.48 : 1,
@@ -499,7 +513,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           });
         }
 
-        // 3. Projectiles (gentle bounded extrapolation between server snapshots)
+        // 3. Projectiles (bounded extrapolation + velocity-aligned glowing plasma bolts)
         const rawProjectiles = snapshot.projectiles || [];
         const renderProjectiles: RenderProjectile[] = [];
         for (let i = 0; i < rawProjectiles.length; i++) {
@@ -507,6 +521,8 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           renderProjectiles.push({
             x: p.pos.x + (p.vel?.x || 0) * sinceSnapTicks,
             y: p.pos.y + (p.vel?.y || 0) * sinceSnapTicks,
+            vx: p.vel?.x || 0,
+            vy: p.vel?.y || 0,
             kind: 'dot',
             color: p.type === 'player' ? '#00f3ff' : '#ff2a6d',
             radius: 3,
@@ -521,7 +537,7 @@ export const TdmViewport: React.FC<TdmViewportProps> = ({
           backdrop: {
             kind: 'grid',
             spacing: GRID_SPACING,
-            lineColor: 'rgba(0, 243, 255, 0.055)',
+            lineColor: 'rgba(0, 243, 255, 0.042)',
             borderColor: 'rgba(168, 85, 247, 0.9)',
             borderWidth: 4,
           },

@@ -115,6 +115,11 @@ export interface RenderUnit {
   unitType: string;
   x: number;
   y: number;
+  vx?: number;
+  vy?: number;
+  faction?: 'player' | 'enemy' | 'neutral';
+  isFiring?: boolean;
+  shieldRatio?: number;
   angle: number;
   size: number;
   alpha?: number;

@@ -18,28 +18,29 @@ SRC_ASSETS_DIR = REPO_ROOT / "src" / "assets"
 MASTERS_DIR = REPO_ROOT / "assets_masters"
 
 # Exact target power-of-two dimensions per unit sprite (by weight class)
+# High-res HiDPI targets (512px for 1W-3W, 1024px for 4W-5W/Capital) paired with runtime 2x mipmaps
 UNIT_TARGET_SIZES: dict[str, int] = {
-    # 1W - 2W units -> 256x256
-    "viper.png": 256,
-    "recon.png": 256,
-    "phantom.png": 256,
-    "ion.png": 256,
-    "mining.png": 256,
-    "supply.png": 256,
-    "plasma.png": 256,
-    "grav.png": 256,
-    # 3W - 5W units & Bosses -> 512x512
+    # 1W - 3W units -> 512x512
+    "viper.png": 512,
+    "recon.png": 512,
+    "phantom.png": 512,
+    "ion.png": 512,
+    "mining.png": 512,
+    "supply.png": 512,
+    "plasma.png": 512,
+    "grav.png": 512,
     "assault.png": 512,
     "aegis.png": 512,
     "vortex.png": 512,
-    "lancer.png": 512,
-    "cryo.png": 512,
-    "specter.png": 512,
-    "flagship.png": 512,
-    "wall.png": 512,
-    "torpedo.png": 512,
-    "warp.png": 512,
-    "turret.png": 512,
+    # 4W - 5W units & Capital/Flagship -> 1024x1024
+    "lancer.png": 1024,
+    "cryo.png": 1024,
+    "specter.png": 1024,
+    "flagship.png": 1024,
+    "wall.png": 1024,
+    "torpedo.png": 1024,
+    "warp.png": 1024,
+    "turret.png": 1024,
 }
 
 PADDING_RATIO = 0.10  # 10% uniform transparent margin on all 4 sides

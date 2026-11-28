@@ -13,9 +13,12 @@ import {
 import {
   getUnitHitboxRadius,
   getUnitRotationOffset,
-  getUnitSpriteImage,
+  getUnitSpriteMip,
   preloadUnitSprites,
 } from './spriteRegistry';
+import { SpaceBackdropRenderer } from './spaceBackdrop';
+import { VfxEngine } from './vfxEngine';
+import { GlowColor, getGlowSprite, getPlumeSprite, resolveGlowColor } from './vfxSprites';
 import {
   ViewportCameraState,
   WorldBounds,
@@ -36,7 +39,7 @@ import type {
   ViewportRendererInitOptions,
 } from './viewportRenderer';
 
-const MAX_ENV_CACHE_CANVAS_DIM = 768;
+const MAX_ENV_CACHE_CANVAS_DIM = 1536;
 
 interface CachedEnvSprite {
   canvas: HTMLCanvasElement;
@@ -45,6 +48,7 @@ interface CachedEnvSprite {
   componentCount: number;
   boundingRadius: number;
   colorSig: string;
+  bakeDpr: number;
   soft: boolean;
 }
 
@@ -84,11 +88,15 @@ function bakeEnvObjectOffscreen(
   obj: RenderableEnvObject,
   colorByResourceEnum: Record<number, string>,
   colorSig: string,
-  soft: boolean
+  soft: boolean,
+  bakeDpr: number
 ): CachedEnvSprite {
   const halfWorldSize = computeEnvLocalExtent(obj);
   const fullWorldSize = halfWorldSize * 2;
-  const pixelDim = Math.min(MAX_ENV_CACHE_CANVAS_DIM, Math.max(64, fullWorldSize));
+  const pixelDim = Math.min(
+    MAX_ENV_CACHE_CANVAS_DIM,
+    Math.max(64, Math.ceil(fullWorldSize * bakeDpr))
+  );
   const drawScale = pixelDim / fullWorldSize;
 
   const offscreen = document.createElement('canvas');
@@ -302,6 +310,7 @@ function bakeEnvObjectOffscreen(
     componentCount: obj.components.length,
     boundingRadius: obj.boundingRadius,
     colorSig,
+    bakeDpr,
     soft,
   };
 }
@@ -316,10 +325,13 @@ export class Canvas2DRenderer implements ViewportRenderer {
 
   private envObjects: readonly RenderableEnvObject[] = [];
   private lastEnvColorMap: Record<number, string> | null = null;
+  private lastEnvBakeDpr = 1;
   private envCache = new Map<number, CachedEnvSprite>();
   private envActiveIds = new Set<number>();
   private envParentById = new Map<number, RenderableEnvObject>();
   private arenaBackdropCache: CachedArenaBackdrop | null = null;
+  private spaceBackdrop = new SpaceBackdropRenderer();
+  private vfxEngine = new VfxEngine();
 
   public init(canvas: HTMLCanvasElement, options?: ViewportRendererInitOptions): void {
     this.canvas = canvas;
@@ -333,7 +345,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
   public resize(width: number, height: number, dpr?: number): void {
     const nextW = Math.max(1, Math.floor(width));
     const nextH = Math.max(1, Math.floor(height));
-    const nextDpr = Math.min(Math.max(1, dpr ?? 1), 1.5);
+    const nextDpr = Math.min(Math.max(1, dpr ?? window.devicePixelRatio ?? 1), 2);
 
     this.viewWidth = nextW;
     this.viewHeight = nextH;
@@ -350,12 +362,18 @@ export class Canvas2DRenderer implements ViewportRenderer {
     envObjects: readonly RenderableEnvObject[],
     colorByResourceEnum: Record<number, string> = DEFAULT_RESOURCE_COLORS
   ): void {
-    // O(1) fast-skip when static map env objects & color map reference are unchanged
-    if (envObjects === this.envObjects && colorByResourceEnum === this.lastEnvColorMap) {
+    const bakeDpr = Math.min(this.dpr, 1.5);
+    // O(1) fast-skip when static map env objects, color map ref, and bake DPR are unchanged
+    if (
+      envObjects === this.envObjects &&
+      colorByResourceEnum === this.lastEnvColorMap &&
+      bakeDpr === this.lastEnvBakeDpr
+    ) {
       return;
     }
     this.envObjects = envObjects;
     this.lastEnvColorMap = colorByResourceEnum;
+    this.lastEnvBakeDpr = bakeDpr;
     this.envActiveIds.clear();
     this.envParentById.clear();
 
@@ -379,11 +397,12 @@ export class Canvas2DRenderer implements ViewportRenderer {
         cached.componentCount !== obj.components.length ||
         cached.boundingRadius !== obj.boundingRadius ||
         cached.colorSig !== colorSig ||
+        cached.bakeDpr !== bakeDpr ||
         cached.soft !== soft
       ) {
         this.envCache.set(
           obj.id,
-          bakeEnvObjectOffscreen(obj, colorByResourceEnum, colorSig, soft)
+          bakeEnvObjectOffscreen(obj, colorByResourceEnum, colorSig, soft, bakeDpr)
         );
       }
     }
@@ -403,14 +422,25 @@ export class Canvas2DRenderer implements ViewportRenderer {
     const h = this.viewHeight;
     const dpr = this.dpr;
 
-    // 1. Clear full viewport in screen space
+    // 1. Clear full viewport in screen space with high-quality filtering enabled
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = frame.backgroundColor || this.defaultBackground;
     ctx.fillRect(0, 0, w, h);
+
+    // 1b. Multi-layer deep-space parallax starfield & subtle cosmic nebula wash behind tactical grids
+    if (frame.backdrop?.kind === 'grid' && camera.mode === 'camera') {
+      this.spaceBackdrop.draw(ctx, w, h, camera.x, camera.y, frame.now);
+    }
 
     // 2. Apply camera transform
     const { scale, offsetX, offsetY } = computeCameraTransform(camera, w, h);
     const bounds = computeVisibleWorldBounds(camera, w, h, 240);
+    const pixelScale = scale * dpr;
+
+    // Advance zero-GC pooled combat VFX & particle simulation
+    this.vfxEngine.update(frame.units, frame.now);
 
     ctx.save();
     ctx.translate(offsetX, offsetY);
@@ -445,17 +475,20 @@ export class Canvas2DRenderer implements ViewportRenderer {
       this.drawLegacyRocks(ctx, frame.legacyRocks, bounds);
     }
 
-    // 10. Units (back overlays -> PNG sprites -> front overlays & labels)
-    this.drawUnits(ctx, frame.units, frame.now, bounds);
+    // 10. Units (back overlays -> additive plumes -> mipmapped PNG sprites -> front overlays & labels)
+    this.drawUnits(ctx, frame.units, frame.now, bounds, scale, pixelScale);
 
-    // 11. Projectiles
+    // 11. Additive glowing projectiles
     if (frame.projectiles.length > 0) {
       this.drawProjectiles(ctx, frame.projectiles, bounds);
     }
 
+    // 11b. Additive combat VFX (explosions, shockwaves, shield sparks, engine motes)
+    this.vfxEngine.render(ctx, bounds);
+
     // 12. Sandbox Click-to-Spawn ghost sprite
     if (frame.ghostSprite) {
-      this.drawGhostSprite(ctx, frame.ghostSprite);
+      this.drawGhostSprite(ctx, frame.ghostSprite, pixelScale);
     }
 
     // 13. Floating payout/event texts
@@ -473,6 +506,8 @@ export class Canvas2DRenderer implements ViewportRenderer {
     this.envActiveIds.clear();
     this.envParentById.clear();
     this.arenaBackdropCache = null;
+    this.spaceBackdrop.destroy();
+    this.vfxEngine.reset();
     this.ctx = null;
     this.canvas = null;
   }
@@ -791,8 +826,12 @@ export class Canvas2DRenderer implements ViewportRenderer {
     ctx: CanvasRenderingContext2D,
     units: readonly RenderUnit[],
     now: number,
-    bounds: WorldBounds
+    bounds: WorldBounds,
+    cameraScale: number,
+    pixelScale: number
   ): void {
+    const zoomStrokeMult = 1 / Math.sqrt(Math.max(0.25, cameraScale));
+
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
       const pad = Math.max(u.size, 120);
@@ -811,7 +850,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
 
       // 1. Optional debug range circles (behind everything)
       if (u.ranges && u.ranges.length > 0) {
-        ctx.lineWidth = 1;
+        ctx.lineWidth = Math.max(0.75, 1 * zoomStrokeMult);
         for (let r = 0; r < u.ranges.length; r++) {
           const rc = u.ranges[r];
           ctx.save();
@@ -824,7 +863,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
         }
       }
 
-      // 2. Selection / Faction ring
+      // 2. Selection / Faction ring (zoom-adaptive crisp stroke width)
       if (u.ring) {
         ctx.save();
         if (u.ring.fillColor && (u.ring.fillAlpha ?? 0) > 0) {
@@ -836,8 +875,8 @@ export class Canvas2DRenderer implements ViewportRenderer {
         }
         ctx.globalAlpha = u.ring.strokeAlpha ?? 0.85;
         ctx.strokeStyle = u.ring.strokeColor;
-        ctx.lineWidth = u.ring.lineWidth ?? 2;
-        if (u.ring.dashed) ctx.setLineDash([6, 5]);
+        ctx.lineWidth = (u.ring.lineWidth ?? 2) * zoomStrokeMult;
+        if (u.ring.dashed) ctx.setLineDash([6 * zoomStrokeMult, 5 * zoomStrokeMult]);
         ctx.beginPath();
         ctx.arc(u.x, u.y, u.ring.radius, 0, Math.PI * 2);
         ctx.stroke();
@@ -848,8 +887,8 @@ export class Canvas2DRenderer implements ViewportRenderer {
       if (u.stealthRingRadius) {
         ctx.save();
         ctx.strokeStyle = 'rgba(192, 132, 252, 0.72)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.8 * zoomStrokeMult;
+        ctx.setLineDash([6 * zoomStrokeMult, 6 * zoomStrokeMult]);
         ctx.beginPath();
         ctx.arc(u.x, u.y, u.stealthRingRadius, 0, Math.PI * 2);
         ctx.stroke();
@@ -860,7 +899,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
       if (u.hitbox) {
         const hitR = getUnitHitboxRadius(u.unitType);
         ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
-        ctx.lineWidth = 1.25;
+        ctx.lineWidth = 1.25 * zoomStrokeMult;
         ctx.beginPath();
         ctx.arc(u.x, u.y, hitR, 0, Math.PI * 2);
         ctx.stroke();
@@ -886,30 +925,45 @@ export class Canvas2DRenderer implements ViewportRenderer {
         }
       }
 
-      // 6. Flagship thrust flames (behind sprite)
-      if (u.thrustFlames) {
+      // 6. Universal additive velocity-reactive engine plumes (behind sprite)
+      const spd = Math.hypot(u.vx ?? 0, u.vy ?? 0);
+      if (u.thrustFlames || spd > 0.65) {
         const cos = Math.cos(u.angle);
         const sin = Math.sin(u.angle);
-        const flameLen = 22 + ((now * 0.17 + i * 7) % 14);
-        ctx.save();
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-        ctx.lineWidth = 6;
-        ctx.lineCap = 'round';
-        for (const side of [-12, 12]) {
-          const bx = u.x - cos * 38 - sin * side;
-          const by = u.y - sin * 38 + cos * side;
-          const tx = u.x - cos * (38 + flameLen) - sin * side;
-          const ty = u.y - sin * (38 + flameLen) + cos * side;
-          ctx.beginPath();
-          ctx.moveTo(bx, by);
-          ctx.lineTo(tx, ty);
-          ctx.stroke();
+        const fwdDot = spd > 0.01 ? ((u.vx ?? 0) * cos + (u.vy ?? 0) * sin) / spd : 1;
+        const speedNorm = Math.min(1.0, spd / 9.0);
+        const thrustIntensity = u.thrustFlames
+          ? Math.max(0.75, speedNorm)
+          : speedNorm * (fwdDot > -0.25 ? 0.85 : 0.45);
+
+        if (thrustIntensity > 0.08) {
+          const flicker = 0.88 + 0.18 * Math.sin(now * 0.045 + i * 2.3);
+          const plumeColor: GlowColor = u.faction === 'enemy' ? 'rose' : 'cyan';
+          const plumeImg = getPlumeSprite(plumeColor);
+          const plumeLen = u.size * (0.42 + 0.58 * thrustIntensity) * flicker;
+          const plumeThick = u.size * (0.24 + 0.14 * thrustIntensity);
+          const aftOffset = u.size * 0.34;
+          const isTwin = u.size >= 64 || u.thrustFlames;
+
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.min(0.95, (u.alpha ?? 1) * (0.55 + 0.45 * thrustIntensity));
+          ctx.translate(u.x, u.y);
+          ctx.rotate(u.angle);
+
+          if (isTwin) {
+            const side = u.size * 0.135;
+            ctx.drawImage(plumeImg, -aftOffset - plumeLen, -side - plumeThick * 0.5, plumeLen, plumeThick);
+            ctx.drawImage(plumeImg, -aftOffset - plumeLen, side - plumeThick * 0.5, plumeLen, plumeThick);
+          } else {
+            ctx.drawImage(plumeImg, -aftOffset - plumeLen, -plumeThick * 0.5, plumeLen, plumeThick);
+          }
+          ctx.restore();
         }
-        ctx.restore();
       }
 
-      // 7. Unit PNG Sprite (or vector triangle fallback while image loads)
-      const img = getUnitSpriteImage(u.unitType);
+      // 7. Mipmapped Unit PNG Sprite (or vector triangle fallback while image loads)
+      const img = getUnitSpriteMip(u.unitType, u.size * pixelScale);
       ctx.save();
       ctx.translate(u.x, u.y);
       ctx.globalAlpha = u.alpha ?? 1;
@@ -933,32 +987,37 @@ export class Canvas2DRenderer implements ViewportRenderer {
       if (u.flagshipMuzzleFlash) {
         const cos = Math.cos(u.angle);
         const sin = Math.sin(u.angle);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.95)';
+        const glow = getGlowSprite('amber');
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(254, 243, 199, 0.95)';
         ctx.lineWidth = 3;
         for (const side of [-11, 11]) {
           const fx = u.x + cos * 38 - sin * side;
           const fy = u.y + sin * 38 + cos * side;
-          const ex = u.x + cos * 58 - sin * side;
-          const ey = u.y + sin * 58 + cos * side;
+          const ex = u.x + cos * 60 - sin * side;
+          const ey = u.y + sin * 60 + cos * side;
+          ctx.drawImage(glow, fx - 14, fy - 14, 28, 28);
           ctx.beginPath();
           ctx.moveTo(fx, fy);
           ctx.lineTo(ex, ey);
           ctx.stroke();
         }
-      }
-
-      if (u.muzzleFlashDot) {
-        const halfR = u.size * 0.48;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.restore();
+      } else if (u.muzzleFlashDot || u.isFiring) {
+        const halfR = u.size * 0.46;
+        const mx = u.x + Math.cos(u.angle) * halfR;
+        const my = u.y + Math.sin(u.angle) * halfR;
+        const glowColor: GlowColor = u.faction === 'enemy' ? 'rose' : 'cyan';
+        const glowSize = Math.max(16, u.size * 0.36);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(getGlowSprite(glowColor), mx - glowSize * 0.5, my - glowSize * 0.5, glowSize, glowSize);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
         ctx.beginPath();
-        ctx.arc(
-          u.x + Math.cos(u.angle) * halfR,
-          u.y + Math.sin(u.angle) * halfR,
-          Math.max(3.5, u.size * 0.08),
-          0,
-          Math.PI * 2
-        );
+        ctx.arc(mx, my, Math.max(2.5, u.size * 0.055), 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
 
       if (u.harvester?.isHarvesting) {
@@ -984,7 +1043,7 @@ export class Canvas2DRenderer implements ViewportRenderer {
       if (u.velocityVector) {
         const { vx, vy, scale: vScale, color } = u.velocityVector;
         ctx.strokeStyle = color;
-        ctx.lineWidth = 1.75;
+        ctx.lineWidth = 1.75 * zoomStrokeMult;
         ctx.beginPath();
         ctx.moveTo(u.x, u.y);
         ctx.lineTo(u.x + vx * vScale, u.y + vy * vScale);
@@ -1009,9 +1068,13 @@ export class Canvas2DRenderer implements ViewportRenderer {
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(2, 6, 23, 0.88)';
+        ctx.lineWidth = 2.6;
         for (let l = 0; l < u.labels.length; l++) {
           const lbl = u.labels[l];
           ctx.font = `${lbl.bold === false ? '500' : '700'} ${lbl.fontSize}px monospace`;
+          ctx.strokeText(lbl.text, u.x, u.y + lbl.yOffset);
           ctx.fillStyle = lbl.color;
           ctx.fillText(lbl.text, u.x, u.y + lbl.yOffset);
         }
@@ -1048,67 +1111,126 @@ export class Canvas2DRenderer implements ViewportRenderer {
     projectiles: readonly RenderProjectile[],
     bounds: WorldBounds
   ): void {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+
     for (let i = 0; i < projectiles.length; i++) {
       const p = projectiles[i];
       if (
-        p.x + 40 < bounds.minX ||
-        p.x - 40 > bounds.maxX ||
-        p.y + 40 < bounds.minY ||
-        p.y - 40 > bounds.maxY
+        p.x + 56 < bounds.minX ||
+        p.x - 56 > bounds.maxX ||
+        p.y + 56 < bounds.minY ||
+        p.y - 56 > bounds.maxY
       ) {
         continue;
       }
 
+      const glowColor = resolveGlowColor(p.color);
+      const glowSprite = getGlowSprite(glowColor);
+      const vx = p.vx ?? 0;
+      const vy = p.vy ?? 0;
+      const hasVel = Math.abs(vx) > 0.05 || Math.abs(vy) > 0.05;
+
       if (p.kind === 'dot') {
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius ?? 3, 0, Math.PI * 2);
-        ctx.fill();
+        const r = p.radius ?? 3;
+        const halo = r * 5.2;
+        ctx.globalAlpha = 0.82;
+        ctx.drawImage(glowSprite, p.x - halo * 0.5, p.y - halo * 0.5, halo, halo);
+
+        if (hasVel) {
+          const tx = p.x - vx * 1.15;
+          const ty = p.y - vy * 1.15;
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = r * 1.45;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = Math.max(1.4, r * 0.65);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - vx * 0.65, p.y - vy * 0.65);
+          ctx.stroke();
+        } else {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r * 0.85, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else if (p.kind === 'cryo') {
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(getGlowSprite('ice'), p.x - 18, p.y - 18, 36, 36);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#e0f2fe';
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#bae6fd';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
         ctx.fill();
       } else if (p.kind === 'torpedo') {
-        ctx.save();
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(glowSprite, p.x - 18, p.y - 18, 36, 36);
+        if (hasVel) {
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - vx * 1.3, p.y - vy * 1.3);
+          ctx.stroke();
+        }
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 4.8, 0, Math.PI * 2);
         ctx.fill();
-        ctx.stroke();
-        ctx.restore();
       } else if (p.kind === 'railgun') {
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(glowSprite, p.x - 16, p.y - 16, 32, 32);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 6.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - vx * 1.7, p.y - vy * 1.7);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
         ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - vx * 1.4, p.y - vy * 1.4);
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(glowSprite, p.x - 13, p.y - 13, 26, 26);
+        ctx.strokeStyle = p.color;
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - (p.vx ?? 0) * 1.4, p.y - (p.vy ?? 0) * 1.4);
+        ctx.lineTo(p.x - vx * 1.15, p.y - vy * 1.15);
         ctx.stroke();
-      } else {
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3;
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - (p.vx ?? 0) * 0.9, p.y - (p.vy ?? 0) * 0.9);
+        ctx.lineTo(p.x - vx * 0.75, p.y - vy * 0.75);
         ctx.stroke();
       }
     }
+
+    ctx.restore();
   }
 
-  private drawGhostSprite(ctx: CanvasRenderingContext2D, ghost: RenderGhostSprite): void {
-    const img = getUnitSpriteImage(ghost.unitType);
+  private drawGhostSprite(
+    ctx: CanvasRenderingContext2D,
+    ghost: RenderGhostSprite,
+    pixelScale: number
+  ): void {
+    const img = getUnitSpriteMip(ghost.unitType, ghost.size * pixelScale);
     if (img) {
       const half = ghost.size / 2;
       ctx.save();
